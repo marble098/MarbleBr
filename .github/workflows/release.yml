@@ -5,6 +5,12 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      verify_only:
+        description: "Build and verify all signed APKs without committing a version bump or publishing a release"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: release-main
@@ -81,6 +87,9 @@ jobs:
           distribution: "zulu"
           java-version: "21"
 
+      - name: Run Release Keystore Unit Tests
+        run: ./scripts/test_prepare_release_keystore.sh
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
@@ -93,15 +102,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          KEYSTORE_FILE="${RUNNER_TEMP}/marblebr-release.jks"
-          umask 077
-          : "${KEYSTORE_BASE64:?Missing release keystore}" "${KEYSTORE_PASSWORD:?}" "${KEY_ALIAS:?}" "${KEY_PASSWORD:?}"
-          echo "${KEYSTORE_BASE64}" | base64 --decode > "${KEYSTORE_FILE}"
-          echo "MARBLE_KEYSTORE_PATH=${KEYSTORE_FILE}" >> "$GITHUB_ENV"
-          echo "MARBLE_KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD}" >> "$GITHUB_ENV"
-          echo "MARBLE_KEY_ALIAS=${KEY_ALIAS}" >> "$GITHUB_ENV"
-          echo "MARBLE_KEY_PASSWORD=${KEY_PASSWORD}" >> "$GITHUB_ENV"
+        run: ./scripts/prepare_release_keystore.sh
 
       - name: Build Signed Release APKs (arm64-v8a, armeabi-v7a, x86, x86_64, universal)
         run: ./scripts/gradle_retry.sh /tmp/release-build.log testDebugUnitTest :app:assembleRelease --stacktrace
@@ -126,6 +127,7 @@ jobs:
           ls -lh "${OUT_DIR}"
 
       - name: Commit Bumped Version to main
+        if: ${{ !inputs.verify_only }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -141,6 +143,7 @@ jobs:
           git push origin HEAD:main
 
       - name: Create GitHub Release and Attach All 5 APKs
+        if: ${{ !inputs.verify_only }}
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.bump.outputs.version_name }}
