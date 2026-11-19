@@ -151,12 +151,7 @@ jobs:
             echo ""
             echo "| نوع | نام | از | به |"
             echo "|---|---|---|---|"
-            python3 - <<'PY'
-          import json
-          data = json.load(open('/tmp/deps-report.json', encoding='utf-8'))
-          for item in data.get('updates', []):
-              print(f"| {item['kind']} | `{item['name']}` | `{item['old']}` | `{item['new']}` |")
-          PY
+            python3 scripts/render_deps_table.py /tmp/deps-report.json
             echo ""
             echo "✅ بیلد کامل، ktlint، detekt و تمام تست‌های واحد با نسخه‌های جدید سبز هستند."
           } > "${BODY_FILE}"
