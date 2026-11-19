@@ -143,6 +143,7 @@ B64_MULTI="$(base64 -w0 "$KS_MULTI")"
 # 4. With multiple keys, a wrong alias must fail early instead of guessing.
 if run_prepare 'stale-alias' "$STORE_PASS" "$KEY_PASS" \
     "$B64_MULTI" "$WORK_DIR/out_ambiguous.jks" "$WORK_DIR/env_ambiguous"; then
+    cat "$OUTPUT" >&2
     echo "❌ Ambiguous keystore unexpectedly accepted a wrong alias." >&2
     exit 1
 else
@@ -165,6 +166,7 @@ fi
 # 6. Malformed base64 fails before any build work.
 if run_prepare "$ALIAS_ONE" "$STORE_PASS" "$KEY_PASS" \
     '%%%not-base64%%%' "$WORK_DIR/out_bad_b64.jks" "$WORK_DIR/env_bad_b64"; then
+    cat "$OUTPUT" >&2
     echo "❌ Invalid base64 keystore was accepted." >&2
     exit 1
 else
@@ -175,6 +177,7 @@ fi
 # 7. A wrong store password fails early.
 if run_prepare "$ALIAS_ONE" 'wrong-store-pass' "$KEY_PASS" \
     "$B64_ONE" "$WORK_DIR/out_bad_store.jks" "$WORK_DIR/env_bad_store"; then
+    cat "$OUTPUT" >&2
     echo "❌ Wrong store password was accepted." >&2
     exit 1
 else
@@ -185,6 +188,7 @@ fi
 # 8. A wrong key password fails early.
 if run_prepare "$ALIAS_ONE" "$STORE_PASS" 'wrong-key-pass' \
     "$B64_ONE" "$WORK_DIR/out_bad_key.jks" "$WORK_DIR/env_bad_key"; then
+    cat "$OUTPUT" >&2
     echo "❌ Wrong key password was accepted." >&2
     exit 1
 else

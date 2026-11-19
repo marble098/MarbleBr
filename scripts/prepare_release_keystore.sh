@@ -99,7 +99,9 @@ if [[ -z "$RESOLVED_ALIAS" ]]; then
     echo "::notice::Using the single private key entry found in the release keystore."
 fi
 
-if ! keytool_list -exportcert -rfc -alias "$RESOLVED_ALIAS" \
+# -certreq signs the request with the private key, so it actually verifies the
+# key password (-exportcert only reads the public certificate and ignores it).
+if ! keytool_list -certreq -alias "$RESOLVED_ALIAS" \
     -keystore "$KEYSTORE_FILE" -storepass "$STORE_PASSWORD" \
     -keypass "$KEY_PASSWORD" >/dev/null 2>&1; then
     echo "::error title=InvalidReleaseKeyPassword::KEY_PASSWORD cannot unlock the release key, or the resolved alias is unusable."
