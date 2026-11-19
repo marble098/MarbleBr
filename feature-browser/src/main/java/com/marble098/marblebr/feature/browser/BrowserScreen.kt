@@ -287,7 +287,7 @@ fun BrowserScreen(
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.Security,
-                                    contentDescription = strings.adBlockChip(blockedAdsCount),
+                                    contentDescription = strings.adBlockChip(blockedAdsCount.toInt()),
                                     modifier = Modifier.size(16.dp),
                                 )
                             },
