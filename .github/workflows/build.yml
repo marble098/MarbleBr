@@ -117,7 +117,7 @@ jobs:
           done
 
       - name: Upload Release APKs Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: marblebr-release-apks
           path: app/build/outputs/apk/release/*.apk
