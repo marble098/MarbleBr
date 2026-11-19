@@ -52,7 +52,7 @@ jobs:
         run: |
           set -o pipefail
           if ! ./gradlew ktlintCheck detekt --stacktrace 2>&1 | tee /tmp/lint.log; then
-            ERR_SUMMARY=$(grep -E "e:|error:|FAILURE:|What went wrong:|\.kt:[0-9]+|\.kts:[0-9]+|Execution failed" /tmp/lint.log | tail -n 30 | tr '\n' ' ')
+            ERR_SUMMARY=$({ grep -E "e:|error:|FAILED|\.kt:[0-9]+" /tmp/lint.log | tail -n 15; grep -A 20 "What went wrong:" /tmp/lint.log | head -n 22; } | tr '\n' ' ')
             echo "::error title=StaticAnalysisFailure::${ERR_SUMMARY}"
             exit 1
           fi
