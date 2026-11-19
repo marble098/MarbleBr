@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Environment
 import com.marble098.marblebr.core.database.DownloadDao
 import com.marble098.marblebr.core.database.DownloadEntity
+import com.marble098.marblebr.core.i18n.LocalizationManager
 import com.marble098.marblebr.core.model.DownloadState
 import com.marble098.marblebr.core.model.WebAppContainer
 import dagger.hilt.android.qualifiers.ApplicationContext

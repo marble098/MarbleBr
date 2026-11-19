@@ -15,7 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
@@ -275,7 +275,7 @@ fun VaultDashboardScreen(
     pendingSignOutContainer?.let { target ->
         AlertDialog(
             onDismissRequest = { pendingSignOutContainer = null },
-            icon = { Icon(Icons.Default.ExitToApp, contentDescription = null) },
+            icon = { Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null) },
             title = { Text(strings.signOutDialogTitle(target.domain)) },
             text = { Text(strings.signOutDialogBody(target.domain)) },
             confirmButton = {
@@ -413,7 +413,7 @@ private fun ContainerControlCard(
                     .fillMaxWidth()
                     .testTag("sign_out_now_btn_${container.id}"),
             ) {
-                Icon(Icons.Default.ExitToApp, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(strings.signOutNow)
             }
