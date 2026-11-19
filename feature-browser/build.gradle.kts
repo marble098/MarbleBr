@@ -10,7 +10,11 @@ plugins {
 
 android {
     namespace = "com.marble098.marblebr.feature.browser"
-    compileSdk = 37
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 2
+        }
+    }
 
     defaultConfig {
         minSdk = 26

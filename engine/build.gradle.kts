@@ -9,7 +9,11 @@ plugins {
 
 android {
     namespace = "com.marble098.marblebr.engine"
-    compileSdk = 37
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 2
+        }
+    }
 
     defaultConfig {
         minSdk = 26

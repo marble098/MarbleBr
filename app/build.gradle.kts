@@ -14,7 +14,11 @@ val marbleVersionCode: Int = providers.gradleProperty("MARBLE_VERSION_CODE").get
 
 android {
     namespace = "com.marble098.marblebr"
-    compileSdk = 37
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 2
+        }
+    }
 
     defaultConfig {
         applicationId = "com.marble098.marblebr"
