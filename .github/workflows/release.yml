@@ -86,7 +86,6 @@ jobs:
         with:
           cache-provider: "basic"
           validate-wrappers: false
-          validate-wrappers: false
 
       - name: Prepare Release Keystore from GitHub Secrets
         env:

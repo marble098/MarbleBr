@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import pathlib
+import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -115,6 +116,68 @@ def test_action_parsing() -> None:
     check(match.group("sub") == "setup-gradle", "extracts action sub-path")
     check(match.group("ref") == "v4", "extracts action ref")
     check("gradle/actions" in ud.ALLOWED_ACTION_REPOS, "official gradle action allow-listed")
+
+
+def find_duplicate_yaml_keys(text: str) -> list[str]:
+    """کلیدهای تکراری در همان Mapping را پیدا می‌کند (GitHub YAML با کلید تکراری را رد می‌کند)."""
+    duplicates: list[str] = []
+    # پشته بلوک‌ها: (تورفتگی کلیدها, کلیدهای دیده‌شده)
+    stack: list[tuple[int, set[str]]] = [(-1, set())]
+    for index, raw in enumerate(text.splitlines(), 1):
+        line = raw.rstrip()
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        is_list_item = stripped.startswith("- ")
+        if is_list_item:
+            stripped = stripped[2:].lstrip()
+        base_indent = len(line) - len(line.lstrip())
+        indentation = base_indent + (2 if is_list_item else 0)
+        match = re.match(r"^([\w.\-/]+)\s*:(\s|$)", stripped)
+        if not match:
+            continue
+        if is_list_item:
+            # آیتم جدید لیست: بلوک‌های هم‌سطح و عمیق‌تر قبلی (آیتم قبلی) بسته می‌شوند
+            while len(stack) > 1 and stack[-1][0] >= base_indent + 2:
+                stack.pop()
+        else:
+            # کلید معمولی: فقط بلوک‌های عمیق‌تر از این کلید بسته می‌شوند
+            while len(stack) > 1 and stack[-1][0] > indentation:
+                stack.pop()
+        if stack[-1][0] < indentation:
+            stack.append((indentation, set()))
+        key = match.group(1)
+        keys = stack[-1][1]
+        if key in keys:
+            duplicates.append(f"خط {index} کلید «{key}»")
+        keys.add(key)
+    return duplicates
+
+
+def test_duplicate_key_detector() -> None:
+    """تشخیص‌دهنده کلید تکراری باید خطای واقعی را بگیرد و بلوک‌های جدا را اشتباه نگیرد."""
+    bad = (
+        "steps:\n"
+        "  - name: x\n"
+        "    with:\n"
+        "      cache-provider: basic\n"
+        "      validate-wrappers: false\n"
+        "      validate-wrappers: false\n"
+        "  - name: y\n"
+        "    run: echo\n"
+    )
+    good = (
+        "steps:\n"
+        "  - name: x\n"
+        "    with:\n"
+        "      a: 1\n"
+        "      b: 2\n"
+        "  - name: y\n"
+        "    with:\n"
+        "      a: 3\n"
+    )
+    check(find_duplicate_yaml_keys(bad) == ["خط 6 کلید «validate-wrappers»"], "duplicate key detected")
+    check(find_duplicate_yaml_keys(good) == [], "separate blocks are not false positives")
 
 
 def test_changelog_entry() -> None:
