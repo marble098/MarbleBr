@@ -1,15 +1,7 @@
 package com.marble098.marblebr
 
-import com.marble098.marblebr.core.database.BookmarkDao
-import com.marble098.marblebr.core.database.BookmarkEntity
-import com.marble098.marblebr.core.database.ContainerDao
-import com.marble098.marblebr.core.database.ContainerEntity
-import com.marble098.marblebr.core.database.DownloadDao
-import com.marble098.marblebr.core.database.DownloadEntity
 import com.marble098.marblebr.core.database.HealthEventDao
 import com.marble098.marblebr.core.database.HealthEventEntity
-import com.marble098.marblebr.core.database.HistoryDao
-import com.marble098.marblebr.core.database.HistoryEntity
 import com.marble098.marblebr.core.database.SnapshotDao
 import com.marble098.marblebr.core.database.SnapshotEntity
 import com.marble098.marblebr.core.model.CookieRecord

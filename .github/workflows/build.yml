@@ -52,7 +52,7 @@ jobs:
         run: |
           set -o pipefail
           if ! ./gradlew ktlintCheck detekt --stacktrace 2>&1 | tee /tmp/lint.log; then
-            ERR_SUMMARY=$(grep -E "e:|error:|FAILURE:|What went wrong:|>\s|:[0-9]+:[0-9]+:" /tmp/lint.log | head -n 25 | tr '\n' ' ')
+            ERR_SUMMARY=$(grep -E "e:|error:|FAILURE:|What went wrong:|\.kt:[0-9]+|\.kts:[0-9]+|Execution failed" /tmp/lint.log | tail -n 30 | tr '\n' ' ')
             echo "::error title=StaticAnalysisFailure::${ERR_SUMMARY}"
             exit 1
           fi
@@ -61,7 +61,7 @@ jobs:
         run: |
           set -o pipefail
           if ! ./gradlew testDebugUnitTest --stacktrace 2>&1 | tee /tmp/test.log; then
-            ERR_SUMMARY=$(grep -E "e:|error:|FAILED|FAILURE:|What went wrong:|>\s" /tmp/test.log | head -n 25 | tr '\n' ' ')
+            ERR_SUMMARY=$(grep -E "e:|error:|FAILED|FAILURE:|What went wrong:|\.kt:[0-9]+|Execution failed" /tmp/test.log | tail -n 30 | tr '\n' ' ')
             echo "::error title=UnitTestFailure::${ERR_SUMMARY}"
             exit 1
           fi
@@ -99,7 +99,7 @@ jobs:
         run: |
           set -o pipefail
           if ! ./gradlew :app:assembleRelease --stacktrace 2>&1 | tee /tmp/assemble.log; then
-            ERR_SUMMARY=$(grep -E "e:|error:|FAILURE:|What went wrong:|>\s" /tmp/assemble.log | head -n 25 | tr '\n' ' ')
+            ERR_SUMMARY=$(grep -E "e:|error:|FAILURE:|What went wrong:|\.kt:[0-9]+|Execution failed" /tmp/assemble.log | tail -n 30 | tr '\n' ' ')
             echo "::error title=AssembleReleaseFailure::${ERR_SUMMARY}"
             exit 1
           fi
