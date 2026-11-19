@@ -3,6 +3,7 @@ package com.marble098.marblebr.engine
 import com.marble098.marblebr.core.database.HealthEventDao
 import com.marble098.marblebr.core.database.HealthEventEntity
 import com.marble098.marblebr.core.model.HealthGuardAction
+import com.marble098.marblebr.core.model.HealthReason
 import com.marble098.marblebr.core.model.SessionHealthAssessment
 import com.marble098.marblebr.core.model.SessionHealthSignal
 import com.marble098.marblebr.core.model.SessionHealthStatus
@@ -64,7 +65,7 @@ class SessionHealthGuard @Inject constructor(
                 domain = signal.domain,
                 status = SessionHealthStatus.DISABLED,
                 action = HealthGuardAction.NONE,
-                reasonFa = "ویژگی Never Sign-out برای این سایت غیرفعال شده است.",
+                reason = HealthReason.SITE_PROTECTION_OFF,
             )
         }
 
@@ -75,20 +76,8 @@ class SessionHealthGuard @Inject constructor(
                 domain = signal.domain,
                 status = SessionHealthStatus.PROTECTED_ACTIVE,
                 action = HealthGuardAction.NONE,
-                reasonFa = "نشست سالم و پایدار است.",
+                reason = HealthReason.HEALTHY,
             )
-        }
-
-        val symptomReasonFa = when (signal) {
-            is SessionHealthSignal.HttpUnauthorized ->
-                "دریافت کد وضعیت غیرمجاز (${signal.statusCode}) در آدرس ${signal.url}"
-            is SessionHealthSignal.LoginRedirectDetected ->
-                "تشخیص ریدایرکت ناگهانی به صفحه ورود (${signal.redirectedToUrl})"
-            is SessionHealthSignal.AuthCookieMissing ->
-                "حذف کوکی احراز هویت (${signal.missingCookieNames.joinToString(", ")})"
-            is SessionHealthSignal.StorageClearedUnexpectedly ->
-                "پاک شدن ناخواسته حافظه محلی سایت (${signal.domain})"
-            is SessionHealthSignal.HeartbeatOk -> "نشست سالم"
         }
 
         val now = signal.timestampEpochMillis
@@ -108,7 +97,7 @@ class SessionHealthGuard @Inject constructor(
                 domain = signal.domain,
                 status = SessionHealthStatus.RECOVERED_FROM_VAULT,
                 action = HealthGuardAction.RESTORE_LATEST_SNAPSHOT,
-                reasonFa = "$symptomReasonFa — ترمیم خودکار از آخرین اسنپ‌شات سالم Session Vault انجام شد.",
+                reason = HealthReason.HEALED,
             )
         } else {
             SessionHealthAssessment(
@@ -116,7 +105,7 @@ class SessionHealthGuard @Inject constructor(
                 domain = signal.domain,
                 status = SessionHealthStatus.SERVER_REVOKED_FALLBACK,
                 action = HealthGuardAction.ESCALATE_TO_CREDENTIAL_FALLBACK,
-                reasonFa = "$symptomReasonFa — نشست توسط سرور باطل شده است؛ فعال‌سازی ورود مجدد بی‌صدا با Credential Manager / Passkey.",
+                reason = HealthReason.SERVER_REVOKED,
             )
         }
 
@@ -127,7 +116,8 @@ class SessionHealthGuard @Inject constructor(
                 domain = assessment.domain,
                 statusName = assessment.status.name,
                 actionName = assessment.action.name,
-                descriptionFa = assessment.reasonFa,
+                // ستون قدیمی `descriptionFa` حالا کدِ پایدارِ دلیل را نگه می‌دارد تا متن‌ها دوزبانه نمایش داده شوند.
+                descriptionFa = assessment.reason.name,
                 timestampEpochMillis = now,
             ),
         )

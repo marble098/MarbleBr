@@ -1,8 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">MarbleBr</string>
-    <string name="vault_title">Session Vault و ماشین زمان</string>
-    <string name="settings_title">تنظیمات مرورگر</string>
-    <string name="sign_out_now">خروج واقعی (Sign out now)</string>
-    <string name="clear_cache_only">پاک کردن کش (بدون خروج از سایت‌ها)</string>
 </resources>

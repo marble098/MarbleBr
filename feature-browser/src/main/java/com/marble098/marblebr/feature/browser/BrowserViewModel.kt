@@ -9,10 +9,13 @@ import com.marble098.marblebr.core.database.DownloadDao
 import com.marble098.marblebr.core.database.DownloadEntity
 import com.marble098.marblebr.core.database.HistoryDao
 import com.marble098.marblebr.core.database.HistoryEntity
+import com.marble098.marblebr.core.i18n.LocalizationManager
+import com.marble098.marblebr.core.i18n.MarbleStrings
 import com.marble098.marblebr.core.model.BookmarkItem
 import com.marble098.marblebr.core.model.BrowserTab
 import com.marble098.marblebr.core.model.CookieRecord
 import com.marble098.marblebr.core.model.DownloadItem
+import com.marble098.marblebr.core.model.HealthReason
 import com.marble098.marblebr.core.model.HistoryItem
 import com.marble098.marblebr.core.model.SessionHealthStatus
 import com.marble098.marblebr.core.model.SessionSnapshotPayload
@@ -41,7 +44,7 @@ data class BrowserUiState(
     val addressBarInput: String = "https://github.com",
     val isFindInPageVisible: Boolean = false,
     val findQuery: String = "",
-    val statusBannerMessageFa: String? = null,
+    val bannerMessage: String? = null,
     val fallbackPromptDomain: String? = null,
 ) {
     val activeTab: BrowserTab?
@@ -60,6 +63,7 @@ class BrowserViewModel @Inject constructor(
     private val pwaShortcutInstaller: PwaShortcutInstaller,
     private val downloadLauncher: BrowserDownloadLauncher,
     private val preferencesRepository: BrowserPreferencesRepository,
+    private val localizationManager: LocalizationManager,
     val adBlocker: LightweightAdBlocker,
 ) : ViewModel() {
 
@@ -128,6 +132,7 @@ class BrowserViewModel @Inject constructor(
 
     fun openNewTab(initialUrl: String = "https://github.com", isPrivate: Boolean = false) {
         viewModelScope.launch {
+            val strings = localizationManager.current()
             val resolvedUrl = urlResolver.resolveInputToUrl(initialUrl)
             val container = sessionManager.getOrCreateContainerForUrl(resolvedUrl)
             val tabId = UUID.randomUUID().toString()
@@ -136,7 +141,7 @@ class BrowserViewModel @Inject constructor(
                 containerId = container.id,
                 contextId = if (isPrivate) "private_$tabId" else container.contextId,
                 url = resolvedUrl,
-                title = if (isPrivate) "تب خصوصی" else container.displayName,
+                title = if (isPrivate) strings.privateTabTitle else container.displayName,
                 isPrivate = isPrivate,
                 healthStatus = if (isPrivate) {
                     SessionHealthStatus.DISABLED
@@ -187,12 +192,24 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
+    fun goBack() {
+        _uiState.value.activeTab?.let { sessionManager.goBack(it.id) }
+    }
+
+    fun goForward() {
+        _uiState.value.activeTab?.let { sessionManager.goForward(it.id) }
+    }
+
+    fun reloadPage() {
+        _uiState.value.activeTab?.let { sessionManager.reload(it.id) }
+    }
+
     fun toggleDesktopMode() {
         val tab = _uiState.value.activeTab ?: return
         val nextDesktop = !tab.isDesktopMode
         sessionManager.setDesktopMode(tab.id, nextDesktop)
         updateTab(tab.id) { it.copy(isDesktopMode = nextDesktop) }
-        showBanner(if (nextDesktop) "حالت دسکتاپ فعال شد" else "حالت موبایل فعال شد")
+        showLocalizedBanner { if (nextDesktop) it.bannerDesktopOn else it.bannerDesktopOff }
     }
 
     fun toggleFindInPage(visible: Boolean = !_uiState.value.isFindInPageVisible) {
@@ -216,21 +233,22 @@ class BrowserViewModel @Inject constructor(
     fun toggleBookmarkCurrentPage() {
         viewModelScope.launch {
             val tab = _uiState.value.activeTab ?: return@launch
+            val strings = localizationManager.current()
             val existing = bookmarks.value.firstOrNull { it.url == tab.url }
             if (existing != null) {
                 bookmarkDao.deleteById(existing.id)
-                showBanner("از بوکمارک‌ها حذف شد")
+                showBanner(strings.bannerBookmarkRemoved)
             } else {
                 bookmarkDao.upsert(
                     BookmarkEntity(
                         id = UUID.randomUUID().toString(),
                         title = tab.title.ifBlank { tab.url },
                         url = tab.url,
-                        folder = "عمومی",
+                        folder = "general",
                         createdAtEpochMillis = System.currentTimeMillis(),
                     ),
                 )
-                showBanner("به بوکمارک‌ها اضافه شد")
+                showBanner(strings.bannerBookmarkAdded)
             }
         }
     }
@@ -238,29 +256,27 @@ class BrowserViewModel @Inject constructor(
     fun installCurrentSiteAsPwa() {
         viewModelScope.launch {
             val tab = _uiState.value.activeTab ?: return@launch
+            val strings = localizationManager.current()
             val pwaContainer = sessionManager.getOrCreateContainerForUrl(
                 url = tab.url,
                 isPinnedPwa = true,
                 customDisplayName = tab.title.ifBlank { null },
             )
+            val shortcutTitle = tab.title.ifBlank { pwaContainer.displayName }
             val pinned = pwaShortcutInstaller.requestPinWebAppShortcut(
                 container = pwaContainer,
                 launchUrl = tab.url,
-                title = tab.title.ifBlank { pwaContainer.displayName },
+                title = shortcutTitle,
+                longLabel = strings.pwaShortcutLongLabel(shortcutTitle),
             )
-            showBanner(
-                if (pinned) {
-                    "وب‌اپ با کانتینر مستقل (${pwaContainer.contextId}) به صفحه اصلی اضافه شد"
-                } else {
-                    "کانتینر اختصاصی PWA ساخته شد (${pwaContainer.contextId})"
-                },
-            )
+            showBanner(if (pinned) strings.bannerShortcutAdded else strings.bannerShortcutCreated)
         }
     }
 
     fun captureManualSnapshotNow() {
         viewModelScope.launch {
             val tab = _uiState.value.activeTab ?: return@launch
+            val strings = localizationManager.current()
             val container = _uiState.value.activeContainer
                 ?: sessionManager.getOrCreateContainerForUrl(tab.url)
 
@@ -283,28 +299,30 @@ class BrowserViewModel @Inject constructor(
                 payload = payload,
                 targetCookieExpirationDays = container.cookieExpirationDays,
                 triggerReason = "MANUAL_USER_CAPTURE",
-                label = "اسنپ‌شات دستی (${container.domain})",
+                label = strings.manualSnapshotLabel(container.domain),
             )
-            showBanner("اسنپ‌شات رمزنگاری‌شده در Session Vault ذخیره شد")
+            showBanner(strings.bannerSnapshotSaved)
         }
     }
 
     fun clearCacheWithoutTouchingSessions() {
         sessionManager.clearCachesOnly()
-        showBanner("کش تصاویر و شبکه پاک شد (نشست‌ها و لاگین‌های شما دست‌نخورده باقی ماندند)")
+        showLocalizedBanner { it.bannerCacheCleared }
     }
 
     fun clearBrowsingHistory() {
         viewModelScope.launch {
+            val strings = localizationManager.current()
             historyDao.clearAll()
-            showBanner("تاریخچه مرور پاک شد")
+            showBanner(strings.bannerHistoryCleared)
         }
     }
 
     fun enqueueDownload(url: String) {
         viewModelScope.launch {
+            val strings = localizationManager.current()
             downloadLauncher.enqueueDownload(url = url)
-            showBanner("دانلود فایل آغاز شد")
+            showBanner(strings.bannerDownloadStarted)
         }
     }
 
@@ -327,12 +345,12 @@ class BrowserViewModel @Inject constructor(
         updateTab(tabId) { it.copy(canGoBack = canGoBack, canGoForward = canGoForward) }
     }
 
-    fun onHealthRestored(reasonFa: String) {
+    fun onHealthRestored(reason: HealthReason) {
         val tab = _uiState.value.activeTab
         if (tab != null) {
             updateTab(tab.id) { it.copy(healthStatus = SessionHealthStatus.RECOVERED_FROM_VAULT) }
         }
-        showBanner(reasonFa)
+        showLocalizedBanner { it.healthReasonLabel(reason) }
     }
 
     fun onServerRevokedFallbackRequired(domain: String) {
@@ -348,11 +366,17 @@ class BrowserViewModel @Inject constructor(
     }
 
     fun dismissBanner() {
-        _uiState.update { it.copy(statusBannerMessageFa = null) }
+        _uiState.update { it.copy(bannerMessage = null) }
     }
 
-    private fun showBanner(messageFa: String) {
-        _uiState.update { it.copy(statusBannerMessageFa = messageFa) }
+    private fun showBanner(message: String) {
+        _uiState.update { it.copy(bannerMessage = message) }
+    }
+
+    private fun showLocalizedBanner(builder: (MarbleStrings) -> String) {
+        viewModelScope.launch {
+            showBanner(builder(localizationManager.current()))
+        }
     }
 
     private fun updateTab(tabId: String, transform: (BrowserTab) -> BrowserTab) {

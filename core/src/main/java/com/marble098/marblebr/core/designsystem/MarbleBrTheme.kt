@@ -1,5 +1,8 @@
 package com.marble098.marblebr.core.designsystem
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -12,77 +15,104 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
+import com.marble098.marblebr.core.i18n.AppLanguage
+import com.marble098.marblebr.core.i18n.MarbleStrings
 import com.marble098.marblebr.core.model.ThemeMode
 
-private val MarblePrimaryLight = Color(0xFF2855B8)
-private val MarbleOnPrimaryLight = Color(0xFFFFFFFF)
-private val MarblePrimaryContainerLight = Color(0xFFD9E2FF)
-private val MarbleOnPrimaryContainerLight = Color(0xFF001945)
-private val MarbleSecondaryLight = Color(0xFF006A60)
-private val MarbleOnSecondaryLight = Color(0xFFFFFFFF)
-private val MarbleSecondaryContainerLight = Color(0xFF74F8E5)
-private val MarbleOnSecondaryContainerLight = Color(0xFF00201C)
-private val MarbleTertiaryLight = Color(0xFF6F43C0)
-private val MarbleTertiaryContainerLight = Color(0xFFEBDDFF)
-private val MarbleBackgroundLight = Color(0xFFF8F9FF)
-private val MarbleSurfaceLight = Color(0xFFF8F9FF)
+/** متن‌های زبانِ فعال؛ در همه‌ی صفحه‌ها از همین استفاده می‌شود. */
+val LocalMarbleStrings = staticCompositionLocalOf { MarbleStrings.forLanguage(AppLanguage.ENGLISH) }
 
-private val MarblePrimaryDark = Color(0xFFB0C6FF)
-private val MarbleOnPrimaryDark = Color(0xFF002C6F)
-private val MarblePrimaryContainerDark = Color(0xFF063E9E)
-private val MarbleOnPrimaryContainerDark = Color(0xFFD9E2FF)
-private val MarbleSecondaryDark = Color(0xFF53DBC9)
-private val MarbleOnSecondaryDark = Color(0xFF003731)
-private val MarbleSecondaryContainerDark = Color(0xFF005048)
-private val MarbleOnSecondaryContainerDark = Color(0xFF74F8E5)
-private val MarbleTertiaryDark = Color(0xFFD3BBFF)
-private val MarbleTertiaryContainerDark = Color(0xFF5629A6)
-private val MarbleBackgroundDark = Color(0xFF0E131F)
-private val MarbleSurfaceDark = Color(0xFF131926)
+/** زبانِ حل‌شده (بعد از اعمال حالت «خودکار»). */
+val LocalMarbleLanguage = staticCompositionLocalOf { AppLanguage.ENGLISH }
 
 private val LightColorScheme = lightColorScheme(
-    primary = MarblePrimaryLight,
-    onPrimary = MarbleOnPrimaryLight,
-    primaryContainer = MarblePrimaryContainerLight,
-    onPrimaryContainer = MarbleOnPrimaryContainerLight,
-    secondary = MarbleSecondaryLight,
-    onSecondary = MarbleOnSecondaryLight,
-    secondaryContainer = MarbleSecondaryContainerLight,
-    onSecondaryContainer = MarbleOnSecondaryContainerLight,
-    tertiary = MarbleTertiaryLight,
-    tertiaryContainer = MarbleTertiaryContainerLight,
-    background = MarbleBackgroundLight,
-    surface = MarbleSurfaceLight,
+    primary = Color(0xFF4338CA),
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFE0E7FF),
+    onPrimaryContainer = Color(0xFF1E1B4B),
+    secondary = Color(0xFF0F766E),
+    onSecondary = Color(0xFFFFFFFF),
+    secondaryContainer = Color(0xFFCCFBF1),
+    onSecondaryContainer = Color(0xFF042F2E),
+    tertiary = Color(0xFF7C3AED),
+    onTertiary = Color(0xFFFFFFFF),
+    tertiaryContainer = Color(0xFFEDE9FE),
+    onTertiaryContainer = Color(0xFF2E1065),
+    error = Color(0xFFB3261E),
+    onError = Color(0xFFFFFFFF),
+    errorContainer = Color(0xFFF9DEDC),
+    onErrorContainer = Color(0xFF410E0B),
+    background = Color(0xFFF7F8FC),
+    onBackground = Color(0xFF1A1B20),
+    surface = Color(0xFFFBFBFF),
+    onSurface = Color(0xFF1A1B20),
+    surfaceContainerLowest = Color(0xFFFFFFFF),
+    surfaceContainerLow = Color(0xFFF4F5FA),
+    surfaceContainer = Color(0xFFEFF1F8),
+    surfaceContainerHigh = Color(0xFFE9EBF4),
+    surfaceContainerHighest = Color(0xFFE3E6F0),
+    onSurfaceVariant = Color(0xFF45464F),
+    outline = Color(0xFF767680),
+    outlineVariant = Color(0xFFC6C7D0),
+    inverseSurface = Color(0xFF2E3038),
+    inverseOnSurface = Color(0xFFF1F0F7),
+    inversePrimary = Color(0xFFB4C4FF),
+    scrim = Color(0xFF000000),
 )
 
 private val DarkColorScheme = darkColorScheme(
-    primary = MarblePrimaryDark,
-    onPrimary = MarbleOnPrimaryDark,
-    primaryContainer = MarblePrimaryContainerDark,
-    onPrimaryContainer = MarbleOnPrimaryContainerDark,
-    secondary = MarbleSecondaryDark,
-    onSecondary = MarbleOnSecondaryDark,
-    secondaryContainer = MarbleSecondaryContainerDark,
-    onSecondaryContainer = MarbleOnSecondaryContainerDark,
-    tertiary = MarbleTertiaryDark,
-    tertiaryContainer = MarbleTertiaryContainerDark,
-    background = MarbleBackgroundDark,
-    surface = MarbleSurfaceDark,
+    primary = Color(0xFFB6C4FF),
+    onPrimary = Color(0xFF0B2678),
+    primaryContainer = Color(0xFF24388F),
+    onPrimaryContainer = Color(0xFFDCE1FF),
+    secondary = Color(0xFF5EEAD4),
+    onSecondary = Color(0xFF00382F),
+    secondaryContainer = Color(0xFF115E56),
+    onSecondaryContainer = Color(0xFFCCFBF1),
+    tertiary = Color(0xFFD6BCFF),
+    onTertiary = Color(0xFF3B0D82),
+    tertiaryContainer = Color(0xFF52299B),
+    onTertiaryContainer = Color(0xFFEDE0FF),
+    error = Color(0xFFFFB4AB),
+    onError = Color(0xFF690005),
+    errorContainer = Color(0xFF93000A),
+    onErrorContainer = Color(0xFFFFDAD6),
+    background = Color(0xFF101218),
+    onBackground = Color(0xFFE3E2E9),
+    surface = Color(0xFF101218),
+    onSurface = Color(0xFFE3E2E9),
+    surfaceContainerLowest = Color(0xFF0B0D12),
+    surfaceContainerLow = Color(0xFF16181F),
+    surfaceContainer = Color(0xFF1B1D25),
+    surfaceContainerHigh = Color(0xFF25272F),
+    surfaceContainerHighest = Color(0xFF30323A),
+    onSurfaceVariant = Color(0xFFC5C6D0),
+    outline = Color(0xFF8F909A),
+    outlineVariant = Color(0xFF45464F),
+    inverseSurface = Color(0xFFE3E2E9),
+    inverseOnSurface = Color(0xFF2E3038),
+    inversePrimary = Color(0xFF2A46B8),
+    scrim = Color(0xFF000000),
 )
 
 val MarbleExpressiveShapes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(14.dp),
-    medium = RoundedCornerShape(20.dp),
+    extraSmall = RoundedCornerShape(10.dp),
+    small = RoundedCornerShape(16.dp),
+    medium = RoundedCornerShape(22.dp),
     large = RoundedCornerShape(28.dp),
     extraLarge = RoundedCornerShape(36.dp),
 )
@@ -91,8 +121,8 @@ val MarbleExpressiveTypography = Typography(
     headlineMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.ExtraBold,
-        fontSize = 24.sp,
-        lineHeight = 32.sp,
+        fontSize = 25.sp,
+        lineHeight = 33.sp,
     ),
     titleLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
@@ -110,13 +140,13 @@ val MarbleExpressiveTypography = Typography(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Normal,
         fontSize = 15.sp,
-        lineHeight = 23.sp,
+        lineHeight = 24.sp,
     ),
     bodyMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Normal,
-        fontSize = 13.sp,
-        lineHeight = 20.sp,
+        fontSize = 13.5.sp,
+        lineHeight = 21.sp,
     ),
     labelLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
@@ -126,11 +156,18 @@ val MarbleExpressiveTypography = Typography(
     ),
 )
 
+/**
+ * تم اصلی MarbleBr.
+ *
+ * - `themeMode` روشن/تاریک/هماهنگ با گوشی را تعیین می‌کند.
+ * - `dynamicColor` در اندروید ۱۲+ رنگ‌ها را از تصویر پس‌زمینه‌ی گوشی می‌گیرد (Material You).
+ * - `language` هم متن‌ها و هم جهت چیدمان (فارسی = راست‌به‌چپ) را تعیین می‌کند.
+ */
 @Composable
 fun MarbleBrTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     dynamicColor: Boolean = true,
-    forceRtl: Boolean = true,
+    language: AppLanguage = AppLanguage.SYSTEM,
     content: @Composable () -> Unit,
 ) {
     val darkTheme = when (themeMode) {
@@ -138,6 +175,9 @@ fun MarbleBrTheme(
         ThemeMode.DARK -> true
         ThemeMode.LIGHT -> false
     }
+
+    val resolvedLanguage = language.resolve()
+    val strings = remember(resolvedLanguage) { MarbleStrings.forResolvedLanguage(resolvedLanguage) }
 
     val context = LocalContext.current
     val colorScheme = when {
@@ -148,9 +188,15 @@ fun MarbleBrTheme(
         else -> LightColorScheme
     }
 
-    val direction = if (forceRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
+    val direction = if (resolvedLanguage == AppLanguage.PERSIAN) LayoutDirection.Rtl else LayoutDirection.Ltr
 
-    CompositionLocalProvider(LocalLayoutDirection provides direction) {
+    ApplySystemBarAppearance(darkTheme = darkTheme)
+
+    CompositionLocalProvider(
+        LocalLayoutDirection provides direction,
+        LocalMarbleStrings provides strings,
+        LocalMarbleLanguage provides resolvedLanguage,
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = MarbleExpressiveTypography,
@@ -158,4 +204,28 @@ fun MarbleBrTheme(
             content = content,
         )
     }
+}
+
+/**
+ * رنگ آیکن‌های نوار وضعیت و نوار ناوبری را با تمِ برنامه هماهنگ می‌کند تا متن‌ها زیر نوار وضعیت گم نشوند.
+ */
+@Composable
+private fun ApplySystemBarAppearance(darkTheme: Boolean) {
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val activity = view.context.findActivity() ?: return@SideEffect
+            val window = activity.window ?: return@SideEffect
+            WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = !darkTheme
+                isAppearanceLightNavigationBars = !darkTheme
+            }
+        }
+    }
+}
+
+private fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }

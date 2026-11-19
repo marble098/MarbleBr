@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.marble098.marblebr.core.designsystem.MarbleBrTheme
+import com.marble098.marblebr.core.i18n.AppLanguage
 import com.marble098.marblebr.core.model.SessionSnapshotMeta
 import com.marble098.marblebr.core.model.WebAppContainer
 import org.junit.Rule
@@ -42,7 +43,7 @@ class MarbleBrMainFlowsInstrumentedTest {
         )
 
         composeTestRule.setContent {
-            MarbleBrTheme(forceRtl = true) {
+            MarbleBrTheme(language = AppLanguage.PERSIAN) {
                 Text("کانتینر: ${sampleContainer.contextId} - ${sampleSnapshot.label}")
             }
         }

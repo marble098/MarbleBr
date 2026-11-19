@@ -1,7 +1,9 @@
 package com.marble098.marblebr
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
@@ -16,6 +18,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
 import com.marble098.marblebr.core.designsystem.MarbleBrTheme
 import com.marble098.marblebr.core.preferences.BrowserPreferences
 import com.marble098.marblebr.core.preferences.BrowserPreferencesRepository
@@ -46,7 +49,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+
+        // لبه‌به‌لبه با نوارهای شفاف؛ رنگ آیکن‌ها را خودِ تم (روشن/تاریک) تنظیم می‌کند.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.auto(LIGHT_SCRIM, DARK_SCRIM),
+        )
 
         val initialUrlFromIntent = intent?.dataString
 
@@ -55,7 +63,7 @@ class MainActivity : AppCompatActivity() {
             MarbleBrTheme(
                 themeMode = prefs.themeMode,
                 dynamicColor = prefs.dynamicColorEnabled,
-                forceRtl = prefs.forcePersianRtl,
+                language = prefs.language,
             ) {
                 MarbleBrAppNavHost(
                     activity = this@MainActivity,
@@ -71,6 +79,11 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
     }
+
+    private companion object {
+        val LIGHT_SCRIM: Int = Color.argb(0xE6, 0xFF, 0xFF, 0xFF)
+        val DARK_SCRIM: Int = Color.argb(0xE6, 0x10, 0x12, 0x18)
+    }
 }
 
 @Composable
@@ -83,6 +96,7 @@ fun MarbleBrAppNavHost(
 ) {
     val navController = rememberNavController()
     val coroutineScope = rememberCoroutineScope()
+    val strings = LocalMarbleStrings.current
     var isVaultBiometricUnlocked by remember { mutableStateOf(false) }
 
     NavHost(
@@ -99,12 +113,8 @@ fun MarbleBrAppNavHost(
             }
             BrowserScreen(
                 viewModel = browserViewModel,
-                onOpenVaultDashboard = {
-                    navController.navigate("vault")
-                },
-                onOpenSettings = {
-                    navController.navigate("settings")
-                },
+                onOpenVaultDashboard = { navController.navigate("vault") },
+                onOpenSettings = { navController.navigate("settings") },
                 onTriggerBiometricPasskeyRelogin = { domain ->
                     coroutineScope.launch {
                         credentialFallbackAuthenticator.attemptBiometricRelogin(
@@ -124,7 +134,11 @@ fun MarbleBrAppNavHost(
                 isBiometricUnlocked = isVaultBiometricUnlocked,
                 onRequestBiometricUnlock = {
                     coroutineScope.launch {
-                        val result = biometricVaultLock.authenticate(activity)
+                        val result = biometricVaultLock.authenticate(
+                            activity = activity,
+                            title = strings.biometricPromptTitle,
+                            subtitle = strings.biometricPromptSubtitle,
+                        )
                         if (result is BiometricAuthResult.Authenticated ||
                             result is BiometricAuthResult.NotAvailableOrNotEnrolled
                         ) {

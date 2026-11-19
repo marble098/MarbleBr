@@ -6,6 +6,8 @@ import com.marble098.marblebr.core.database.ContainerDao
 import com.marble098.marblebr.core.database.ContainerEntity
 import com.marble098.marblebr.core.database.HealthEventDao
 import com.marble098.marblebr.core.database.HealthEventEntity
+import com.marble098.marblebr.core.i18n.LocalizationManager
+import com.marble098.marblebr.core.i18n.MarbleStrings
 import com.marble098.marblebr.core.model.SessionSnapshotMeta
 import com.marble098.marblebr.core.model.WebAppContainer
 import com.marble098.marblebr.engine.ContainerSessionManager
@@ -25,6 +27,7 @@ class VaultDashboardViewModel @Inject constructor(
     private val containerDao: ContainerDao,
     private val vaultManager: SessionVaultManager,
     private val sessionManager: ContainerSessionManager,
+    private val localizationManager: LocalizationManager,
     healthEventDao: HealthEventDao,
 ) : ViewModel() {
 
@@ -38,34 +41,32 @@ class VaultDashboardViewModel @Inject constructor(
     val healthEvents: StateFlow<List<HealthEventEntity>> = healthEventDao.observeRecentEvents()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    private val _feedbackMessageFa = MutableStateFlow<String?>(null)
-    val feedbackMessageFa: StateFlow<String?> = _feedbackMessageFa.asStateFlow()
+    private val _feedbackMessage = MutableStateFlow<String?>(null)
+    val feedbackMessage: StateFlow<String?> = _feedbackMessage.asStateFlow()
 
     fun toggleSiteNeverSignOut(container: WebAppContainer, enabled: Boolean) {
         viewModelScope.launch {
             containerDao.updateNeverSignOut(container.id, enabled)
-            _feedbackMessageFa.value = if (enabled) {
-                "Never Sign-out برای ${container.domain} فعال شد"
-            } else {
-                "Never Sign-out برای ${container.domain} غیرفعال شد"
-            }
+            notify { it.feedbackProtection(container.domain, enabled) }
         }
     }
 
     fun updateCookieExpirationDays(container: WebAppContainer, days: Int) {
         viewModelScope.launch {
             containerDao.updateCookieExpirationDays(container.id, days.coerceIn(7, 730))
-            _feedbackMessageFa.value = "ماندگاری کوکی‌های ${container.domain} روی $days روز تنظیم شد"
+            notify { it.feedbackCookieDays(container.domain, days) }
         }
     }
 
     fun updateKeepAlivePolicy(container: WebAppContainer, enabled: Boolean, intervalMinutes: Int) {
         viewModelScope.launch {
             containerDao.updateKeepAlivePolicy(container.id, enabled, intervalMinutes)
-            _feedbackMessageFa.value = if (enabled) {
-                "Smart Keep-alive برای ${container.domain} (هر $intervalMinutes دقیقه) فعال شد"
-            } else {
-                "Smart Keep-alive برای ${container.domain} غیرفعال شد"
+            notify {
+                if (enabled) {
+                    it.feedbackKeepAliveOn(container.domain, intervalMinutes)
+                } else {
+                    it.feedbackKeepAliveOff(container.domain)
+                }
             }
         }
     }
@@ -73,10 +74,12 @@ class VaultDashboardViewModel @Inject constructor(
     fun rollbackToSnapshot(snapshot: SessionSnapshotMeta) {
         viewModelScope.launch {
             val restored = vaultManager.restoreSnapshotById(snapshot.id)
-            _feedbackMessageFa.value = if (restored != null) {
-                "بازگشت با یک لمس به اسنپ‌شات «${snapshot.label}» (${restored.cookies.size} کوکی) با موفقیت انجام شد"
-            } else {
-                "خطا در رمزگشایی اسنپ‌شات"
+            notify {
+                if (restored != null) {
+                    it.feedbackRestored(snapshot.label.ifBlank { snapshot.domain }, restored.cookies.size)
+                } else {
+                    it.feedbackRestoreFailed
+                }
             }
         }
     }
@@ -84,12 +87,17 @@ class VaultDashboardViewModel @Inject constructor(
     fun signOutNow(container: WebAppContainer) {
         viewModelScope.launch {
             sessionManager.signOutNow(container)
-            _feedbackMessageFa.value =
-                "خروج واقعی از ${container.domain} انجام شد و تمام کوکی‌ها و اسنپ‌شات‌های آن کانتینر پاک شدند"
+            notify { it.feedbackSignedOut(container.domain) }
         }
     }
 
     fun dismissFeedback() {
-        _feedbackMessageFa.value = null
+        _feedbackMessage.value = null
+    }
+
+    private fun notify(builder: (MarbleStrings) -> String) {
+        viewModelScope.launch {
+            _feedbackMessage.value = builder(localizationManager.current())
+        }
     }
 }

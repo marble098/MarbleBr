@@ -1,7 +1,10 @@
 package com.marble098.marblebr.feature.settings
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.marble098.marblebr.core.i18n.AppLanguage
+import com.marble098.marblebr.core.i18n.LocalizationManager
 import com.marble098.marblebr.core.model.DnsMode
 import com.marble098.marblebr.core.model.ProxyDnsConfig
 import com.marble098.marblebr.core.model.ProxyType
@@ -11,8 +14,11 @@ import com.marble098.marblebr.core.preferences.BrowserPreferencesRepository
 import com.marble098.marblebr.engine.ContainerSessionManager
 import com.marble098.marblebr.engine.KeepAliveScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -22,10 +28,25 @@ class SettingsViewModel @Inject constructor(
     private val preferencesRepository: BrowserPreferencesRepository,
     private val keepAliveScheduler: KeepAliveScheduler,
     private val sessionManager: ContainerSessionManager,
+    private val localizationManager: LocalizationManager,
+    @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
     val preferences: StateFlow<BrowserPreferences> = preferencesRepository.preferencesFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BrowserPreferences())
+
+    private val _snackbarMessage = MutableStateFlow<String?>(null)
+    val snackbarMessage: StateFlow<String?> = _snackbarMessage.asStateFlow()
+
+    val appVersionName: String = runCatching {
+        appContext.packageManager.getPackageInfo(appContext.packageName, 0).versionName
+    }.getOrNull().orEmpty()
+
+    fun setLanguage(language: AppLanguage) {
+        viewModelScope.launch {
+            preferencesRepository.setLanguage(language)
+        }
+    }
 
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch {
@@ -36,12 +57,6 @@ class SettingsViewModel @Inject constructor(
     fun setDynamicColorEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setDynamicColorEnabled(enabled)
-        }
-    }
-
-    fun setForcePersianRtl(enabled: Boolean) {
-        viewModelScope.launch {
-            preferencesRepository.setForcePersianRtl(enabled)
         }
     }
 
@@ -97,10 +112,22 @@ class SettingsViewModel @Inject constructor(
                     proxyPort = proxyPort,
                 ),
             )
+            notify { it.networkSaved }
         }
     }
 
     fun clearCachesOnly() {
         sessionManager.clearCachesOnly()
+        notify { it.freeSpaceDone }
+    }
+
+    fun dismissSnackbar() {
+        _snackbarMessage.value = null
+    }
+
+    private fun notify(builder: (com.marble098.marblebr.core.i18n.MarbleStrings) -> String) {
+        viewModelScope.launch {
+            _snackbarMessage.value = builder(localizationManager.current())
+        }
     }
 }

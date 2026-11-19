@@ -9,6 +9,7 @@ import androidx.credentials.GetPublicKeyCredentialOption
 import androidx.credentials.PasswordCredential
 import androidx.credentials.PublicKeyCredential
 import androidx.fragment.app.FragmentActivity
+import com.marble098.marblebr.core.i18n.LocalizationManager
 import com.marble098.marblebr.vault.BiometricAuthResult
 import com.marble098.marblebr.vault.BiometricVaultLock
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -18,7 +19,7 @@ import javax.inject.Singleton
 sealed interface SilentReloginOutcome {
     data class PasswordRetrieved(val username: String, val password: String) : SilentReloginOutcome
     data class PasskeyAssertionRetrieved(val authenticationResponseJson: String) : SilentReloginOutcome
-    data class CancelledOrUnavailable(val reasonFa: String) : SilentReloginOutcome
+    data class CancelledOrUnavailable(val reason: String) : SilentReloginOutcome
 }
 
 /**
@@ -30,6 +31,7 @@ sealed interface SilentReloginOutcome {
 class CredentialFallbackAuthenticator @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val biometricVaultLock: BiometricVaultLock,
+    private val localizationManager: LocalizationManager,
 ) {
     private val credentialManager: CredentialManager by lazy {
         CredentialManager.create(appContext)
@@ -40,14 +42,17 @@ class CredentialFallbackAuthenticator @Inject constructor(
         rpIdOrDomain: String,
         webAuthnChallengeJson: String? = null,
     ): SilentReloginOutcome {
+        val strings = localizationManager.current()
+
         // 1. Verify biometric lock before releasing stored credentials/passkeys
         val bioResult = biometricVaultLock.authenticate(
             activity = activity,
-            titleFa = "ورود مجدد خودکار ($rpIdOrDomain)",
-            subtitleFa = "نشست توسط سرور منقضی شده است؛ با تأیید بیومتریک مجدداً وارد شوید",
+            title = strings.reloginAutoTitle(rpIdOrDomain),
+            subtitle = strings.reloginPromptSubtitle,
         )
         if (bioResult is BiometricAuthResult.Failed) {
-            return SilentReloginOutcome.CancelledOrUnavailable(bioResult.messageFa)
+            val message = bioResult.message.ifBlank { strings.biometricCancelled }
+            return SilentReloginOutcome.CancelledOrUnavailable(message)
         }
 
         // 2. Request Passkey or saved Password from Android Credential Manager
@@ -74,15 +79,11 @@ class CredentialFallbackAuthenticator @Inject constructor(
                 is PublicKeyCredential -> SilentReloginOutcome.PasskeyAssertionRetrieved(
                     authenticationResponseJson = credential.authenticationResponseJson,
                 )
-                is CustomCredential -> SilentReloginOutcome.CancelledOrUnavailable(
-                    "نوع اعتبارنامه سفارشی (${credential.type}) پشتیبانی نمی‌شود.",
-                )
-                else -> SilentReloginOutcome.CancelledOrUnavailable("اعتبارنامه‌ای برای این سایت یافت نشد.")
+                is CustomCredential -> SilentReloginOutcome.CancelledOrUnavailable(strings.reloginUnsupportedType)
+                else -> SilentReloginOutcome.CancelledOrUnavailable(strings.reloginUnavailable)
             }
         }.getOrElse { error ->
-            SilentReloginOutcome.CancelledOrUnavailable(
-                error.localizedMessage ?: "امکان بازیابی Passkey یا رمز عبور از Credential Manager وجود ندارد.",
-            )
+            SilentReloginOutcome.CancelledOrUnavailable(error.localizedMessage ?: strings.reloginUnavailable)
         }
     }
 }

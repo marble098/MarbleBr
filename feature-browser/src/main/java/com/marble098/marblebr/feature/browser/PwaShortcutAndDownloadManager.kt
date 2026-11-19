@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Environment
 import com.marble098.marblebr.core.database.DownloadDao
 import com.marble098.marblebr.core.database.DownloadEntity
+import com.marble098.marblebr.core.i18n.LocalizationManager
 import com.marble098.marblebr.core.model.DownloadState
 import com.marble098.marblebr.core.model.WebAppContainer
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -28,6 +29,7 @@ class PwaShortcutInstaller @Inject constructor(
         container: WebAppContainer,
         launchUrl: String,
         title: String,
+        longLabel: String = title,
     ): Boolean {
         val shortcutManager = context.getSystemService(ShortcutManager::class.java) ?: return false
         if (!shortcutManager.isRequestPinShortcutSupported) return false
@@ -42,7 +44,7 @@ class PwaShortcutInstaller @Inject constructor(
 
         val shortcutInfo = ShortcutInfo.Builder(context, "pwa_${container.id}")
             .setShortLabel(title.take(18).ifBlank { container.displayName })
-            .setLongLabel("$title (بدون خروج خودکار)")
+            .setLongLabel(longLabel)
             .setIcon(Icon.createWithResource(context, android.R.drawable.sym_def_app_icon))
             .setIntent(launchIntent)
             .build()
@@ -64,6 +66,7 @@ class PwaShortcutInstaller @Inject constructor(
 class BrowserDownloadLauncher @Inject constructor(
     @ApplicationContext private val context: Context,
     private val downloadDao: DownloadDao,
+    private val localizationManager: LocalizationManager,
 ) {
     suspend fun enqueueDownload(
         url: String,
@@ -75,11 +78,12 @@ class BrowserDownloadLauncher @Inject constructor(
             ?: Uri.parse(url).lastPathSegment?.takeIf { it.isNotBlank() }
             ?: "marblebr_download_${System.currentTimeMillis()}"
 
+        val strings = localizationManager.current()
         runCatching {
             val dm = context.getSystemService(DownloadManager::class.java)
             val request = DownloadManager.Request(Uri.parse(url))
                 .setTitle(fileName)
-                .setDescription("در حال دانلود با MarbleBr")
+                .setDescription(strings.downloadNotificationText)
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
 

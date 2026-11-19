@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.marble098.marblebr.core.i18n.AppLanguage
 import com.marble098.marblebr.core.model.DnsMode
 import com.marble098.marblebr.core.model.ProxyDnsConfig
 import com.marble098.marblebr.core.model.ProxyType
@@ -25,7 +26,7 @@ data class BrowserPreferences(
     val adBlockEnabled: Boolean = true,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val dynamicColorEnabled: Boolean = true,
-    val forcePersianRtl: Boolean = true,
+    val language: AppLanguage = AppLanguage.SYSTEM,
     val proxyDnsConfig: ProxyDnsConfig = ProxyDnsConfig(),
     val searchEngineTemplate: String = "https://www.google.com/search?q=%s",
 )
@@ -44,7 +45,7 @@ class BrowserPreferencesRepository @Inject constructor(
         val AD_BLOCK_ENABLED = booleanPreferencesKey("ad_block_enabled")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
-        val FORCE_PERSIAN_RTL = booleanPreferencesKey("force_persian_rtl")
+        val LANGUAGE = stringPreferencesKey("app_language")
         val DNS_MODE = stringPreferencesKey("dns_mode")
         val CUSTOM_DOH_URI = stringPreferencesKey("custom_doh_uri")
         val PROXY_TYPE = stringPreferencesKey("proxy_type")
@@ -66,6 +67,10 @@ class BrowserPreferencesRepository @Inject constructor(
             runCatching { ProxyType.valueOf(it) }.getOrNull()
         } ?: ProxyType.NONE
 
+        val language = prefs[Keys.LANGUAGE]?.let {
+            runCatching { AppLanguage.valueOf(it) }.getOrNull()
+        } ?: AppLanguage.SYSTEM
+
         BrowserPreferences(
             globalNeverSignOutEnabled = prefs[Keys.GLOBAL_NEVER_SIGNOUT] ?: true,
             defaultCookieLifetimeDays = prefs[Keys.DEFAULT_COOKIE_DAYS] ?: 365,
@@ -76,7 +81,7 @@ class BrowserPreferencesRepository @Inject constructor(
             adBlockEnabled = prefs[Keys.AD_BLOCK_ENABLED] ?: true,
             themeMode = theme,
             dynamicColorEnabled = prefs[Keys.DYNAMIC_COLOR] ?: true,
-            forcePersianRtl = prefs[Keys.FORCE_PERSIAN_RTL] ?: true,
+            language = language,
             proxyDnsConfig = ProxyDnsConfig(
                 dnsMode = dnsMode,
                 customDohUri = prefs[Keys.CUSTOM_DOH_URI] ?: "https://cloudflare-dns.com/dns-query",
@@ -124,8 +129,8 @@ class BrowserPreferencesRepository @Inject constructor(
         dataStore.edit { it[Keys.DYNAMIC_COLOR] = enabled }
     }
 
-    suspend fun setForcePersianRtl(enabled: Boolean) {
-        dataStore.edit { it[Keys.FORCE_PERSIAN_RTL] = enabled }
+    suspend fun setLanguage(language: AppLanguage) {
+        dataStore.edit { it[Keys.LANGUAGE] = language.name }
     }
 
     suspend fun setProxyDnsConfig(config: ProxyDnsConfig) {

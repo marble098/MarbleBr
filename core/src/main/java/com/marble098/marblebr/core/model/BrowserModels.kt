@@ -46,7 +46,7 @@ data class BrowserTab(
     val containerId: String,
     val contextId: String,
     val url: String,
-    val title: String = "تب جدید",
+    val title: String = "",
     val isPrivate: Boolean = false,
     val isDesktopMode: Boolean = false,
     val isLoading: Boolean = false,
@@ -203,16 +203,32 @@ data class SessionHealthAssessment(
     val domain: String,
     val status: SessionHealthStatus,
     val action: HealthGuardAction,
-    val reasonFa: String,
+    val reason: HealthReason = HealthReason.UNKNOWN,
     val targetSnapshotId: String? = null,
 )
+
+/**
+ * دلیل فنیِ یک رویداد نشست؛ متنِ قابل‌نمایش برای کاربر از روی همین مقدار و به زبان انتخابی ساخته می‌شود.
+ */
+@Serializable
+enum class HealthReason {
+    SITE_PROTECTION_OFF,
+    HEALTHY,
+    UNAUTHORIZED,
+    LOGIN_REDIRECT,
+    AUTH_COOKIE_MISSING,
+    STORAGE_CLEARED,
+    HEALED,
+    SERVER_REVOKED,
+    UNKNOWN,
+}
 
 @Serializable
 data class BookmarkItem(
     val id: String,
     val title: String,
     val url: String,
-    val folder: String = "عمومی",
+    val folder: String = "general",
     val createdAtEpochMillis: Long = System.currentTimeMillis(),
 )
 
@@ -246,19 +262,19 @@ data class DownloadItem(
 )
 
 @Serializable
-enum class DnsMode(val labelFa: String, val dohUri: String?) {
-    SYSTEM("پیش‌فرض سیستم", null),
-    CLOUDFLARE("کلودفلر (1.1.1.1)", "https://cloudflare-dns.com/dns-query"),
-    GOOGLE("گوگل (8.8.8.8)", "https://dns.google/dns-query"),
-    QUAD9("کواد۹ (امنیتی)", "https://dns.quad9.net/dns-query"),
-    CUSTOM("سرور DoH سفارشی", null),
+enum class DnsMode(val dohUri: String?) {
+    SYSTEM(null),
+    CLOUDFLARE("https://cloudflare-dns.com/dns-query"),
+    GOOGLE("https://dns.google/dns-query"),
+    QUAD9("https://dns.quad9.net/dns-query"),
+    CUSTOM(null),
 }
 
 @Serializable
-enum class ProxyType(val labelFa: String) {
-    NONE("بدون پروکسی"),
-    HTTP("پروکسی HTTP"),
-    SOCKS5("پروکسی SOCKS5"),
+enum class ProxyType {
+    NONE,
+    HTTP,
+    SOCKS5,
 }
 
 @Serializable
@@ -277,10 +293,10 @@ data class ProxyDnsConfig(
 }
 
 @Serializable
-enum class ThemeMode(val labelFa: String) {
-    SYSTEM("هماهنگ با سیستم"),
-    LIGHT("روشن"),
-    DARK("تاریک"),
+enum class ThemeMode {
+    SYSTEM,
+    LIGHT,
+    DARK,
 }
 
 @Serializable
