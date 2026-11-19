@@ -109,7 +109,8 @@ fun VaultDashboardScreen(
                             )
                         }
                         Text(
-                            text = "تمامی اسنپ‌شات‌های کوکی، localStorage و IndexedDB به‌صورت محلی و رمزنگاری‌شده ذخیره می‌شوند و هیچ داده‌ای به سرور خارجی ارسال نمی‌شود.",
+                            text = "تمامی اسنپ‌شات‌های کوکی، localStorage و IndexedDB به‌صورت محلی و رمزنگاری‌شده ذخیره می‌شوند " +
+                                "و هیچ داده‌ای به سرور خارجی ارسال نمی‌شود.",
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         if (!isBiometricUnlocked) {
@@ -247,7 +248,8 @@ fun VaultDashboardScreen(
             title = { Text("خروج واقعی از ${target.domain}") },
             text = {
                 Text(
-                    "با زدن دکمه «خروج قطعی (Sign out now)»، تمامی کوکی‌ها، حافظه کانتینر ${target.contextId} و اسنپ‌شات‌های ذخیره‌شده این سایت در Session Vault پاک می‌شوند. " +
+                    "با زدن دکمه «خروج قطعی (Sign out now)»، تمامی کوکی‌ها، حافظه کانتینر ${target.contextId} " +
+                        "و اسنپ‌شات‌های ذخیره‌شده این سایت در Session Vault پاک می‌شوند. " +
                         "سایر سایت‌ها و کانتینرها کاملاً دست‌نخورده باقی می‌مانند.",
                 )
             },
