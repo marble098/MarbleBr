@@ -37,6 +37,11 @@
    - هر ۵ فایل APK امضاشده به GitHub Release متناظر با تگ نسخه (`vX.Y.Z`) پیوست می‌شوند.
    - متن Release دقیقاً از آخرین بخش ثبت‌شده در `CHANGELOG.md` استخراج می‌شود.
 
+5. **آپدیت یکپارچه وابستگی‌ها (تک‌منبع واحد):**
+   - تمام کتابخانه‌ها و تکنولوژی‌ها (Version Catalog، GeckoView، Gradle Wrapper، ابزارهای بیلد و GitHub Actions) فقط از طریق Workflow `.github/workflows/dependency-update.yml` و اسکریپت `scripts/update_dependencies.py` به‌روزرسانی می‌شوند.
+   - Dependabot و Renovate و هر اسکریپت آپدیت موازی دیگری حذف شده‌اند و نباید دوباره اضافه شوند.
+   - این Workflow تنها زمانی PR می‌سازد که بیلد کامل، `ktlintCheck`، `detekt` و `testDebugUnitTest` با نسخه‌های جدید سبز باشند.
+
 ---
 
 ## ۲. قوانین معماری و حریم خصوصی

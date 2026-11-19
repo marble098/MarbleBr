@@ -6,6 +6,8 @@
 
 - **اجرای تست‌های واحد:** `./gradlew testDebugUnitTest`
 - **اجرای تست الگوریتم نسخه‌دهی:** `./scripts/test_bump_version.sh`
+- **آپدیت یکپارچه همه وابستگی‌ها:** `python3 scripts/update_dependencies.py --apply`
+- **تست اسکریپت آپدیت وابستگی‌ها:** `python3 scripts/test_update_dependencies.py`
 - **بررسی اعتبار Changelog فارسی:** `./scripts/check_changelog.sh`
 - **بررسی کیفیت و استایل کد:** `./gradlew ktlintCheck detekt`
 - **ساخت تمام APKهای ریلیز (۵ معماری):** `./gradlew assembleRelease`

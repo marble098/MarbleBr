@@ -1,0 +1,203 @@
+name: Dependency Update (Unified)
+
+# ⚡ Workflow یکپارچه آپدیت تکنولوژی‌ها و کتابخانه‌های MarbleBr
+#
+# این Workflow تنها نقطه ورود برای به‌روزرسانی همه وابستگی‌هاست:
+#   • Gradle Wrapper
+#   • AGP، Kotlin، KSP، Hilt، Ktlint، Detekt (کل Version Catalog)
+#   • تمام کتابخانه‌های AndroidX / Compose / Room / DataStore / Work / Credentials و ...
+#   • موتور مرورگر Mozilla GeckoView
+#   • GitHub Actions استفاده‌شده در Workflowها
+#
+# جریان کار:
+#   ۱. بررسی و آپدیت خودکارهمه وابستگی‌ها (scripts/update_dependencies.py)
+#   ۲. ساخت BRANCH اختصاصی، بیلد و اجرای کامل تست‌ها با نسخه‌های جدید
+#   ۳. اگر همه چیز سبز بود: ثبت ورودی فارسی در CHANGELOG.md، Commit و باز کردن PR
+#   ۴. اگر بیلد شکست خورد: PR باز نمی‌شود (فقط خلاصه در Job Summary)
+
+on:
+  schedule:
+    # هر دوشنبه ساعت ۰۴:۰۰ UTC
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      include_prereleases:
+        description: "نسخه‌های alpha/beta/rc نیز بررسی شوند"
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: "فقط بررسی و گزارش (بدون Commit/PR)"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: dependency-update
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update_dependencies:
+    name: Update All Libraries, Tools & Actions
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+
+      - name: Unit test the dependency updater
+        run: python3 scripts/test_update_dependencies.py
+
+      - name: Resolve branch name
+        id: naming
+        run: |
+          NAME="chore/unified-deps-$(date -u +%Y-%m-%d)-$(date -u +%H%M)"
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Detect and apply dependency updates
+        id: update
+        run: |
+          ARGS="--apply --json-out /tmp/deps-report.json"
+          if [[ "${{ inputs.include_prereleases }}" == "true" ]]; then
+            ARGS="${ARGS} --include-pre"
+          fi
+          python3 scripts/update_dependencies.py ${ARGS}
+
+      - name: Show what changed
+        if: steps.update.outputs.updated == 'true'
+        run: |
+          git diff --stat
+          git diff -- gradle/libs.versions.toml gradle/wrapper/gradle-wrapper.properties .github/workflows | head -200
+
+      - name: Job summary (no updates)
+        if: steps.update.outputs.updated != 'true'
+        run: |
+          {
+            echo "## ✅ همه وابستگی‌ها به‌روز هستند"
+            echo ""
+            echo "هیچ نسخه جدیدی برای کتابخانه‌ها، پلاگین‌ها، GeckoView، Gradle یا GitHub Actions پیدا نشد."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up JDK 21
+        if: steps.update.outputs.updated == 'true' && inputs.dry_run != true
+        uses: actions/setup-java@v6
+        with:
+          distribution: "zulu"
+          java-version: "21"
+
+      - name: Set up Gradle
+        if: steps.update.outputs.updated == 'true' && inputs.dry_run != true
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: "basic"
+          validate-wrappers: false
+
+      - name: Verify full build, lint, static analysis & unit tests with new versions
+        id: verify
+        if: steps.update.outputs.updated == 'true' && inputs.dry_run != true
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./gradlew ktlintCheck detekt testDebugUnitTest :app:assembleDebug --stacktrace 2>&1 | tee /tmp/verify.log
+          echo "verify_exit=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify scripts (changelog + version bump)
+        if: steps.update.outputs.updated == 'true' && inputs.dry_run != true
+        run: |
+          ./scripts/test_bump_version.sh
+          ./scripts/check_changelog.sh
+
+      - name: Commit, push and open Pull Request
+        id: pr
+        if: |
+          steps.update.outputs.updated == 'true' &&
+          inputs.dry_run != true &&
+          steps.verify.outputs.verify_exit == '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ steps.naming.outputs.name }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "${BRANCH}"
+          git add gradle/libs.versions.toml gradle/wrapper/gradle-wrapper.properties .github/workflows CHANGELOG.md gradle.properties
+          if git diff --staged --quiet; then
+            echo "::notice::هیچ تغییری برای Commit وجود ندارد."
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git commit -m "chore(deps): آپدیت یکپارچه خودکار کتابخانه‌ها و ابزارها ($(date -u +%Y-%m-%d))"
+          git push -u origin "${BRANCH}" --force
+
+          BODY_FILE="$(mktemp)"
+          {
+            echo "### 🛠 آپدیت یکپارچه وابستگی‌ها"
+            echo ""
+            echo "این PR به‌صورت خودکار توسط Workflow **Dependency Update (Unified)** ساخته شده است."
+            echo ""
+            echo "| نوع | نام | از | به |"
+            echo "|---|---|---|---|"
+            python3 - <<'PY'
+          import json
+          data = json.load(open('/tmp/deps-report.json', encoding='utf-8'))
+          for item in data.get('updates', []):
+              print(f"| {item['kind']} | `{item['name']}` | `{item['old']}` | `{item['new']}` |")
+          PY
+            echo ""
+            echo "✅ بیلد کامل، ktlint، detekt و تمام تست‌های واحد با نسخه‌های جدید سبز هستند."
+          } > "${BODY_FILE}"
+
+          PR_URL=$(gh pr create \
+            --base main \
+            --head "${BRANCH}" \
+            --title "chore(deps): آپدیت یکپارچه خودکار کتابخانه‌ها و ابزارها ($(date -u +%Y-%m-%d))" \
+            --body-file "${BODY_FILE}")
+          echo "url=${PR_URL}" >> "$GITHUB_OUTPUT"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::Pull Request ساخته شد: ${PR_URL}"
+
+      - name: Report verification failure
+        if: |
+          steps.update.outputs.updated == 'true' &&
+          inputs.dry_run != true &&
+          steps.verify.outputs.verify_exit != '0'
+        run: |
+          {
+            echo "## ⚠️ آپدیت وابستگی‌ها با نسخه‌های جدید شکست خورد"
+            echo ""
+            echo "بیلد/تست با نسخه‌های جدید ناموفق بود؛ بنابراین PR ساخته نشد."
+            echo ""
+            echo "### خطاهای Gradle"
+            echo '```'
+            grep -E "e:|error:|FAILED|What went wrong" /tmp/verify.log | tail -n 40 || echo "جزئیات بیشتر در لاگ‌های همین Job موجود است."
+            echo '```'
+            echo ""
+            echo "### تغییرات پیشنهادی نسخه‌ها"
+            echo '```diff'
+            git diff -- gradle/libs.versions.toml
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::بیلد با وابستگی‌های جدید شکست خورد؛ PR ساخته نشد. جزئیات در Job Summary."
+          exit 1
+
+      - name: Upload dependency report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dependency-update-report
+          path: /tmp/deps-report.json
+          if-no-files-found: ignore
+          retention-days: 30
