@@ -4,9 +4,9 @@ set -euo pipefail
 # الگوریتم نسخه‌دهی خودکار MarbleBr بر اساس حجم تغییر کد (Diff Size) و تغییرات Breaking
 # قوانین:
 # - حجم تغییر = مجموع خطوط اضافه‌شده + حذف‌شده در diff آن merge، به‌جز فایل‌های lock/generated.
-# - کمتر از ۵۰ خط (< 50): patch++
-# - بین ۵۰ تا ۵۰۰ خط (50 <= lines <= 500): minor++ و patch=0
-# - بیش از ۵۰۰ خط (> 500) یا تغییر breaking: major++ و minor=0, patch=0
+# - کمتر از ۵۰۰ خط (< 500): patch++
+# - بین ۵۰۰ تا ۵۰۰۰ خط (500 <= lines <= 5000): minor++ و patch=0
+# - بیش از ۵۰۰۰ خط (> 5000) یا تغییر breaking: major++ و minor=0, patch=0
 # - versionCode = شماره run یا تعداد commitها (همیشه صعودی)
 
 is_excluded_file() {
@@ -56,11 +56,11 @@ compute_next_semver() {
     local major minor patch
     IFS='.' read -r major minor patch <<< "$current_version"
 
-    if [[ "$is_breaking" == "true" ]] || (( changed_lines > 500 )); then
+    if [[ "$is_breaking" == "true" ]] || (( changed_lines > 5000 )); then
         major=$((major + 1))
         minor=0
         patch=0
-    elif (( changed_lines >= 50 )); then
+    elif (( changed_lines >= 500 )); then
         minor=$((minor + 1))
         patch=0
     else

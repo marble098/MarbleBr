@@ -95,26 +95,13 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           KEYSTORE_FILE="${RUNNER_TEMP}/marblebr-release.jks"
-          if [[ -n "${KEYSTORE_BASE64}" ]]; then
-            echo "${KEYSTORE_BASE64}" | base64 --decode > "${KEYSTORE_FILE}"
-            echo "MARBLE_KEYSTORE_PATH=${KEYSTORE_FILE}" >> "$GITHUB_ENV"
-            echo "MARBLE_KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD}" >> "$GITHUB_ENV"
-            echo "MARBLE_KEY_ALIAS=${KEY_ALIAS}" >> "$GITHUB_ENV"
-            echo "MARBLE_KEY_PASSWORD=${KEY_PASSWORD}" >> "$GITHUB_ENV"
-          else
-            echo "::warning::GitHub Secret KEYSTORE_BASE64 is not set; using fallback signing key. See docs/secrets-setup.md."
-            keytool -genkeypair -v \
-              -keystore "${KEYSTORE_FILE}" \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -alias marblebr \
-              -storepass marblebr_ci_pass \
-              -keypass marblebr_ci_pass \
-              -dname "CN=MarbleBr, OU=Mobile, O=Marble098, L=Tehran, S=Tehran, C=IR"
-            echo "MARBLE_KEYSTORE_PATH=${KEYSTORE_FILE}" >> "$GITHUB_ENV"
-            echo "MARBLE_KEYSTORE_PASSWORD=marblebr_ci_pass" >> "$GITHUB_ENV"
-            echo "MARBLE_KEY_ALIAS=marblebr" >> "$GITHUB_ENV"
-            echo "MARBLE_KEY_PASSWORD=marblebr_ci_pass" >> "$GITHUB_ENV"
-          fi
+          umask 077
+          : "${KEYSTORE_BASE64:?Missing release keystore}" "${KEYSTORE_PASSWORD:?}" "${KEY_ALIAS:?}" "${KEY_PASSWORD:?}"
+          echo "${KEYSTORE_BASE64}" | base64 --decode > "${KEYSTORE_FILE}"
+          echo "MARBLE_KEYSTORE_PATH=${KEYSTORE_FILE}" >> "$GITHUB_ENV"
+          echo "MARBLE_KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD}" >> "$GITHUB_ENV"
+          echo "MARBLE_KEY_ALIAS=${KEY_ALIAS}" >> "$GITHUB_ENV"
+          echo "MARBLE_KEY_PASSWORD=${KEY_PASSWORD}" >> "$GITHUB_ENV"
 
       - name: Build Signed Release APKs (arm64-v8a, armeabi-v7a, x86, x86_64, universal)
         run: ./scripts/gradle_retry.sh /tmp/release-build.log testDebugUnitTest :app:assembleRelease --stacktrace
@@ -132,6 +119,7 @@ jobs:
               echo "::error title=MissingApk::APK معماری ${abi} تولید نشد."
               exit 1
             fi
+            "$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)" verify "${SRC_APK}"
             cp "${SRC_APK}" "${OUT_DIR}/MarbleBr-v${VERSION}-${abi}.apk"
             echo "✅ ${abi}"
           done

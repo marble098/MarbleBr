@@ -40,6 +40,8 @@ abstract class MarbleStrings {
 
     // --------------------------------------------------------- مرورگر
     abstract val addressPlaceholder: String
+    abstract val copyLink: String
+    abstract val shareLink: String
     abstract val browserMenu: String
     abstract val tabsLabel: String
     abstract val protectionLabel: String
@@ -295,6 +297,8 @@ private object PersianStrings : MarbleStrings() {
     override val dynamicColorDescription = "روی اندروید ۱۲ و بالاتر، رنگ برنامه با تم گوشی‌ات هماهنگ می‌شود."
 
     override val addressPlaceholder = "آدرس سایت را بنویس یا سرچ کن"
+    override val copyLink = "کپی پیوند"
+    override val shareLink = "اشتراک‌گذاری پیوند"
     override val browserMenu = "گزینه‌های بیشتر"
     override val tabsLabel = "تب‌ها"
     override val protectionLabel = "محافظت"
@@ -484,6 +488,8 @@ private object EnglishStrings : MarbleStrings() {
     override val dynamicColorDescription = "On Android 12 and newer, the app matches your phone theme."
 
     override val addressPlaceholder = "Type an address or search"
+    override val copyLink = "Copy link"
+    override val shareLink = "Share link"
     override val browserMenu = "More options"
     override val tabsLabel = "Tabs"
     override val protectionLabel = "Protection"

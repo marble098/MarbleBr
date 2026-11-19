@@ -28,9 +28,9 @@
 3. **ارتقای خودکار نسخه (Semantic Versioning بر اساس حجم تغییر کد):**
    - نسخه اپ (`MARBLE_VERSION_NAME` و `MARBLE_VERSION_CODE` در `gradle.properties`) توسط `scripts/bump_version.kts` / `scripts/bump_version.sh` محاسبه و ارتقا می‌یابد:
      - **حجم تغییر** = مجموع خطوط اضافه‌شده + حذف‌شده در `git diff --numstat` آن تغییر، **به‌جز فایل‌های lock، باینری و generated**.
-     - **کمتر از ۵۰ خط (`< 50`)**: `patch++`
-     - **بین ۵۰ تا ۵۰۰ خط (`50 .. 500`)**: `minor++` و `patch = 0`
-     - **بیش از ۵۰۰ خط (`> 500`) یا تغییر Breaking**: `major++` و `minor = 0`, `patch = 0`
+     - **کمتر از ۵۰۰ خط (`< 500`)**: `patch++`
+     - **بین ۵۰۰ تا ۵۰۰۰ خط (`500 .. 5000`)**: `minor++` و `patch = 0`
+     - **بیش از ۵۰۰۰ خط (`> 5000`) یا تغییر Breaking**: `major++` و `minor = 0`, `patch = 0`
      - **`versionCode`**: بیشینه شماره اجرای CI (`GITHUB_RUN_NUMBER`)، تعداد کل کامیت‌ها، و `previousVersionCode + 1` (همواره اکیداً صعودی).
 
 4. **انتشار خودکار در GitHub Releases:**

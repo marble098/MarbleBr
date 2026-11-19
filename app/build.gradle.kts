@@ -51,18 +51,13 @@ android {
         }
         release {
             isDebuggable = false
-            isMinifyEnabled = false
-            isShrinkResources = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            val releaseSigning = signingConfigs.findByName("release")
-            signingConfig = if (releaseSigning?.storeFile?.exists() == true) {
-                releaseSigning
-            } else {
-                signingConfigs.getByName("debug")
-            }
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
@@ -86,6 +81,7 @@ android {
     }
 
     packaging {
+        jniLibs.useLegacyPackaging = true
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }

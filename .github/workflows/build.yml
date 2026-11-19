@@ -73,33 +73,21 @@ jobs:
           fi
 
       - name: Prepare Signing Keystore
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          KEYSTORE_FILE="${RUNNER_TEMP}/marblebr-release.jks"
-          if [[ -n "${KEYSTORE_BASE64}" ]]; then
-            echo "${KEYSTORE_BASE64}" | base64 --decode > "${KEYSTORE_FILE}"
-            echo "MARBLE_KEYSTORE_PATH=${KEYSTORE_FILE}" >> "$GITHUB_ENV"
-            echo "MARBLE_KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD}" >> "$GITHUB_ENV"
-            echo "MARBLE_KEY_ALIAS=${KEY_ALIAS}" >> "$GITHUB_ENV"
-            echo "MARBLE_KEY_PASSWORD=${KEY_PASSWORD}" >> "$GITHUB_ENV"
-          else
-            echo "Generating ephemeral CI keystore for verification build..."
-            keytool -genkeypair -v \
-              -keystore "${KEYSTORE_FILE}" \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -alias marblebr \
-              -storepass marblebr_ci_pass \
-              -keypass marblebr_ci_pass \
-              -dname "CN=MarbleBr, OU=Mobile, O=Marble098, L=Tehran, S=Tehran, C=IR"
-            echo "MARBLE_KEYSTORE_PATH=${KEYSTORE_FILE}" >> "$GITHUB_ENV"
-            echo "MARBLE_KEYSTORE_PASSWORD=marblebr_ci_pass" >> "$GITHUB_ENV"
-            echo "MARBLE_KEY_ALIAS=marblebr" >> "$GITHUB_ENV"
-            echo "MARBLE_KEY_PASSWORD=marblebr_ci_pass" >> "$GITHUB_ENV"
-          fi
+          KEYSTORE_FILE="${RUNNER_TEMP}/verification.jks"
+          echo "Generating ephemeral CI keystore for verification build..."
+          keytool -genkeypair -v \
+            -keystore "${KEYSTORE_FILE}" \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -alias marblebr \
+            -storepass marblebr_ci_pass \
+            -keypass marblebr_ci_pass \
+            -dname "CN=MarbleBr, OU=Mobile, O=Marble098, L=Tehran, S=Tehran, C=IR"
+          echo "MARBLE_KEYSTORE_PATH=${KEYSTORE_FILE}" >> "$GITHUB_ENV"
+          echo "MARBLE_KEYSTORE_PASSWORD=marblebr_ci_pass" >> "$GITHUB_ENV"
+          echo "MARBLE_KEY_ALIAS=marblebr" >> "$GITHUB_ENV"
+          echo "MARBLE_KEY_PASSWORD=marblebr_ci_pass" >> "$GITHUB_ENV"
+
 
       - name: Assemble Release APKs (All ABIs + Universal)
         run: |
