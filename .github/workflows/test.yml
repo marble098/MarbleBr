@@ -1,0 +1,80 @@
+name: Test Suite & Static Analysis
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - "arena/**"
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit_tests_and_lint:
+    name: Unit Tests, ktlint, detekt & Changelog Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check Persian CHANGELOG.md rules
+        env:
+          ENFORCE_CHANGELOG_DIFF: ${{ github.event_name == 'pull_request' && 'true' || 'false' }}
+          BASE_REF: origin/main
+        run: ./scripts/check_changelog.sh
+
+      - name: Run Version Bump Algorithm Script Tests
+        run: ./scripts/test_bump_version.sh
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: "zulu"
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run ktlint formatting checks
+        run: |
+          set -o pipefail
+          if ! ./gradlew ktlintCheck --stacktrace 2>&1 | tee /tmp/ktlint.log; then
+            ERR_SUMMARY=$(grep -E "e:|error:|FAILURE:|What went wrong:|\.kt:[0-9]+|\.kts:[0-9]+|Execution failed" /tmp/ktlint.log | tail -n 30 | tr '\n' ' ')
+            echo "::error title=KtlintFailure::${ERR_SUMMARY}"
+            exit 1
+          fi
+
+      - name: Run detekt static analysis
+        run: |
+          set -o pipefail
+          if ! ./gradlew detekt --stacktrace 2>&1 | tee /tmp/detekt.log; then
+            ERR_SUMMARY=$(grep -E "e:|error:|FAILURE:|What went wrong:|\.kt:[0-9]+|\.kts:[0-9]+|Execution failed" /tmp/detekt.log | tail -n 30 | tr '\n' ' ')
+            echo "::error title=DetektFailure::${ERR_SUMMARY}"
+            exit 1
+          fi
+
+      - name: Run all module unit tests
+        run: |
+          set -o pipefail
+          if ! ./gradlew testDebugUnitTest --stacktrace 2>&1 | tee /tmp/unit.log; then
+            ERR_SUMMARY=$({ grep -E "e:|error:|FAILED" /tmp/unit.log | tail -n 15; grep -A 20 "What went wrong:" /tmp/unit.log | head -n 22; } | tr '\n' ' ')
+            echo "::error title=UnitTestFailure::${ERR_SUMMARY}"
+            exit 1
+          fi
+
+      - name: Upload Test Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports
+          path: "**/build/reports/tests/testDebugUnitTest/**"
+          if-no-files-found: ignore

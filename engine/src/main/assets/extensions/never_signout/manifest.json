@@ -1,0 +1,32 @@
+{
+  "manifest_version": 2,
+  "name": "MarbleBr Never Sign-out Engine",
+  "version": "1.0.0",
+  "description": "Internal engine extension for persistent sessions, storage.persist(), encrypted vault snapshots, and health guard telemetry-free monitoring.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "never_signout@marblebr.marble098.com"
+    }
+  },
+  "permissions": [
+    "cookies",
+    "storage",
+    "tabs",
+    "webRequest",
+    "webRequestBlocking",
+    "geckoViewAddons",
+    "nativeMessaging",
+    "<all_urls>"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ]
+}

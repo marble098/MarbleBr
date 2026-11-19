@@ -1,0 +1,9 @@
+HSPLcom/marble098/marblebr/MarbleBrApplication;-><init>()V
+HSPLcom/marble098/marblebr/MarbleBrApplication;->onCreate()V
+HSPLcom/marble098/marblebr/MainActivity;-><init>()V
+HSPLcom/marble098/marblebr/MainActivity;->onCreate(Landroid/os/Bundle;)V
+HSPLcom/marble098/marblebr/engine/ContainerSessionManager;-><init>(Landroid/content/Context;Lcom/marble098/marblebr/core/database/ContainerDao;Lcom/marble098/marblebr/vault/SessionVaultManager;Lcom/marble098/marblebr/engine/SessionHealthGuard;Lcom/marble098/marblebr/engine/LightweightAdBlocker;)V
+HSPLcom/marble098/marblebr/vault/SessionVaultManager;-><init>(Lcom/marble098/marblebr/core/database/SnapshotDao;Lcom/marble098/marblebr/vault/AesGcmVaultCipher;Lcom/marble098/marblebr/vault/CookiePersistenceConverter;)V
+HSPLcom/marble098/marblebr/vault/AesGcmVaultCipher;-><init>(Lcom/marble098/marblebr/vault/SecretKeyProvider;)V
+HSPLcom/marble098/marblebr/engine/SessionHealthGuard;-><init>(Lcom/marble098/marblebr/vault/SessionVaultManager;Lcom/marble098/marblebr/core/database/HealthEventDao;)V
+HSPLcom/marble098/marblebr/feature/browser/BrowserScreenKt;->BrowserScreen(Lcom/marble098/marblebr/feature/browser/BrowserViewModel;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;ZLandroidx/compose/runtime/Composer;II)V
