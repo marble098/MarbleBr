@@ -101,12 +101,14 @@ jobs:
       - name: Verify All 5 Required Architecture APKs Exist
         run: |
           APK_DIR="app/build/outputs/apk/release"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
           ls -lh "${APK_DIR}"
           for abi in "arm64-v8a" "armeabi-v7a" "x86" "x86_64" "universal"; do
             if ! ls "${APK_DIR}"/*-"${abi}"-release*.apk >/dev/null 2>&1; then
               echo "❌ Missing release APK for architecture: ${abi}" >&2
               exit 1
             fi
+            "$APKSIGNER" verify "${APK_DIR}"/*-"${abi}"-release*.apk
             echo "✅ Found release APK for ${abi}"
           done
 
