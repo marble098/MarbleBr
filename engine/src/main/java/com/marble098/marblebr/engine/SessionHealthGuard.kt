@@ -35,8 +35,7 @@ class SessionHealthGuard @Inject constructor(
         if (fromUrl.isBlank() || toUrl.isBlank() || fromUrl == toUrl) return false
         if (isLoginOrAuthUrl(fromUrl)) return false
 
-        return isLoginOrAuthUrl(toUrl) && hasReturnRedirectParameter(toUrl) ||
-            (sameBaseDomain(fromUrl, toUrl) && isLoginOrAuthUrl(toUrl))
+        return (isLoginOrAuthUrl(toUrl) && hasReturnRedirectParameter(toUrl)) || (sameBaseDomain(fromUrl, toUrl) && isLoginOrAuthUrl(toUrl))
     }
 
     fun isLoginOrAuthUrl(url: String): Boolean {

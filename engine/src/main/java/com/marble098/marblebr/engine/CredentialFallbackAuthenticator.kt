@@ -43,7 +43,7 @@ class CredentialFallbackAuthenticator @Inject constructor(
         // 1. Verify biometric lock before releasing stored credentials/passkeys
         val bioResult = biometricVaultLock.authenticate(
             activity = activity,
-            titleFa = "ورود مجدد خودکار (${rpIdOrDomain})",
+            titleFa = "ورود مجدد خودکار ($rpIdOrDomain)",
             subtitleFa = "نشست توسط سرور منقضی شده است؛ با تأیید بیومتریک مجدداً وارد شوید",
         )
         if (bioResult is BiometricAuthResult.Failed) {
