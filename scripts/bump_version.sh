@@ -109,8 +109,18 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
         exit 1
     fi
 
-    CURRENT_VERSION=$(grep -E '^MARBLE_VERSION_NAME=' "$PROPS_FILE" | cut -d'=' -f2 | tr -d '[:space:]')
-    CURRENT_CODE=$(grep -E '^MARBLE_VERSION_CODE=' "$PROPS_FILE" | cut -d'=' -f2 | tr -d '[:space:]')
+    # خواندن امن نسخه فعلی: کلیدهای MARBLE_VERSION_* ممکن است هنوز در فایل نباشند
+    # (grep بدون تطابق با set -o pipefail باعث خطای بی‌دلیل می‌شد).
+    CURRENT_VERSION=$(grep -E '^MARBLE_VERSION_NAME=' "$PROPS_FILE" | cut -d'=' -f2 | tr -d '[:space:]' || true)
+    CURRENT_CODE=$(grep -E '^MARBLE_VERSION_CODE=' "$PROPS_FILE" | cut -d'=' -f2 | tr -d '[:space:]' || true)
+
+    # مقدارهای پیش‌فرض در صورت نبود کلید یا نامعتبر بودن آن
+    if [[ ! "$CURRENT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        CURRENT_VERSION="0.0.0"
+    fi
+    if [[ ! "$CURRENT_CODE" =~ ^[0-9]+$ ]]; then
+        CURRENT_CODE="0"
+    fi
 
     if [[ -n "$LINES_OVERRIDE" ]]; then
         CHANGED_LINES="$LINES_OVERRIDE"
@@ -144,6 +154,14 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
 
     sed -i "s/^MARBLE_VERSION_NAME=.*/MARBLE_VERSION_NAME=${NEXT_VERSION}/" "$PROPS_FILE"
     sed -i "s/^MARBLE_VERSION_CODE=.*/MARBLE_VERSION_CODE=${NEXT_CODE}/" "$PROPS_FILE"
+
+    # اگر کلیدها از ابتدا در فایل وجود نداشتند، آن‌ها را به‌صورت پایدار اضافه کن
+    if ! grep -qE '^MARBLE_VERSION_NAME=' "$PROPS_FILE"; then
+        printf '\nMARBLE_VERSION_NAME=%s\n' "$NEXT_VERSION" >> "$PROPS_FILE"
+    fi
+    if ! grep -qE '^MARBLE_VERSION_CODE=' "$PROPS_FILE"; then
+        printf 'MARBLE_VERSION_CODE=%s\n' "$NEXT_CODE" >> "$PROPS_FILE"
+    fi
 
     echo "Bumped MarbleBr version: ${CURRENT_VERSION} (${CURRENT_CODE}) -> ${NEXT_VERSION} (${NEXT_CODE}) [changedLines=${CHANGED_LINES}, breaking=${IS_BREAKING}]"
 fi

@@ -26,7 +26,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -39,19 +39,25 @@ jobs:
       - name: Run Semantic Versioning script unit tests
         run: ./scripts/test_bump_version.sh
 
+      - name: Run Unified Dependency Updater Script Tests
+        run: python3 scripts/test_update_dependencies.py
+
       - name: Set up JDK 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: "zulu"
           java-version: "21"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: "basic"
+          validate-wrappers: false
 
       - name: Run ktlint & detekt static analysis
         run: |
           set -o pipefail
-          if ! ./gradlew ktlintCheck detekt --stacktrace 2>&1 | tee /tmp/lint.log; then
+          if ! ./scripts/gradle_retry.sh /tmp/lint.log ktlintCheck detekt --stacktrace; then
             ERR_SUMMARY=$({ grep -E "e:|error:|FAILED|\.kt:[0-9]+" /tmp/lint.log | tail -n 15; grep -A 20 "What went wrong:" /tmp/lint.log | head -n 22; } | tr '\n' ' ')
             echo "::error title=StaticAnalysisFailure::${ERR_SUMMARY}"
             exit 1
@@ -60,7 +66,7 @@ jobs:
       - name: Run Unit Tests (Vault, Health Guard, Version Algorithm, Browser)
         run: |
           set -o pipefail
-          if ! ./gradlew testDebugUnitTest --stacktrace 2>&1 | tee /tmp/test.log; then
+          if ! ./scripts/gradle_retry.sh /tmp/test.log testDebugUnitTest --stacktrace; then
             ERR_SUMMARY=$({ grep -E "e:|error:|FAILED" /tmp/test.log | tail -n 15; grep -A 20 "What went wrong:" /tmp/test.log | head -n 22; } | tr '\n' ' ')
             echo "::error title=UnitTestFailure::${ERR_SUMMARY}"
             exit 1
@@ -98,7 +104,7 @@ jobs:
       - name: Assemble Release APKs (All ABIs + Universal)
         run: |
           set -o pipefail
-          if ! ./gradlew :app:assembleRelease --stacktrace 2>&1 | tee /tmp/assemble.log; then
+          if ! ./scripts/gradle_retry.sh /tmp/assemble.log :app:assembleRelease --stacktrace; then
             ERR_SUMMARY=$({ grep -E "e:|error:|FAILED" /tmp/assemble.log | tail -n 15; grep -A 20 "What went wrong:" /tmp/assemble.log | head -n 22; } | tr '\n' ' ')
             echo "::error title=AssembleReleaseFailure::${ERR_SUMMARY}"
             exit 1
@@ -117,7 +123,7 @@ jobs:
           done
 
       - name: Upload Release APKs Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: marblebr-release-apks
           path: app/build/outputs/apk/release/*.apk

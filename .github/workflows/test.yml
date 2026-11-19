@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -35,19 +35,25 @@ jobs:
       - name: Run Version Bump Algorithm Script Tests
         run: ./scripts/test_bump_version.sh
 
+      - name: Run Unified Dependency Updater Script Tests
+        run: python3 scripts/test_update_dependencies.py
+
       - name: Set up JDK 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: "zulu"
           java-version: "21"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: "basic"
+          validate-wrappers: false
 
       - name: Run ktlint formatting checks
         run: |
           set -o pipefail
-          if ! ./gradlew ktlintCheck --stacktrace 2>&1 | tee /tmp/ktlint.log; then
+          if ! ./scripts/gradle_retry.sh /tmp/ktlint.log ktlintCheck --stacktrace; then
             ERR_SUMMARY=$(grep -E "e:|error:|FAILURE:|What went wrong:|\.kt:[0-9]+|\.kts:[0-9]+|Execution failed" /tmp/ktlint.log | tail -n 30 | tr '\n' ' ')
             echo "::error title=KtlintFailure::${ERR_SUMMARY}"
             exit 1
@@ -56,7 +62,7 @@ jobs:
       - name: Run detekt static analysis
         run: |
           set -o pipefail
-          if ! ./gradlew detekt --stacktrace 2>&1 | tee /tmp/detekt.log; then
+          if ! ./scripts/gradle_retry.sh /tmp/detekt.log detekt --stacktrace; then
             ERR_SUMMARY=$(grep -E "e:|error:|FAILURE:|What went wrong:|\.kt:[0-9]+|\.kts:[0-9]+|Execution failed" /tmp/detekt.log | tail -n 30 | tr '\n' ' ')
             echo "::error title=DetektFailure::${ERR_SUMMARY}"
             exit 1
@@ -65,7 +71,7 @@ jobs:
       - name: Run all module unit tests
         run: |
           set -o pipefail
-          if ! ./gradlew testDebugUnitTest --stacktrace 2>&1 | tee /tmp/unit.log; then
+          if ! ./scripts/gradle_retry.sh /tmp/unit.log testDebugUnitTest --stacktrace; then
             ERR_SUMMARY=$({ grep -E "e:|error:|FAILED" /tmp/unit.log | tail -n 15; grep -A 20 "What went wrong:" /tmp/unit.log | head -n 22; } | tr '\n' ' ')
             echo "::error title=UnitTestFailure::${ERR_SUMMARY}"
             exit 1
@@ -73,7 +79,7 @@ jobs:
 
       - name: Upload Test Reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unit-test-reports
           path: "**/build/reports/tests/testDebugUnitTest/**"

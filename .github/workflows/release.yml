@@ -22,14 +22,14 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Enforce Persian CHANGELOG.md entry on merge
         run: |
-          COMMIT_COUNT=$(git rev-list --count HEAD)
-          if (( COMMIT_COUNT > 2 )); then
+          set -euo pipefail
+          if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
             ENFORCE_CHANGELOG_DIFF=true BASE_REF=HEAD~1 ./scripts/check_changelog.sh
           else
             ./scripts/check_changelog.sh
@@ -43,9 +43,19 @@ jobs:
         env:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
-          ./scripts/bump_version.sh --base=HEAD~1
+          set -euo pipefail
+          if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+            ./scripts/bump_version.sh --base=HEAD~1
+          else
+            ./scripts/bump_version.sh
+          fi
           VERSION_NAME=$(grep -E '^MARBLE_VERSION_NAME=' gradle.properties | cut -d'=' -f2 | tr -d '[:space:]')
           VERSION_CODE=$(grep -E '^MARBLE_VERSION_CODE=' gradle.properties | cut -d'=' -f2 | tr -d '[:space:]')
+          if [[ -z "${VERSION_NAME}" || -z "${VERSION_CODE}" ]]; then
+            echo "::error title=VersionBumpFailure::نسخه‌دهی خودکار ناموفق بود (MARBLE_VERSION_NAME/CODE خالی است)."
+            exit 1
+          fi
+          echo "::notice::نسخه جدید: v${VERSION_NAME} (code ${VERSION_CODE})"
           echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
           echo "version_code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
 
@@ -66,13 +76,16 @@ jobs:
           cat "${RUNNER_TEMP}/release_notes.md"
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: "zulu"
           java-version: "21"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: "basic"
+          validate-wrappers: false
 
       - name: Prepare Release Keystore from GitHub Secrets
         env:
@@ -104,31 +117,43 @@ jobs:
           fi
 
       - name: Build Signed Release APKs (arm64-v8a, armeabi-v7a, x86, x86_64, universal)
-        run: ./gradlew testDebugUnitTest :app:assembleRelease --stacktrace
+        run: ./scripts/gradle_retry.sh /tmp/release-build.log testDebugUnitTest :app:assembleRelease --stacktrace
 
       - name: Rename and Collect All 5 Architecture APKs
         run: |
+          set -euo pipefail
           VERSION="${{ steps.bump.outputs.version_name }}"
           OUT_DIR="${RUNNER_TEMP}/release_apks"
           mkdir -p "${OUT_DIR}"
+          ls -lh app/build/outputs/apk/release
           for abi in "arm64-v8a" "armeabi-v7a" "x86" "x86_64" "universal"; do
-            SRC_APK=$(ls app/build/outputs/apk/release/*-"${abi}"-release*.apk | head -n 1)
+            SRC_APK=$(ls app/build/outputs/apk/release/*-"${abi}"-release*.apk 2>/dev/null | head -n 1 || true)
+            if [[ -z "${SRC_APK}" ]]; then
+              echo "::error title=MissingApk::APK معماری ${abi} تولید نشد."
+              exit 1
+            fi
             cp "${SRC_APK}" "${OUT_DIR}/MarbleBr-v${VERSION}-${abi}.apk"
+            echo "✅ ${abi}"
           done
           ls -lh "${OUT_DIR}"
 
       - name: Commit Bumped Version to main
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add gradle.properties
-          if ! git diff --staged --quiet; then
-            git commit -m "chore(release): v${{ steps.bump.outputs.version_name }} (code ${{ steps.bump.outputs.version_code }})"
-            git push origin HEAD:main
+          if git diff --staged --quiet; then
+            echo "ℹ️ نسخه تغییری نکرده است؛ Commit لازم نیست."
+            exit 0
           fi
+          git commit -m "chore(release): v${{ steps.bump.outputs.version_name }} (code ${{ steps.bump.outputs.version_code }})"
+          # آخرین تغییرات main (در صورت concurrent push) را دریافت و سپس push کن
+          git pull --rebase origin main || true
+          git push origin HEAD:main
 
       - name: Create GitHub Release and Attach All 5 APKs
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.bump.outputs.version_name }}
           name: MarbleBr v${{ steps.bump.outputs.version_name }}
