@@ -49,10 +49,22 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Run ktlint & detekt static analysis
-        run: ./gradlew ktlintCheck detekt --stacktrace
+        run: |
+          set -o pipefail
+          if ! ./gradlew ktlintCheck detekt --stacktrace 2>&1 | tee /tmp/lint.log; then
+            ERR_SUMMARY=$(grep -E "e:|error:|FAILURE:|What went wrong:|>\s|:[0-9]+:[0-9]+:" /tmp/lint.log | head -n 25 | tr '\n' ' ')
+            echo "::error title=StaticAnalysisFailure::${ERR_SUMMARY}"
+            exit 1
+          fi
 
       - name: Run Unit Tests (Vault, Health Guard, Version Algorithm, Browser)
-        run: ./gradlew testDebugUnitTest --stacktrace
+        run: |
+          set -o pipefail
+          if ! ./gradlew testDebugUnitTest --stacktrace 2>&1 | tee /tmp/test.log; then
+            ERR_SUMMARY=$(grep -E "e:|error:|FAILED|FAILURE:|What went wrong:|>\s" /tmp/test.log | head -n 25 | tr '\n' ' ')
+            echo "::error title=UnitTestFailure::${ERR_SUMMARY}"
+            exit 1
+          fi
 
       - name: Prepare Signing Keystore
         env:
@@ -84,7 +96,13 @@ jobs:
           fi
 
       - name: Assemble Release APKs (All ABIs + Universal)
-        run: ./gradlew :app:assembleRelease --stacktrace
+        run: |
+          set -o pipefail
+          if ! ./gradlew :app:assembleRelease --stacktrace 2>&1 | tee /tmp/assemble.log; then
+            ERR_SUMMARY=$(grep -E "e:|error:|FAILURE:|What went wrong:|>\s" /tmp/assemble.log | head -n 25 | tr '\n' ' ')
+            echo "::error title=AssembleReleaseFailure::${ERR_SUMMARY}"
+            exit 1
+          fi
 
       - name: Verify All 5 Required Architecture APKs Exist
         run: |
