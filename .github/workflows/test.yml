@@ -66,7 +66,7 @@ jobs:
         run: |
           set -o pipefail
           if ! ./gradlew testDebugUnitTest --stacktrace 2>&1 | tee /tmp/unit.log; then
-            ERR_SUMMARY=$(grep -E "e:|error:|FAILED|FAILURE:|What went wrong:|\.kt:[0-9]+|Execution failed" /tmp/unit.log | tail -n 30 | tr '\n' ' ')
+            ERR_SUMMARY=$(grep -E "e:|error:|FAILED|FAILURE:|What went wrong:|^\s+> |\.kt:[0-9]+|Execution failed|Could not" /tmp/unit.log | tail -n 35 | tr '\n' ' ')
             echo "::error title=UnitTestFailure::${ERR_SUMMARY}"
             exit 1
           fi
