@@ -154,6 +154,27 @@ def find_duplicate_yaml_keys(text: str) -> list[str]:
     return duplicates
 
 
+def test_run_blocks_are_intact() -> None:
+    """هیچ دستور run: نباید به‌دلیل تورفتگی نادرست به‌صورت ناقص تفسیر شود."""
+    try:
+        import yaml  # type: ignore
+    except ImportError:
+        return
+    for workflow in sorted(ud.WORKFLOWS_DIR.glob("*.y*ml")):
+        data = yaml.safe_load(workflow.read_text(encoding="utf-8"))
+        problems: list[str] = []
+        for job_name, job in (data.get("jobs") or {}).items():
+            for step in job.get("steps") or []:
+                if "run" not in step:
+                    continue
+                script = step["run"]
+                if not isinstance(script, str) or not script.strip():
+                    problems.append(f"{workflow.name}/{job_name}: run خالی")
+                elif "render_deps_table" in script and "python3 scripts/render_deps_table.py" not in script:
+                    problems.append(f"{workflow.name}: دستور render ناقص")
+        check(not problems, f"{workflow.name}: بلوک‌های run سالم {problems[:2]}")
+
+
 def test_duplicate_key_detector() -> None:
     """تشخیص‌دهنده کلید تکراری باید خطای واقعی را بگیرد و بلوک‌های جدا را اشتباه نگیرد."""
     bad = (
