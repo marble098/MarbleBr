@@ -84,7 +84,7 @@ class SmartKeepAliveWorker @AssistedInject constructor(
                                 ),
                                 targetCookieExpirationDays = container.cookieExpirationDays,
                                 triggerReason = "SMART_KEEP_ALIVE",
-                                label = "تمدید خودکار پس‌زمینه (Keep-alive)",
+                                label = "background-keep-alive",
                             )
                         }
                     }

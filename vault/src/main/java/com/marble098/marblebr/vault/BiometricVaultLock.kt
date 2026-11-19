@@ -14,7 +14,7 @@ import kotlin.coroutines.resume
 sealed interface BiometricAuthResult {
     data object Authenticated : BiometricAuthResult
     data object NotAvailableOrNotEnrolled : BiometricAuthResult
-    data class Failed(val messageFa: String) : BiometricAuthResult
+    data class Failed(val message: String) : BiometricAuthResult
 }
 
 /**
@@ -36,8 +36,8 @@ class BiometricVaultLock @Inject constructor(
 
     suspend fun authenticate(
         activity: FragmentActivity,
-        titleFa: String = "قفل امنیتی Session Vault",
-        subtitleFa: String = "برای دسترسی به اسنپ‌شات‌های رمزنگاری‌شده نشست، هویت خود را تأیید کنید",
+        title: String,
+        subtitle: String,
     ): BiometricAuthResult {
         if (!canAuthenticate()) {
             return BiometricAuthResult.NotAvailableOrNotEnrolled
@@ -54,17 +54,15 @@ class BiometricVaultLock @Inject constructor(
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                     if (continuation.isActive) {
-                        continuation.resume(
-                            BiometricAuthResult.Failed(errString.toString().ifBlank { "تأیید بیومتریک لغو شد" }),
-                        )
+                        continuation.resume(BiometricAuthResult.Failed(errString.toString()))
                     }
                 }
             }
 
             val prompt = BiometricPrompt(activity, executor, callback)
             val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                .setTitle(titleFa)
-                .setSubtitle(subtitleFa)
+                .setTitle(title)
+                .setSubtitle(subtitle)
                 .setAllowedAuthenticators(allowedAuthenticators)
                 .build()
 

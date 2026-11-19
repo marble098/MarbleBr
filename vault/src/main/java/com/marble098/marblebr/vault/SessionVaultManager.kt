@@ -48,7 +48,7 @@ class SessionVaultManager @Inject constructor(
         targetCookieExpirationDays: Int = CookiePersistenceConverter.DEFAULT_EXPIRATION_DAYS,
         maxSnapshotsToKeep: Int = DEFAULT_MAX_SNAPSHOTS_PER_CONTAINER,
         triggerReason: String = "AUTO_PERIODIC",
-        label: String = "اسنپ‌شات خودکار",
+        label: String = "",
     ): SessionSnapshotMeta {
         val promotedCookies = cookieConverter.promoteAll(
             cookies = payload.cookies,

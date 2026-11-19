@@ -3,8 +3,10 @@ package com.marble098.marblebr.engine
 import android.content.Context
 import com.marble098.marblebr.core.database.ContainerDao
 import com.marble098.marblebr.core.database.ContainerEntity
+import com.marble098.marblebr.core.i18n.LocalizationManager
 import com.marble098.marblebr.core.model.CookieRecord
 import com.marble098.marblebr.core.model.HealthGuardAction
+import com.marble098.marblebr.core.model.HealthReason
 import com.marble098.marblebr.core.model.ProxyDnsConfig
 import com.marble098.marblebr.core.model.ProxyType
 import com.marble098.marblebr.core.model.SessionHealthSignal
@@ -49,6 +51,7 @@ class ContainerSessionManager @Inject constructor(
     private val vaultManager: SessionVaultManager,
     private val healthGuard: SessionHealthGuard,
     private val adBlocker: LightweightAdBlocker,
+    private val localizationManager: LocalizationManager,
 ) {
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val activeSessions = ConcurrentHashMap<String, GeckoSession>()
@@ -136,7 +139,7 @@ class ContainerSessionManager @Inject constructor(
         onTitleChanged: (title: String) -> Unit = {},
         onProgressChanged: (progress: Int, isLoading: Boolean) -> Unit = { _, _ -> },
         onNavStateChanged: (canGoBack: Boolean, canGoForward: Boolean) -> Unit = { _, _ -> },
-        onHealthRestored: (reasonFa: String) -> Unit = {},
+        onHealthRestored: (reason: HealthReason) -> Unit = {},
         onServerRevokedFallbackRequired: (domain: String) -> Unit = {},
         onDownloadRequested: (url: String, userAgent: String?) -> Unit = { _, _ -> },
     ): GeckoSession {
@@ -188,6 +191,18 @@ class ContainerSessionManager @Inject constructor(
             GeckoSessionSettings.USER_AGENT_MODE_MOBILE
         }
         session.reload()
+    }
+
+    fun goBack(tabId: String) {
+        activeSessions[tabId]?.goBack()
+    }
+
+    fun goForward(tabId: String) {
+        activeSessions[tabId]?.goForward()
+    }
+
+    fun reload(tabId: String) {
+        activeSessions[tabId]?.reload()
     }
 
     fun findInPage(
@@ -264,7 +279,7 @@ class ContainerSessionManager @Inject constructor(
         session: GeckoSession,
         extension: WebExtension,
         container: WebAppContainer,
-        onHealthRestored: (String) -> Unit,
+        onHealthRestored: (HealthReason) -> Unit,
         onServerRevokedFallbackRequired: (String) -> Unit,
     ) {
         session.webExtensionController.setMessageDelegate(
@@ -299,7 +314,7 @@ class ContainerSessionManager @Inject constructor(
         eventType: String,
         session: GeckoSession,
         container: WebAppContainer,
-        onHealthRestored: (String) -> Unit,
+        onHealthRestored: (HealthReason) -> Unit,
         onServerRevokedFallbackRequired: (String) -> Unit,
     ) {
         val freshContainer = containerDao.getById(container.id)?.toDomain() ?: container
@@ -330,7 +345,7 @@ class ContainerSessionManager @Inject constructor(
                         payload = payload,
                         targetCookieExpirationDays = freshContainer.cookieExpirationDays,
                         triggerReason = "PAGE_LOAD_SYNC",
-                        label = "اسنپ‌شات خودکار (${freshContainer.domain})",
+                        label = localizationManager.current().autoSnapshotLabel(freshContainer.domain),
                     )
                 }
             }
@@ -349,7 +364,7 @@ class ContainerSessionManager @Inject constructor(
                 )
                 applyHealthGuardDecision(
                     assessmentAction = assessment.action,
-                    reasonFa = assessment.reasonFa,
+                    reason = assessment.reason,
                     session = session,
                     container = freshContainer,
                     onHealthRestored = onHealthRestored,
@@ -371,7 +386,7 @@ class ContainerSessionManager @Inject constructor(
                     )
                     applyHealthGuardDecision(
                         assessmentAction = assessment.action,
-                        reasonFa = assessment.reasonFa,
+                        reason = assessment.reason,
                         session = session,
                         container = freshContainer,
                         onHealthRestored = onHealthRestored,
@@ -390,7 +405,7 @@ class ContainerSessionManager @Inject constructor(
         onTitleChanged: (title: String) -> Unit,
         onProgressChanged: (progress: Int, isLoading: Boolean) -> Unit,
         onNavStateChanged: (canGoBack: Boolean, canGoForward: Boolean) -> Unit,
-        onHealthRestored: (reasonFa: String) -> Unit,
+        onHealthRestored: (HealthReason) -> Unit,
         onServerRevokedFallbackRequired: (domain: String) -> Unit,
         onDownloadRequested: (url: String, userAgent: String?) -> Unit,
     ) {
@@ -421,7 +436,7 @@ class ContainerSessionManager @Inject constructor(
                         )
                         applyHealthGuardDecision(
                             assessmentAction = assessment.action,
-                            reasonFa = assessment.reasonFa,
+                            reason = assessment.reason,
                             session = session,
                             container = freshContainer,
                             onHealthRestored = onHealthRestored,
@@ -495,10 +510,10 @@ class ContainerSessionManager @Inject constructor(
 
     private suspend fun applyHealthGuardDecision(
         assessmentAction: HealthGuardAction,
-        reasonFa: String,
+        reason: HealthReason,
         session: GeckoSession,
         container: WebAppContainer,
-        onHealthRestored: (String) -> Unit,
+        onHealthRestored: (HealthReason) -> Unit,
         onServerRevokedFallbackRequired: (String) -> Unit,
     ) {
         when (assessmentAction) {
@@ -506,7 +521,7 @@ class ContainerSessionManager @Inject constructor(
                 val restored = vaultManager.restoreLatestHealthySnapshot(container.id)
                 if (restored != null) {
                     session.reload()
-                    onHealthRestored(reasonFa)
+                    onHealthRestored(reason)
                 }
             }
             HealthGuardAction.ESCALATE_TO_CREDENTIAL_FALLBACK -> {
