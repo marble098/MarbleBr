@@ -117,7 +117,7 @@ jobs:
           fi
 
       - name: Build Signed Release APKs (arm64-v8a, armeabi-v7a, x86, x86_64, universal)
-        run: ./gradlew testDebugUnitTest :app:assembleRelease --stacktrace
+        run: ./scripts/gradle_retry.sh /tmp/release-build.log testDebugUnitTest :app:assembleRelease --stacktrace
 
       - name: Rename and Collect All 5 Architecture APKs
         run: |

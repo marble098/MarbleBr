@@ -110,8 +110,9 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          ./gradlew ktlintCheck detekt testDebugUnitTest :app:assembleDebug --stacktrace 2>&1 | tee /tmp/verify.log
-          echo "verify_exit=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          set +e
+          ./scripts/gradle_retry.sh /tmp/verify.log ktlintCheck detekt testDebugUnitTest :app:assembleDebug --stacktrace
+          echo "verify_exit=$?" >> "$GITHUB_OUTPUT"
 
       - name: Verify scripts (changelog + version bump)
         if: steps.update.outputs.updated == 'true' && inputs.dry_run != true
