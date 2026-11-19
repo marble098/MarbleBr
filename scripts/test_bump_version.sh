@@ -19,19 +19,19 @@ assert_eq() {
 
 echo "Running unit tests for MarbleBr Semantic Versioning algorithm..."
 
-# 1. Patch bump (< 50 lines)
+# 1. Patch bump (< 500 lines)
 assert_eq "1.2.4" "$(compute_next_semver "1.2.3" 0 false)" "0 lines -> patch++"
 assert_eq "1.2.4" "$(compute_next_semver "1.2.3" 12 false)" "12 lines -> patch++"
-assert_eq "1.2.4" "$(compute_next_semver "1.2.3" 49 false)" "49 lines -> patch++"
+assert_eq "1.2.4" "$(compute_next_semver "1.2.3" 499 false)" "499 lines -> patch++"
 
-# 2. Minor bump (50 .. 500 lines)
-assert_eq "1.3.0" "$(compute_next_semver "1.2.3" 50 false)" "50 lines -> minor++ and patch=0"
-assert_eq "1.3.0" "$(compute_next_semver "1.2.3" 240 false)" "240 lines -> minor++ and patch=0"
+# 2. Minor bump (500 .. 5000 lines)
 assert_eq "1.3.0" "$(compute_next_semver "1.2.3" 500 false)" "500 lines -> minor++ and patch=0"
+assert_eq "1.3.0" "$(compute_next_semver "1.2.3" 2400 false)" "2400 lines -> minor++ and patch=0"
+assert_eq "1.3.0" "$(compute_next_semver "1.2.3" 5000 false)" "5000 lines -> minor++ and patch=0"
 
-# 3. Major bump (> 500 lines or breaking change)
-assert_eq "2.0.0" "$(compute_next_semver "1.2.3" 501 false)" "501 lines -> major++ and minor=0, patch=0"
-assert_eq "2.0.0" "$(compute_next_semver "1.2.3" 1850 false)" "1850 lines -> major++ and minor=0, patch=0"
+# 3. Major bump (> 5000 lines or breaking change)
+assert_eq "2.0.0" "$(compute_next_semver "1.2.3" 5001 false)" "5001 lines -> major++ and minor=0, patch=0"
+assert_eq "2.0.0" "$(compute_next_semver "1.2.3" 18500 false)" "18500 lines -> major++ and minor=0, patch=0"
 assert_eq "2.0.0" "$(compute_next_semver "1.2.3" 10 true)" "10 lines with breaking=true -> major++"
 
 # 4. Excluded lock & generated files in git diff --numstat

@@ -7,9 +7,9 @@ import java.io.File
  *
  * قوانین:
  * - حجم تغییر = مجموع خطوط اضافه‌شده + حذف‌شده در diff، به‌جز فایل‌های lock و generated.
- * - کمتر از ۵۰ خط (< 50): patch++
- * - بین ۵۰ تا ۵۰۰ خط (50..500): minor++ و patch = 0
- * - بیش از ۵۰۰ خط (> 500) یا تغییر breaking: major++ و minor = 0, patch = 0
+ * - کمتر از ۵۰۰ خط (< 500): patch++
+ * - بین ۵۰۰ تا ۵۰۰۰ خط (500..5000): minor++ و patch = 0
+ * - بیش از ۵۰۰۰ خط (> 5000) یا تغییر breaking: major++ و minor = 0, patch = 0
  * - versionCode = max(currentVersionCode + 1, commitCount + runNumber) (همیشه صعودی)
  */
 data class SemanticVersion(val major: Int, val minor: Int, val patch: Int) {
@@ -90,12 +90,12 @@ object VersionBumpCalculator {
     ): SemanticVersion {
         require(changedLines >= 0) { "changedLines must be non-negative" }
         return when {
-            isBreaking || changedLines > 500 -> SemanticVersion(
+            isBreaking || changedLines > 5000 -> SemanticVersion(
                 major = current.major + 1,
                 minor = 0,
                 patch = 0,
             )
-            changedLines >= 50 -> SemanticVersion(
+            changedLines >= 500 -> SemanticVersion(
                 major = current.major,
                 minor = current.minor + 1,
                 patch = 0,

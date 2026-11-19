@@ -1,5 +1,8 @@
 package com.marble098.marblebr.feature.browser
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -84,6 +87,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -210,6 +214,7 @@ fun BrowserScreen(
                         }
                         BrowserOverflowMenu(
                             expanded = showOverflowMenu,
+                            pageUrl = activeTab?.url,
                             onDismiss = { showOverflowMenu = false },
                             isDesktopMode = activeTab?.isDesktopMode == true,
                             downloadsCount = downloads.size,
@@ -484,6 +489,7 @@ fun BrowserScreen(
 
 @Composable
 private fun BrowserOverflowMenu(
+    pageUrl: String?,
     expanded: Boolean,
     onDismiss: () -> Unit,
     isDesktopMode: Boolean,
@@ -498,7 +504,25 @@ private fun BrowserOverflowMenu(
     onOpenSettings: () -> Unit,
 ) {
     val strings = LocalMarbleStrings.current
+    val context = LocalContext.current
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        if (!pageUrl.isNullOrBlank()) {
+            DropdownMenuItem(
+                text = { Text(strings.copyLink) },
+                onClick = {
+                    onDismiss()
+                    context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText(strings.copyLink, pageUrl))
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(strings.shareLink) },
+                onClick = {
+                    onDismiss()
+                    val share = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, pageUrl)
+                    context.startActivity(Intent.createChooser(share, strings.shareLink))
+                },
+            )
+        }
         MenuEntry(
             title = strings.menuSaveState,
             subtitle = strings.menuSaveStateHint,
