@@ -128,7 +128,7 @@ jobs:
           fi
 
       - name: Create GitHub Release and Attach All 5 APKs
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.bump.outputs.version_name }}
           name: MarbleBr v${{ steps.bump.outputs.version_name }}
