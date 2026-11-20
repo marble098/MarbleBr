@@ -35,6 +35,7 @@ import com.marble098.marblebr.core.preferences.BrowserPreferencesRepository
 import com.marble098.marblebr.engine.CredentialFallbackAuthenticator
 import com.marble098.marblebr.feature.browser.BrowserScreen
 import com.marble098.marblebr.feature.browser.BrowserViewModel
+import com.marble098.marblebr.feature.browser.PwaShortcutInstaller
 import com.marble098.marblebr.feature.browser.RateAppDialog
 import com.marble098.marblebr.feature.settings.SettingsScreen
 import com.marble098.marblebr.feature.settings.SettingsViewModel
@@ -59,7 +60,7 @@ class MainActivity : AppCompatActivity() {
     @Inject
     lateinit var credentialFallbackAuthenticator: CredentialFallbackAuthenticator
 
-    private var incomingUrl by mutableStateOf<String?>(null)
+    private var incomingNavigation by mutableStateOf<IncomingNavigation?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,7 +71,7 @@ class MainActivity : AppCompatActivity() {
             navigationBarStyle = SystemBarStyle.auto(LIGHT_SCRIM, DARK_SCRIM),
         )
 
-        if (savedInstanceState == null) incomingUrl = resolveIncomingUrl(intent)
+        if (savedInstanceState == null) incomingNavigation = resolveIncomingNavigation(intent)
 
         setContent {
             val prefs by preferencesRepository.preferencesFlow.collectAsState(initial = BrowserPreferences())
@@ -136,8 +137,9 @@ class MainActivity : AppCompatActivity() {
             ) {
                 MarbleBrAppNavHost(
                     activity = this@MainActivity,
-                    initialUrl = incomingUrl,
-                    onUrlConsumed = { incomingUrl = null },
+                    initialUrl = incomingNavigation?.url,
+                    pinnedContainerId = incomingNavigation?.pinnedContainerId,
+                    onUrlConsumed = { incomingNavigation = null },
                     biometricVaultLock = biometricVaultLock,
                     credentialFallbackAuthenticator = credentialFallbackAuthenticator,
                 )
@@ -148,18 +150,23 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        incomingUrl = resolveIncomingUrl(intent) ?: incomingUrl
+        incomingNavigation = resolveIncomingNavigation(intent) ?: incomingNavigation
     }
 
-    private fun resolveIncomingUrl(intent: Intent?): String? {
+    private fun resolveIncomingNavigation(intent: Intent?): IncomingNavigation? {
         val text = when (intent?.action) {
             Intent.ACTION_VIEW -> intent.dataString
             Intent.ACTION_SEND -> if (intent.type == "text/plain") intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString() else null
             else -> null
         } ?: return null
-        return Regex("https?://[^\\s<>]+", RegexOption.IGNORE_CASE).find(text)?.value
-            ?.takeIf { !Uri.parse(it).host.isNullOrBlank() }
+        val url = Regex("https?://[^\\s<>]+", RegexOption.IGNORE_CASE).find(text)?.value
+            ?.takeIf { !Uri.parse(it).host.isNullOrBlank() } ?: return null
+        val pinned = intent?.takeIf { it.action == Intent.ACTION_VIEW }
+            ?.getStringExtra(PwaShortcutInstaller.EXTRA_CONTAINER_ID)
+        return IncomingNavigation(url, pinned)
     }
+
+    private data class IncomingNavigation(val url: String, val pinnedContainerId: String?)
 
     private companion object {
         val LIGHT_SCRIM: Int = Color.argb(0xE6, 0xFF, 0xFF, 0xFF)
@@ -175,6 +182,7 @@ fun MarbleBrAppNavHost(
     credentialFallbackAuthenticator: CredentialFallbackAuthenticator,
     renderGeckoWebView: Boolean = true,
     onUrlConsumed: () -> Unit = {},
+    pinnedContainerId: String? = null,
 ) {
     val navController = rememberNavController()
     val coroutineScope = rememberCoroutineScope()
@@ -200,9 +208,9 @@ fun MarbleBrAppNavHost(
     ) {
         composable("browser") {
             val browserViewModel: BrowserViewModel = hiltViewModel()
-            LaunchedEffect(initialUrl) {
+            LaunchedEffect(initialUrl, pinnedContainerId) {
                 if (!initialUrl.isNullOrBlank()) {
-                    browserViewModel.openNewTab(initialUrl)
+                    browserViewModel.openNewTab(initialUrl, pinnedContainerId = pinnedContainerId)
                     onUrlConsumed()
                 }
             }

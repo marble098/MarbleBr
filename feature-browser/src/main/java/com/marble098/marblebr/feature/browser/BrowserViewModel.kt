@@ -13,19 +13,16 @@ import com.marble098.marblebr.core.i18n.LocalizationManager
 import com.marble098.marblebr.core.i18n.MarbleStrings
 import com.marble098.marblebr.core.model.BookmarkItem
 import com.marble098.marblebr.core.model.BrowserTab
-import com.marble098.marblebr.core.model.CookieRecord
 import com.marble098.marblebr.core.model.DownloadItem
 import com.marble098.marblebr.core.model.HealthReason
 import com.marble098.marblebr.core.model.HistoryItem
 import com.marble098.marblebr.core.model.SessionHealthStatus
-import com.marble098.marblebr.core.model.SessionSnapshotPayload
 import com.marble098.marblebr.core.model.WebAppContainer
 import com.marble098.marblebr.core.preferences.BrowserPreferences
 import com.marble098.marblebr.core.preferences.BrowserPreferencesRepository
 import com.marble098.marblebr.core.preferences.SavedBrowserTabs
 import com.marble098.marblebr.engine.ContainerSessionManager
 import com.marble098.marblebr.engine.LightweightAdBlocker
-import com.marble098.marblebr.vault.SessionVaultManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -62,7 +59,6 @@ data class BrowserUiState(
 class BrowserViewModel @Inject constructor(
     val sessionManager: ContainerSessionManager,
     private val urlResolver: SmartAddressUrlResolver,
-    private val vaultManager: SessionVaultManager,
     private val containerDao: ContainerDao,
     private val bookmarkDao: BookmarkDao,
     private val historyDao: HistoryDao,
@@ -108,7 +104,7 @@ class BrowserViewModel @Inject constructor(
 
     private suspend fun restoreTabs() {
         val saved = preferencesRepository.savedBrowserTabs.first()
-        if (saved == null) {
+        if (saved == null || saved.tabs.isEmpty()) {
             if (preferencesRepository.preferencesFlow.first().openGoogleOnNewTab) {
                 loadPage(createTab(isPrivate = false), GOOGLE_HOME)
             }
@@ -152,12 +148,17 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
-    fun openNewTab(initialUrl: String? = null, isPrivate: Boolean = false) {
+    fun openNewTab(initialUrl: String? = null, isPrivate: Boolean = false, pinnedContainerId: String? = null) {
         viewModelScope.launch {
             restore.join()
             val tab = createTab(isPrivate)
             val input = initialUrl ?: if (!isPrivate && preferencesRepository.preferencesFlow.first().openGoogleOnNewTab) GOOGLE_HOME else ""
-            if (input.isNotBlank()) loadPage(tab, input)
+            val pinned = if (!isPrivate && pinnedContainerId != null) {
+                containerDao.getById(pinnedContainerId)?.toDomain()?.takeIf { it.isPinnedPwa && it.pwaStartUrl == input }
+            } else {
+                null
+            }
+            if (input.isNotBlank() && uiState.value.tabs.any { it.id == tab.id }) loadPage(tab, input, pinned)
         }
     }
 
@@ -179,14 +180,20 @@ class BrowserViewModel @Inject constructor(
 
     private fun loadPage(tab: BrowserTab, input: String, preferredContainer: WebAppContainer? = null) {
         pendingNavigation.remove(tab.id)?.cancel()
-        toggleFindInPage(false)
-        updateTab(tab.id) { it.copy(isLoading = true, progress = 0) }
-        _uiState.update { it.copy(showHome = false) }
+        if (_uiState.value.activeTabId == tab.id) toggleFindInPage(false)
+        _uiState.update { state ->
+            state.copy(
+                tabs = state.tabs.map { if (it.id == tab.id) it.copy(isLoading = true, progress = 0) else it },
+                showHome = state.showHome && state.activeTabId != tab.id,
+            )
+        }
         val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
             try {
                 val target = urlResolver.resolveInputToUrl(input, preferencesRepository.preferencesFlow.first().searchEngineTemplate)
-                val container = preferredContainer ?: if (tab.isPrivate) {
-                    WebAppContainer(id = tab.id, domain = ContainerSessionManager.extractDomain(target), displayName = "")
+                val domain = ContainerSessionManager.extractDomain(target)
+                val pinned = containers[tab.id]?.takeIf { it.isPinnedPwa && it.domain == domain }
+                val container = preferredContainer ?: pinned ?: if (tab.isPrivate) {
+                    WebAppContainer(id = tab.id, domain = domain, displayName = "")
                 } else {
                     sessionManager.getOrCreateContainerForUrl(target)
                 }
@@ -211,6 +218,7 @@ class BrowserViewModel @Inject constructor(
                 throw exception
             } catch (_: Exception) {
                 updateTab(tab.id) { it.copy(isLoading = false) }
+                if (tab.url.isBlank() && uiState.value.activeTabId == tab.id) showHome()
                 showBanner(localizationManager.current().navigationFailed)
             } finally {
                 if (pendingNavigation[tab.id] === coroutineContext[Job]) pendingNavigation.remove(tab.id)
@@ -397,31 +405,8 @@ class BrowserViewModel @Inject constructor(
             val tab = _uiState.value.activeTab ?: return@launch
             val strings = localizationManager.current()
             if (tab.url.isBlank() || tab.isPrivate) return@launch
-            val container = _uiState.value.activeContainer
-                ?: sessionManager.getOrCreateContainerForUrl(tab.url)
-
-            val payload = SessionSnapshotPayload(
-                origin = tab.url,
-                containerId = container.id,
-                capturedAtEpochMillis = System.currentTimeMillis(),
-                cookies = listOf(
-                    CookieRecord(
-                        name = "marble_persistent_session",
-                        value = "active_${System.currentTimeMillis()}",
-                        domain = container.domain,
-                        isSessionOnly = false,
-                    ),
-                ),
-                localStorage = mapOf("origin" to tab.url, "persisted_by" to "MarbleBr"),
-                storagePersisted = true,
-            )
-            vaultManager.captureSnapshot(
-                payload = payload,
-                targetCookieExpirationDays = container.cookieExpirationDays,
-                triggerReason = "MANUAL_USER_CAPTURE",
-                label = strings.manualSnapshotLabel(container.domain),
-            )
-            showBanner(strings.bannerSnapshotSaved)
+            val saved = sessionManager.capturePageSnapshot(tab.id, tab.url)
+            showBanner(if (saved) strings.bannerSnapshotSaved else strings.snapshotUnavailable)
         }
     }
 
@@ -441,9 +426,13 @@ class BrowserViewModel @Inject constructor(
     fun enqueueDownload(url: String) {
         viewModelScope.launch {
             val strings = localizationManager.current()
-            downloadLauncher.enqueueDownload(url = url)
-            showBanner(strings.bannerDownloadStarted)
+            val started = downloadLauncher.enqueueDownload(url = url)
+            showBanner(if (started) strings.bannerDownloadStarted else strings.downloadFailed)
         }
+    }
+
+    suspend fun refreshDownloads() {
+        downloadLauncher.refreshDownloads()
     }
 
     fun onPageLocationChanged(tabId: String, url: String, isSecure: Boolean) {

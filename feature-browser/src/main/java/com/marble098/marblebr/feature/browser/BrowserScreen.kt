@@ -4,6 +4,12 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -115,10 +121,13 @@ import com.marble098.marblebr.core.preferences.AddressSelectionMode
 import com.marble098.marblebr.core.model.BookmarkItem
 import com.marble098.marblebr.core.model.BrowserTab
 import com.marble098.marblebr.core.model.DownloadItem
+import com.marble098.marblebr.core.model.DownloadState
 import com.marble098.marblebr.core.model.HistoryItem
 import com.marble098.marblebr.core.model.HomeShortcutPosition
 import com.marble098.marblebr.core.model.SessionHealthStatus
 import com.marble098.marblebr.core.model.WebAppContainer
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import org.mozilla.geckoview.GeckoView
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -204,7 +213,7 @@ fun BrowserScreen(
 
                     key(activeTab?.id) {
                         BrowserAddressField(
-                            url = activeTab?.url.orEmpty(),
+                            url = if (showHome) "" else activeTab?.url.orEmpty(),
                             secure = activeTab?.isSecure == true,
                             isBookmarked = isBookmarked,
                             canBookmark = hasPage && activeTab?.isPrivate != true,
@@ -327,12 +336,17 @@ fun BrowserScreen(
                         if (progress == 0f) {
                             LinearProgressIndicator(modifier = Modifier.fillMaxSize())
                         } else {
-                            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxSize())
+                            val visibleProgress by animateFloatAsState(progress, label = "page load")
+                            LinearProgressIndicator(progress = { visibleProgress }, modifier = Modifier.fillMaxSize())
                         }
                     }
                 }
 
-                if (uiState.isFindInPageVisible) {
+                AnimatedVisibility(
+                    visible = uiState.isFindInPageVisible,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically(),
+                ) {
                     FindInPageBar(
                         query = uiState.findQuery,
                         matchIndex = activeTab?.findMatchIndex ?: 0,
@@ -453,7 +467,7 @@ fun BrowserScreen(
                 key(activeTab.id, activeTab.contextId) {
                     GeckoSessionWebView(tab = activeTab, container = container, viewModel = viewModel)
                 }
-            } else {
+            } else if (!renderGeckoWebView || isInspection) {
                 ReadyCard(
                     tab = activeTab,
                     onCaptureSnapshot = viewModel::captureManualSnapshotNow,
@@ -489,6 +503,12 @@ fun BrowserScreen(
     }
 
     if (showDownloadsSheet) {
+        LaunchedEffect(Unit) {
+            while (isActive) {
+                viewModel.refreshDownloads()
+                delay(1_500)
+            }
+        }
         ModalBottomSheet(onDismissRequest = { showDownloadsSheet = false }) {
             DownloadsSheet(downloads = downloads)
         }
@@ -1338,8 +1358,18 @@ private fun DownloadsSheet(downloads: List<DownloadItem>) {
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                            val total = dl.totalBytes
+                            val status = when (dl.state) {
+                                DownloadState.COMPLETED -> strings.savedPath(dl.destinationPath)
+                                DownloadState.FAILED -> strings.downloadFailed
+                                DownloadState.IN_PROGRESS -> strings.downloadInProgress
+                            }
+                            if (dl.state == DownloadState.IN_PROGRESS && total > 0) {
+                                val fraction = (dl.downloadedBytes.toFloat() / total).coerceIn(0f, 1f)
+                                LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+                            }
                             Text(
-                                text = strings.savedPath(dl.destinationPath),
+                                text = status,
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.primary,
                             )

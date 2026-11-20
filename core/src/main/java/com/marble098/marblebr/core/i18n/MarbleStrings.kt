@@ -112,6 +112,9 @@ abstract class MarbleStrings {
     abstract val bannerCacheCleared: String
     abstract val bannerHistoryCleared: String
     abstract val bannerDownloadStarted: String
+    abstract val downloadFailed: String
+    abstract val downloadInProgress: String
+    abstract val snapshotUnavailable: String
     abstract val bannerDesktopOn: String
     abstract val bannerDesktopOff: String
 
@@ -411,6 +414,9 @@ private object PersianStrings : MarbleStrings() {
     override val bannerCacheCleared = "حافظه موقت خالی شد و همچنان وارد حساب‌هایت هستی"
     override val bannerHistoryCleared = "تاریخچه پاک شد"
     override val bannerDownloadStarted = "دانلود شروع شد"
+    override val downloadFailed = "دانلود ناموفق بود"
+    override val downloadInProgress = "در حال دانلود"
+    override val snapshotUnavailable = "برای این صفحه دادهٔ نشست قابل ذخیره در دسترس نیست."
     override val bannerDesktopOn = "حالا نسخه دسکتاپ را می‌بینی"
     override val bannerDesktopOff = "حالا نسخه موبایل را می‌بینی"
 
@@ -645,6 +651,9 @@ private object EnglishStrings : MarbleStrings() {
     override val bannerCacheCleared = "Temporary files cleared — you’re still signed in"
     override val bannerHistoryCleared = "History cleared"
     override val bannerDownloadStarted = "Download started"
+    override val downloadFailed = "Download failed"
+    override val downloadInProgress = "Downloading"
+    override val snapshotUnavailable = "This page has no session data available to save."
     override val bannerDesktopOn = "Desktop version is on"
     override val bannerDesktopOff = "Mobile version is on"
 

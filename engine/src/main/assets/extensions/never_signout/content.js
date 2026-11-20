@@ -56,7 +56,8 @@
       cookieString: document.cookie || "",
       localStorage: localDump,
       sessionStorage: sessionDump,
-      indexedDbDump: idbDump
+      indexedDbDump: idbDump,
+      storagePersisted: await navigator.storage?.persisted?.().catch(() => false) === true
     };
   }
 
@@ -86,6 +87,17 @@
   }
 
   ensurePersistentStorage();
+
+  try {
+    const port = browser.runtime.connectNative(NATIVE_APP);
+    port.onMessage.addListener(async (message) => {
+      if (message?.type !== "CAPTURE_PAGE") return;
+      try {
+        const snapshot = await collectStorageSnapshot();
+        port.postMessage({ ...snapshot, requestId: message.requestId });
+      } catch (e) {}
+    });
+  } catch (e) {}
 
   window.addEventListener("DOMContentLoaded", () => {
     setTimeout(async () => {

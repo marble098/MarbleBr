@@ -1,7 +1,8 @@
 {
   "manifest_version": 2,
   "name": "MarbleBr Never Sign-out Engine",
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "incognito": "not_allowed",
   "description": "Internal engine extension for persistent sessions, storage.persist(), encrypted vault snapshots, and health guard telemetry-free monitoring.",
   "browser_specific_settings": {
     "gecko": {
@@ -16,6 +17,7 @@
     "webRequestBlocking",
     "geckoViewAddons",
     "nativeMessaging",
+    "nativeMessagingFromContent",
     "<all_urls>"
   ],
   "background": {
