@@ -9,6 +9,7 @@ import androidx.compose.animation.animateFloatAsState
 import androidx.compose.animation.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -372,57 +374,57 @@ fun BrowserScreen(
                 }
             }
         },
-        bottomBar = if (showHome) {
-            null
-        } else {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
-            ) {
-                NavigationBarItem(
-                    selected = bottomBarIndex == HOME_BOTTOM_INDEX,
-                    onClick = { showHome = true; bottomBarIndex = HOME_BOTTOM_INDEX },
-                    icon = { Icon(Icons.Default.Home, contentDescription = strings.homeTitle) },
-                    label = { Text(strings.homeTitle) },
-                    modifier = Modifier.testTag("nav_home_btn"),
-                )
-                NavigationBarItem(
-                    selected = bottomBarIndex == TABS_BOTTOM_INDEX,
-                    onClick = {
-                        showHome = false
-                        bottomBarIndex = TABS_BOTTOM_INDEX
-                        showTabsSheet = true
-                    },
-                    icon = {
-                        BadgedBox(
-                            badge = { Badge { Text("${uiState.tabs.size}") } },
-                        ) {
-                            Icon(Icons.Default.Tab, contentDescription = strings.tabsLabel)
-                        }
-                    },
-                    label = { Text(strings.tabsLabel) },
-                    modifier = Modifier.testTag("nav_tabs_btn"),
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = { onOpenVaultDashboard(activeTab?.containerId) },
-                    icon = { Icon(Icons.Default.Shield, contentDescription = strings.protectionLabel) },
-                    label = { Text(strings.protectionLabel) },
-                    modifier = Modifier.testTag("nav_vault_btn"),
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = { showBookmarksHistorySheet = true },
-                    icon = { Icon(Icons.Default.Bookmark, contentDescription = strings.bookmarksLabel) },
-                    label = { Text(strings.bookmarksLabel) },
-                    modifier = Modifier.testTag("nav_bookmarks_btn"),
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onOpenSettings,
-                    icon = { Icon(Icons.Default.Settings, contentDescription = strings.settingsLabel) },
-                    label = { Text(strings.settingsLabel) },
-                    modifier = Modifier.testTag("nav_settings_btn"),
-                )
+        bottomBar = {
+            if (!showHome) {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                ) {
+                    NavigationBarItem(
+                        selected = bottomBarIndex == HOME_BOTTOM_INDEX,
+                        onClick = { showHome = true; bottomBarIndex = HOME_BOTTOM_INDEX },
+                        icon = { Icon(Icons.Default.Home, contentDescription = strings.homeTitle) },
+                        label = { Text(strings.homeTitle) },
+                        modifier = Modifier.testTag("nav_home_btn"),
+                    )
+                    NavigationBarItem(
+                        selected = bottomBarIndex == TABS_BOTTOM_INDEX,
+                        onClick = {
+                            showHome = false
+                            bottomBarIndex = TABS_BOTTOM_INDEX
+                            showTabsSheet = true
+                        },
+                        icon = {
+                            BadgedBox(
+                                badge = { Badge { Text("${uiState.tabs.size}") } },
+                            ) {
+                                Icon(Icons.Default.Tab, contentDescription = strings.tabsLabel)
+                            }
+                        },
+                        label = { Text(strings.tabsLabel) },
+                        modifier = Modifier.testTag("nav_tabs_btn"),
+                    )
+                    NavigationBarItem(
+                        selected = false,
+                        onClick = { onOpenVaultDashboard(activeTab?.containerId) },
+                        icon = { Icon(Icons.Default.Shield, contentDescription = strings.protectionLabel) },
+                        label = { Text(strings.protectionLabel) },
+                        modifier = Modifier.testTag("nav_vault_btn"),
+                    )
+                    NavigationBarItem(
+                        selected = false,
+                        onClick = { showBookmarksHistorySheet = true },
+                        icon = { Icon(Icons.Default.Bookmark, contentDescription = strings.bookmarksLabel) },
+                        label = { Text(strings.bookmarksLabel) },
+                        modifier = Modifier.testTag("nav_bookmarks_btn"),
+                    )
+                    NavigationBarItem(
+                        selected = false,
+                        onClick = onOpenSettings,
+                        icon = { Icon(Icons.Default.Settings, contentDescription = strings.settingsLabel) },
+                        label = { Text(strings.settingsLabel) },
+                        modifier = Modifier.testTag("nav_settings_btn"),
+                    )
+                }
             }
         }
     ) { innerPadding ->
