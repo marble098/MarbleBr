@@ -300,6 +300,24 @@ enum class ThemeMode {
 }
 
 /**
+ * رفتار دکمهٔ «بازگشت» گوشی.
+ *
+ * - `SMART` (پیش‌فرض): اگر صفحه‌ی وب عقب‌تر برود به همان صفحه برمی‌گردد، در غیر این‌صورت به خانه.
+ * - `PAGE_THEN_HOME`: همیشه اول صفحه‌ی قبلی وب و بعد خانه.
+ * - `HOME`: همیشه مستقیم به خانه می‌رود.
+ * - `PAGE_THEN_EXIT`: اول صفحه‌ی قبلی وب و در نهایت خروج از برنامه.
+ * - `ASK`: هر بار از کاربر می‌پرسد که چه کاری انجام شود.
+ */
+@Serializable
+enum class BackButtonBehavior {
+    SMART,
+    PAGE_THEN_HOME,
+    HOME,
+    PAGE_THEN_EXIT,
+    ASK,
+}
+
+/**
  * موتورهای جستجوی پیش‌فرضی که کاربر می‌تواند در صفحه‌ی خانه و نوار آدرس از بین آن‌ها انتخاب کند.
  */
 @Serializable
@@ -334,6 +352,20 @@ enum class HomeShortcutPosition {
     NONE,
     TOP,
     BOTTOM,
+}
+
+/**
+ * شکل و شفافیت نوارهای مرورگر (بالا و پایین).
+ *
+ * - `SOLID`: پس‌زمینهٔ یکدست و مات.
+ * - `GLASS`: شیشه‌ای مات با هالهٔ رنگی (رفتار قدیمی).
+ * - `FLOATING`: کاملاً شیشه‌ای و شناور، بدون هیچ پس‌زمینه‌ای — محتوا از پشت نوار دیده می‌شود.
+ */
+@Serializable
+enum class ChromeBarStyle {
+    SOLID,
+    GLASS,
+    FLOATING,
 }
 
 @Serializable

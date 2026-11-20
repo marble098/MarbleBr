@@ -485,6 +485,18 @@ class BrowserViewModel @Inject constructor(
         _uiState.update { it.copy(fallbackPromptDomain = null) }
     }
 
+    /**
+     * نتیجهٔ عکس‌برداری از صفحه را به کاربر اطلاع می‌دهد.
+     * مسیر خالی/`null` یعنی عکس گرفته نشد.
+     */
+    fun reportScreenshot(path: String?) {
+        if (path.isNullOrBlank()) {
+            showLocalizedBanner { it.snapshotUnavailable }
+        } else {
+            showBanner("✓ " + path.substringAfterLast('/'))
+        }
+    }
+
     fun dismissBanner() {
         _uiState.update { it.copy(bannerMessage = null) }
     }

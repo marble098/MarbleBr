@@ -14,6 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,9 +41,14 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowRightAlt
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Download
@@ -50,6 +56,7 @@ import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.InstallMobile
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
@@ -63,7 +70,6 @@ import androidx.compose.material.icons.filled.Tab
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
@@ -88,6 +94,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import android.content.Context
+import android.content.ContextWrapper
+import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
@@ -98,6 +107,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.key.Key
@@ -118,11 +128,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
 import com.marble098.marblebr.core.preferences.AddressSelectionMode
+import com.marble098.marblebr.core.model.BackNavigationResolver
+import com.marble098.marblebr.core.model.BackTarget
 import com.marble098.marblebr.core.model.BookmarkItem
 import com.marble098.marblebr.core.model.BrowserTab
 import com.marble098.marblebr.core.model.DownloadItem
 import com.marble098.marblebr.core.model.DownloadState
 import com.marble098.marblebr.core.model.HistoryItem
+import com.marble098.marblebr.core.model.ChromeBarStyle
+import com.marble098.marblebr.core.model.MarbleLinks
+import com.marble098.marblebr.core.preferences.BrowserPreferences
 import com.marble098.marblebr.core.model.HomeShortcutPosition
 import com.marble098.marblebr.core.model.SessionHealthStatus
 import com.marble098.marblebr.core.model.WebAppContainer
@@ -153,11 +168,15 @@ fun BrowserScreen(
     var showBookmarksHistorySheet by remember { mutableStateOf(false) }
     var showDownloadsSheet by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
+    var showQuickActions by remember { mutableStateOf(false) }
+    var backPromptVisible by remember { mutableStateOf(false) }
+    var pendingCloseTabId by remember { mutableStateOf<String?>(null) }
 
     val activeTab = uiState.activeTab
     val hasHomeShortcut = showHome && prefs.homeShortcutPosition == HomeShortcutPosition.BOTTOM
     val hasPage = !activeTab?.url.isNullOrBlank()
     val focusManager = LocalFocusManager.current
+    val clipboardContext = LocalContext.current
     val submit: (String) -> Unit = { query ->
         if (query.isNotBlank()) {
             focusManager.clearFocus()
@@ -165,10 +184,31 @@ fun BrowserScreen(
             viewModel.navigateToInput(query)
         }
     }
-    BackHandler(enabled = !showHome) {
-        if (activeTab?.canGoBack == true) viewModel.goBack() else viewModel.showHome()
+    // دکمهٔ بازگشت: رفتارش را کاربر در تنظیمات انتخاب می‌کند.
+    val backTarget = BackNavigationResolver.resolve(
+        behavior = prefs.backButtonBehavior,
+        isOnHome = showHome,
+        canGoBack = activeTab?.canGoBack == true,
+        tabCount = uiState.tabs.size,
+        canExitApp = showHome,
+    )
+    val activity = LocalContext.current.findActivity()
+    val exitBack: () -> Unit = { if (activity == null || !activity.moveTaskToBack(true)) viewModel.showHome() }
+    BackHandler(enabled = true) {
+        when (backTarget) {
+            BackTarget.PAGE_BACK -> viewModel.goBack()
+            BackTarget.HOME -> viewModel.showHome()
+            BackTarget.EXIT -> exitBack()
+            BackTarget.ASK -> backPromptVisible = true
+        }
     }
     val isBookmarked = activeTab != null && bookmarks.any { it.url == activeTab.url }
+
+    // در حالت شیشه‌ای شناور، نوارها روی محتوا می‌نشینند؛ پس خودِ محتوا فقط به اندازهٔ
+    // ارتفاع نوارها فاصلهٔ داخلی می‌گیرد تا صفحه واقعاً از پشت شیشه دیده شود.
+    val floatingChrome = prefs.chromeBarStyle == ChromeBarStyle.FLOATING
+    val floatingTopSpacer = if (floatingChrome) 104.dp else 0.dp
+    val floatingBottomSpacer = if (floatingChrome) 76.dp else 0.dp
 
     Scaffold(
         modifier = Modifier.imePadding(),
@@ -179,7 +219,7 @@ fun BrowserScreen(
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.statusBars)
                     .padding(horizontal = 8.dp, vertical = 5.dp)
-                    .liquidGlass()
+                    .liquidGlass(prefs.chromeBarStyle)
                     .padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -190,7 +230,10 @@ fun BrowserScreen(
                 ) {
                     FilledTonalIconButton(
                         onClick = { onOpenVaultDashboard(activeTab?.containerId) },
-                        modifier = Modifier.size(40.dp).testTag("never_signout_shield_btn"),
+                        modifier = Modifier
+                            .size(40.dp)
+                            .floatingGlassPill(prefs.chromeBarStyle, radius = 20)
+                            .testTag("never_signout_shield_btn"),
                     ) {
                         Icon(
                             imageVector = if (activeTab?.isPrivate == true) {
@@ -252,6 +295,7 @@ fun BrowserScreen(
                     }
                 }
 
+                // به‌جای پیامِ «مراقب این سایت هستیم»، دکمه‌های میانبرِ واقعی و کاربردی.
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -283,51 +327,55 @@ fun BrowserScreen(
                         )
                     }
 
-                    AssistChip(
-                        onClick = { onOpenVaultDashboard(uiState.activeContainer?.id) },
+                    QuickShortcutChip(
+                        icon = Icons.Default.Bolt,
+                        label = strings.quickActionsTitle,
+                        style = prefs.chromeBarStyle,
+                        highlighted = true,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("quick_actions_btn"),
+                        onClick = { showQuickActions = true },
+                    )
+                    if (!showHome) {
+                        QuickShortcutChip(
+                            icon = Icons.Default.Fingerprint,
+                            label = strings.quickSaveLogin,
+                            style = prefs.chromeBarStyle,
+                            modifier = Modifier.weight(1f),
+                            enabled = activeTab?.isPrivate != true,
+                            onClick = viewModel::captureManualSnapshotNow,
+                        )
+                    }
+                    QuickShortcutChip(
+                        icon = Icons.Default.Tab,
+                        label = "${strings.quickTabs} ${uiState.tabs.size}",
+                        style = prefs.chromeBarStyle,
                         modifier = Modifier.weight(1f),
+                        onClick = { showTabsSheet = true },
+                    )
+                }
+                AnimatedVisibility(
+                    visible = showHome && blockedAdsCount > 0,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically(),
+                ) {
+                    AssistChip(
+                        onClick = onOpenSettings,
                         label = {
                             Text(
-                                text = when {
-                                    activeTab?.isPrivate == true -> strings.privateTabChip
-                                    uiState.activeContainer?.neverSignOutEnabled != true -> strings.protectionOffChip
-                                    else -> strings.protectionOnChip
-                                },
+                                text = strings.adsBlocked(blockedAdsCount.toInt()),
                                 style = MaterialTheme.typography.labelLarge,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
                             )
                         },
                         leadingIcon = {
                             Icon(
-                                imageVector = Icons.Default.Shield,
-                                contentDescription = null,
+                                imageVector = Icons.Default.Security,
+                                contentDescription = strings.adBlockChip(blockedAdsCount.toInt()),
                                 modifier = Modifier.size(16.dp),
                             )
                         },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-                        ),
                     )
-
-                    if (blockedAdsCount > 0) {
-                        AssistChip(
-                            onClick = onOpenSettings,
-                            label = {
-                                Text(
-                                    text = blockedAdsCount.toString(),
-                                    style = MaterialTheme.typography.labelLarge,
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Security,
-                                    contentDescription = strings.adBlockChip(blockedAdsCount.toInt()),
-                                    modifier = Modifier.size(16.dp),
-                                )
-                            },
-                        )
-                    }
                 }
 
                 Box(Modifier.fillMaxWidth().height(3.dp)) {
@@ -393,7 +441,11 @@ fun BrowserScreen(
             }
         },
         bottomBar = {
-            Box(Modifier.padding(horizontal = 8.dp, vertical = 5.dp).liquidGlass()) {
+            Box(
+                Modifier
+                    .padding(horizontal = 8.dp, vertical = 5.dp)
+                    .liquidGlass(prefs.chromeBarStyle),
+            ) {
                 NavigationBar(
                     containerColor = androidx.compose.ui.graphics.Color.Transparent,
                 ) {
@@ -445,9 +497,16 @@ fun BrowserScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(
+                    top = if (floatingChrome) floatingTopSpacer else innerPadding.calculateTopPadding(),
+                    bottom = if (floatingChrome) floatingBottomSpacer else innerPadding.calculateBottomPadding(),
+                )
                 .padding(bottom = if (hasHomeShortcut) 58.dp else 0.dp),
         ) {
+            // با عوض شدن صفحه یا تب، پرسشِ بازگشتِ بی‌ربط بسته می‌شود.
+            LaunchedEffect(uiState.activeTabId, showHome) {
+                backPromptVisible = false
+            }
             val isInspection = LocalInspectionMode.current
             val container = uiState.activeContainer
 
@@ -488,6 +547,31 @@ fun BrowserScreen(
         }
     }
 
+    if (showQuickActions) {
+        ModalBottomSheet(onDismissRequest = { showQuickActions = false }) {
+            QuickActionsSheet(
+                strings = strings,
+                hasPage = hasPage,
+                activeTab = activeTab,
+                prefs = prefs,
+                blockedAdsCount = blockedAdsCount.toInt(),
+                downloadsCount = downloads.size,
+                onDismiss = { showQuickActions = false },
+                viewModel = viewModel,
+                onSubmit = submit,
+                onOpenVault = { onOpenVaultDashboard(activeTab?.containerId) },
+                onOpenBookmarks = { showBookmarksHistorySheet = true },
+                onOpenDownloads = { showDownloadsSheet = true },
+                onOpenSettings = onOpenSettings,
+                onCopyLink = { url -> copyTextToClipboard(context = clipboardContext, label = strings.quickCopyLink, text = url) },
+                onShareLink = { url ->
+                    val share = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, url)
+                    clipboardContext.startActivity(Intent.createChooser(share, strings.quickShare))
+                },
+            )
+        }
+    }
+
     if (showBookmarksHistorySheet) {
         ModalBottomSheet(onDismissRequest = { showBookmarksHistorySheet = false }) {
             BookmarksAndHistorySheet(
@@ -523,7 +607,9 @@ fun BrowserScreen(
                     viewModel.selectTab(it)
                     showTabsSheet = false
                 },
-                onCloseTab = viewModel::closeTab,
+                onCloseTab = { tabId ->
+                    if (prefs.askBeforeClosingTabs) pendingCloseTabId = tabId else viewModel.closeTab(tabId)
+                },
                 canReopenTab = uiState.canReopenTab,
                 onReopenTab = {
                     viewModel.reopenClosedTab()
@@ -540,6 +626,70 @@ fun BrowserScreen(
                 },
             )
         }
+    }
+
+    // پرسشِ «برگرد به کجا؟» وقتی کاربر حالت «هر بار از من بپرس» را انتخاب کرده است.
+    if (backPromptVisible) {
+        AlertDialog(
+            onDismissRequest = { backPromptVisible = false },
+            icon = { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) },
+            title = { Text(strings.backAskTitle) },
+            text = { Text(strings.backAskBody) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        backPromptVisible = false
+                        if (activeTab?.canGoBack == true) viewModel.goBack() else viewModel.showHome()
+                    },
+                    enabled = !showHome && activeTab?.canGoBack == true,
+                ) {
+                    Text(strings.backAskToPage)
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            backPromptVisible = false
+                            viewModel.showHome()
+                        },
+                        enabled = !showHome,
+                    ) {
+                        Text(strings.backAskToHome)
+                    }
+                    TextButton(
+                        onClick = {
+                            backPromptVisible = false
+                            if (activity == null || !activity.moveTaskToBack(true)) viewModel.showHome()
+                        },
+                    ) {
+                        Text(strings.backAskExit)
+                    }
+                }
+            },
+        )
+    }
+
+    pendingCloseTabId?.let { tabId ->
+        val title = uiState.tabs.firstOrNull { it.id == tabId }?.title.orEmpty()
+        AlertDialog(
+            onDismissRequest = { pendingCloseTabId = null },
+            title = { Text(strings.closeTabConfirmTitle) },
+            text = { Text(strings.closeTabConfirmBody(title.ifBlank { strings.tabsLabel })) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingCloseTabId = null
+                        viewModel.closeTab(tabId)
+                    },
+                ) {
+                    Text(strings.closeTab)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingCloseTabId = null }) { Text(strings.cancel) }
+            },
+        )
     }
 
     uiState.fallbackPromptDomain?.let { revokedDomain ->
@@ -989,6 +1139,7 @@ private fun GeckoSessionWebView(
         modifier = Modifier.fillMaxSize(),
         factory = { ctx ->
             GeckoView(ctx).apply {
+                BrowserViewRegistry.register(this)
                 val geckoSession = viewModel.sessionManager.getOrCreateGeckoSession(
                     tabId = tab.id,
                     container = container,
@@ -1007,7 +1158,10 @@ private fun GeckoSessionWebView(
                 setSession(geckoSession)
             }
         },
-        onRelease = { it.releaseSession() },
+        onRelease = {
+            BrowserViewRegistry.register(null)
+            it.releaseSession()
+        },
     )
 }
 
@@ -1379,4 +1533,309 @@ private fun DownloadsSheet(downloads: List<DownloadItem>) {
             }
         }
     }
+}
+
+/* ---------------------------- میانبرهای کاربردیِ نوار بالا ---------------------------- */
+
+/** دکمهٔ کپسولیِ کوچک برای میانبرهای نوار بالا (با همان شیشهٔ شناور). */
+@Composable
+private fun QuickShortcutChip(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    style: ChromeBarStyle,
+    modifier: Modifier = Modifier,
+    highlighted: Boolean = false,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    val container = if (highlighted) {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (style == ChromeBarStyle.FLOATING) 0.55f else 0.95f)
+    } else {
+        androidx.compose.ui.graphics.Color.Transparent
+    }
+    FilledTonalButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.floatingGlassPill(style, radius = 18),
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+        colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
+            containerColor = container,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+    ) {
+        Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(15.dp))
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * شیتِ «میانبرهای سریع»: به‌جای پیامِ بی‌فایدهٔ «مراقب این سایت هستیم»، همهٔ کارهای
+ * پرکاربردِ مرورگر در یک صفحه و با آیکن و رنگ.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun QuickActionsSheet(
+    strings: com.marble098.marblebr.core.i18n.MarbleStrings,
+    hasPage: Boolean,
+    activeTab: BrowserTab?,
+    prefs: BrowserPreferences,
+    blockedAdsCount: Int,
+    downloadsCount: Int,
+    viewModel: BrowserViewModel,
+    onSubmit: (String) -> Unit,
+    onOpenVault: () -> Unit,
+    onOpenBookmarks: () -> Unit,
+    onOpenDownloads: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onCopyLink: (String) -> Unit,
+    onShareLink: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val pageUrl = activeTab?.url?.ifBlank { null }
+    val shortcutContext = LocalContext.current
+    var quickInput by remember { mutableStateOf("") }
+    val perform: (() -> Unit) -> Unit = { action ->
+        action()
+        onDismiss()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        // جستجو/آدرس فوری
+        OutlinedTextField(
+            value = quickInput,
+            onValueChange = { quickInput = it },
+            modifier = Modifier.fillMaxWidth().testTag("quick_actions_search"),
+            singleLine = true,
+            shape = MaterialTheme.shapes.large,
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+            trailingIcon = {
+                FilledTonalIconButton(
+                    onClick = {
+                        if (quickInput.isNotBlank()) {
+                            onSubmit(quickInput)
+                            onDismiss()
+                        }
+                    },
+                    enabled = quickInput.isNotBlank(),
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(Icons.Default.ArrowRightAlt, contentDescription = strings.goToAddress, modifier = Modifier.size(18.dp))
+                }
+            },
+            placeholder = { Text(strings.addressPlaceholder, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+            keyboardActions = KeyboardActions(
+                onGo = {
+                    if (quickInput.isNotBlank()) {
+                        onSubmit(quickInput)
+                        onDismiss()
+                    }
+                },
+            ),
+        )
+
+        if (pageUrl != null && activeTab?.isPrivate != true) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.medium)
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(Icons.Default.Shield, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                Text(
+                    text = strings.quickSiteSignedInFor(
+                        days = prefs.defaultCookieLifetimeDays,
+                        minutes = 30,
+                    ),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+        } else if (activeTab?.isPrivate == true) {
+            Text(
+                text = strings.privateTabChip,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        Text(strings.quickActionsTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (pageUrl != null) {
+                QuickActionTile(strings.quickCopyLink, Icons.Default.ContentCopy, MaterialTheme.colorScheme.primary) {
+                    perform { onCopyLink(pageUrl) }
+                }
+                QuickActionTile(strings.quickShare, Icons.Default.Share, MaterialTheme.colorScheme.tertiary) {
+                    perform { onShareLink(pageUrl) }
+                }
+                QuickActionTile(strings.quickFindInPage, Icons.Default.Search, MaterialTheme.colorScheme.secondary) {
+                    perform { viewModel.toggleFindInPage(true) }
+                }
+                QuickActionTile(
+                    label = strings.quickScreenshot,
+                    icon = Icons.Default.PhotoCamera,
+                    accent = MaterialTheme.colorScheme.primary,
+                ) {
+                    perform {
+                        captureAndSaveScreenshot(shortcutContext) { path ->
+                            viewModel.reportScreenshot(path)
+                        }
+                    }
+                }
+                QuickActionTile(
+                    label = strings.quickDesktop,
+                    icon = Icons.Default.DesktopWindows,
+                    accent = MaterialTheme.colorScheme.tertiary,
+                    active = activeTab?.isDesktopMode == true,
+                ) {
+                    perform { viewModel.toggleDesktopMode() }
+                }
+            }
+            QuickActionTile(strings.quickNewTab, Icons.Default.Add, MaterialTheme.colorScheme.primary) {
+                perform { viewModel.openNewTab() }
+            }
+            QuickActionTile(strings.quickPrivate, Icons.Default.VisibilityOff, MaterialTheme.colorScheme.tertiary) {
+                perform { viewModel.openNewTab(isPrivate = true) }
+            }
+            QuickActionTile(strings.quickHome, Icons.Default.Home, MaterialTheme.colorScheme.primary) {
+                perform { viewModel.showHome() }
+            }
+            QuickActionTile(strings.quickBookmarks, Icons.Default.Bookmark, MaterialTheme.colorScheme.tertiary) {
+                perform(onOpenBookmarks)
+            }
+            QuickActionTile(strings.quickDownloads, Icons.Default.Download, MaterialTheme.colorScheme.primary) {
+                perform(onOpenDownloads)
+            }
+            QuickActionTile(strings.quickSettings, Icons.Default.Settings, MaterialTheme.colorScheme.secondary) {
+                perform(onOpenSettings)
+            }
+            if (pageUrl != null && activeTab?.isPrivate != true) {
+                QuickActionTile(strings.quickSaveLogin, Icons.Default.Fingerprint, MaterialTheme.colorScheme.primary) {
+                    perform { viewModel.captureManualSnapshotNow() }
+                }
+                QuickActionTile(strings.quickTimeMachine, Icons.Default.History, MaterialTheme.colorScheme.tertiary) {
+                    perform(onOpenVault)
+                }
+                QuickActionTile(strings.quickAddShortcut, Icons.Default.InstallMobile, MaterialTheme.colorScheme.secondary) {
+                    perform { viewModel.installCurrentSiteAsPwa() }
+                }
+            }
+            QuickActionTile(strings.quickClearCache, Icons.Default.CleaningServices, MaterialTheme.colorScheme.secondary) {
+                perform { viewModel.clearCacheWithoutTouchingSessions() }
+            }
+            if (blockedAdsCount > 0) {
+                QuickActionTile(
+                    label = strings.adBlockChip(blockedAdsCount),
+                    icon = Icons.Default.Security,
+                    accent = MaterialTheme.colorScheme.error,
+                ) {
+                    perform(onOpenSettings)
+                }
+            }
+            if (downloadsCount > 0) {
+                QuickActionTile(
+                    label = strings.downloadsMenu(downloadsCount),
+                    icon = Icons.Default.Download,
+                    accent = MaterialTheme.colorScheme.primary,
+                ) {
+                    perform(onOpenDownloads)
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(MaterialTheme.shapes.medium)
+                .clickable { perform { onCopyLink(MarbleLinks.GITHUB_URL) } }
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+            Text(
+                text = "${strings.appName} · ${MarbleLinks.GITHUB_DISPLAY}",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.height(20.dp))
+    }
+}
+
+/** یک کاشیِ گرد و رنگی برای مینحبرهای سریع. */
+@Composable
+private fun QuickActionTile(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    accent: androidx.compose.ui.graphics.Color,
+    active: Boolean = false,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .size(width = 84.dp, height = 86.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .background(
+                if (active) accent.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceContainerHigh,
+            )
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(androidx.compose.foundation.shape.CircleShape)
+                .background(accent.copy(alpha = 0.18f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(imageVector = icon, contentDescription = null, tint = accent, modifier = Modifier.size(19.dp))
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/* ------------------------------------ کمکی‌ها ------------------------------------ */
+
+/** کپی متن در کلیپ‌بورد سیستم. */
+private fun copyTextToClipboard(context: Context, label: String, text: String) {
+    runCatching {
+        context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText(label, text))
+    }
+}
+
+/** پیدا کردن Activity از Context برای بستن برنامه. */
+internal fun Context.findActivity(): ComponentActivity? = when (this) {
+    is ComponentActivity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }

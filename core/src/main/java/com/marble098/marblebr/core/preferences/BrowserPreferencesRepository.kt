@@ -7,6 +7,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.marble098.marblebr.core.i18n.AppLanguage
+import com.marble098.marblebr.core.model.BackButtonBehavior
+import com.marble098.marblebr.core.model.ChromeBarStyle
 import com.marble098.marblebr.core.model.DnsMode
 import com.marble098.marblebr.core.model.HomeShortcutPosition
 import com.marble098.marblebr.core.model.ProxyDnsConfig
@@ -37,6 +39,9 @@ data class BrowserPreferences(
     val searchEngineTemplate: String = "https://www.google.com/search?q=%s",
     val selectedSearchEngineId: String = SearchEngine.DEFAULT.id,
     val homeShortcutPosition: HomeShortcutPosition = HomeShortcutPosition.BOTTOM,
+    val chromeBarStyle: ChromeBarStyle = ChromeBarStyle.FLOATING,
+    val backButtonBehavior: BackButtonBehavior = BackButtonBehavior.SMART,
+    val askBeforeClosingTabs: Boolean = false,
     val addressSelectionMode: AddressSelectionMode = AddressSelectionMode.SELECT_ALL,
     val openGoogleOnNewTab: Boolean = false,
     val rateDialogShown: Boolean = false,
@@ -66,6 +71,9 @@ class BrowserPreferencesRepository @Inject constructor(
         val SEARCH_ENGINE = stringPreferencesKey("search_engine")
         val SELECTED_SEARCH_ENGINE_ID = stringPreferencesKey("selected_search_engine_id")
         val HOME_SHORTCUT_POSITION = stringPreferencesKey("home_shortcut_position")
+        val CHROME_BAR_STYLE = stringPreferencesKey("chrome_bar_style")
+        val BACK_BUTTON_BEHAVIOR = stringPreferencesKey("back_button_behavior")
+        val ASK_BEFORE_CLOSING_TABS = booleanPreferencesKey("ask_before_closing_tabs")
         val SAVED_TABS = stringPreferencesKey("saved_tabs_v1")
         val ADDRESS_SELECTION = stringPreferencesKey("address_selection")
         val GOOGLE_NEW_TAB = booleanPreferencesKey("google_new_tab")
@@ -113,6 +121,11 @@ class BrowserPreferencesRepository @Inject constructor(
             homeShortcutPosition = prefs[Keys.HOME_SHORTCUT_POSITION]?.let {
                 runCatching { HomeShortcutPosition.valueOf(it) }.getOrNull()
             } ?: HomeShortcutPosition.BOTTOM,
+            chromeBarStyle = ChromeBarStyle.entries.firstOrNull { it.name == prefs[Keys.CHROME_BAR_STYLE] }
+                ?: ChromeBarStyle.FLOATING,
+            backButtonBehavior = BackButtonBehavior.entries.firstOrNull { it.name == prefs[Keys.BACK_BUTTON_BEHAVIOR] }
+                ?: BackButtonBehavior.SMART,
+            askBeforeClosingTabs = prefs[Keys.ASK_BEFORE_CLOSING_TABS] ?: false,
             addressSelectionMode = AddressSelectionMode.entries.firstOrNull { it.name == prefs[Keys.ADDRESS_SELECTION] }
                 ?: AddressSelectionMode.SELECT_ALL,
             openGoogleOnNewTab = prefs[Keys.GOOGLE_NEW_TAB] ?: false,
@@ -206,6 +219,18 @@ class BrowserPreferencesRepository @Inject constructor(
 
     suspend fun setHomeShortcutPosition(position: HomeShortcutPosition) {
         dataStore.edit { it[Keys.HOME_SHORTCUT_POSITION] = position.name }
+    }
+
+    suspend fun setChromeBarStyle(style: ChromeBarStyle) {
+        dataStore.edit { it[Keys.CHROME_BAR_STYLE] = style.name }
+    }
+
+    suspend fun setBackButtonBehavior(behavior: BackButtonBehavior) {
+        dataStore.edit { it[Keys.BACK_BUTTON_BEHAVIOR] = behavior.name }
+    }
+
+    suspend fun setAskBeforeClosingTabs(enabled: Boolean) {
+        dataStore.edit { it[Keys.ASK_BEFORE_CLOSING_TABS] = enabled }
     }
 
     suspend fun setRateDialogShown(shown: Boolean) {
