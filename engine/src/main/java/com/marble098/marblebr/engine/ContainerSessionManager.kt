@@ -89,6 +89,15 @@ class ContainerSessionManager @Inject constructor(
     private val capturePorts = ConcurrentHashMap<GeckoSession, WebExtension.Port>()
     private val snapshotRequests = ConcurrentHashMap<GeckoSession, SnapshotRequest>()
 
+    /**
+     * درخواست‌های «اجرای اسکریپت» که منتظرِ پاسخِ صفحه هستند.
+     *
+     * GeckoView هیچ متدِ `evaluateJS` روی [GeckoSession] ندارد (برخلافِ WebView اندروید)؛ اجرای
+     * جاوااسکریپت فقط از مسیرِ افزونهٔ داخلی ممکن است. پس درخواست را با یک شناسه روی پورتِ
+     * همان صفحه می‌فرستیم و پاسخِ `JS_RESULT` را با همان شناسه تطبیق می‌دهیم.
+     */
+    private val scriptRequests = ConcurrentHashMap<String, CompletableDeferred<String?>>()
+
     /** پورتِ اسکریپت پس‌زمینهٔ افزونه؛ برای نوشتن کوکی‌های HttpOnly از سمت بومی لازم است. */
     @Volatile
     private var backgroundPort: WebExtension.Port? = null
@@ -249,7 +258,8 @@ class ContainerSessionManager @Inject constructor(
                 if (videoSource == null && audioSource == null) {
                     callback.reject()
                 } else {
-                    callback.accept(videoSource, audioSource)
+                    // API گکوویو `accept` ندارد؛ نامِ درست `grant(video, audio)` است.
+                    callback.grant(videoSource, audioSource)
                 }
             }
         }
@@ -327,15 +337,12 @@ class ContainerSessionManager @Inject constructor(
      * @return `true` اگر اسکریپت با موفقیت اجرا شد.
      */
     fun setReaderMode(tabId: String, enabled: Boolean, onResult: (Boolean) -> Unit = {}) {
-        val session = activeSessions[tabId]
-        if (session == null) {
-            onResult(false)
-            return
-        }
         val script = if (enabled) ReaderTextEngine.readerScript else ReaderTextEngine.readerResetScript
-        runCatching { session.evaluateJS(script) }
-            .onSuccess { onResult(true) }
-            .onFailure { onResult(false) }
+        evaluateInPage(tabId, script) { result ->
+            // اسکریپتِ حالت مطالعه رشتهٔ «on»/«off» را برمی‌گرداند؛ هر پاسخِ غیرخالی یعنی
+            // اسکریپت واقعاً در صفحه اجرا شد.
+            onResult(!result.isNullOrBlank())
+        }
     }
 
     /**
@@ -344,18 +351,49 @@ class ContainerSessionManager @Inject constructor(
      * @param onText متنی که باید خوانده شود؛ رشتهٔ خالی یعنی صفحه متنی نداشت.
      */
     fun readPageText(tabId: String, onText: (String) -> Unit) {
-        val session = activeSessions[tabId]
-        if (session == null) {
-            onText("")
+        evaluateInPage(tabId, ReaderTextEngine.extractReadableTextScript) { raw ->
+            val text = ReaderTextEngine.extractReadableText(raw)
+            onText(if (ReaderTextEngine.hasEnoughText(text)) text else "")
+        }
+    }
+
+    /**
+     * اجرای یک اسکریپت در صفحهٔ همان تب و برگرداندنِ نتیجه به‌صورت رشته.
+     *
+     * چرا از پورتِ افزونه؟ چون GeckoView متدِ `evaluateJS` ندارد؛ تنها راهِ پشتیبانی‌شده،
+     * فرستادنِ پیام به content script همان صفحه است (همان پورتی که اسنپ‌شات‌ها را می‌گیرد).
+     * اگر پیوندی برقرار نباشد (مثلاً صفحه‌ای که اسکریپتِ ما در آن اجرا نشده) نتیجه `null`
+     * است و لایهٔ بالاتر پیامِ «در دسترس نیست» را نشان می‌دهد.
+     */
+    private fun evaluateInPage(
+        tabId: String,
+        script: String,
+        timeoutMillis: Long = SCRIPT_TIMEOUT_MILLIS,
+        onResult: (String?) -> Unit,
+    ) {
+        val port = activeSessions[tabId]?.let { capturePorts[it] }
+        if (port == null) {
+            onResult(null)
             return
         }
-        runCatching {
-            session.evaluateJS(ReaderTextEngine.extractReadableTextScript).accept { result ->
-                val raw = result as? String
-                val text = ReaderTextEngine.extractReadableText(raw)
-                onText(if (ReaderTextEngine.hasEnoughText(text)) text else "")
+        val requestId = UUID.randomUUID().toString()
+        val response = CompletableDeferred<String?>()
+        scriptRequests[requestId] = response
+        engineScope.launch {
+            try {
+                port.postMessage(
+                    JSONObject()
+                        .put("type", "EVAL_JS")
+                        .put("requestId", requestId)
+                        .put("script", script),
+                )
+                onResult(withTimeoutOrNull(timeoutMillis) { response.await() })
+            } catch (_: Exception) {
+                onResult(null)
+            } finally {
+                scriptRequests.remove(requestId)
             }
-        }.onFailure { onText("") }
+        }
     }
 
     /**
@@ -599,6 +637,11 @@ class ContainerSessionManager @Inject constructor(
                         override fun onPortMessage(message: Any, port: WebExtension.Port) {
                             if (capturePorts[session] !== port) return
                             val json = message as? JSONObject ?: return
+                            if (json.optString("event") == JS_RESULT_EVENT) {
+                                scriptRequests.remove(json.optString("requestId"))
+                                    ?.complete(json.optString("result"))
+                                return
+                            }
                             val request = snapshotRequests[session] ?: return
                             if (request.id != json.optString("requestId") || !sameOrigin(port.sender.url, json.optString("origin"))) return
                             engineScope.launch {
@@ -933,6 +976,12 @@ class ContainerSessionManager @Inject constructor(
 
         /** پیشوندِ origin اسکریپت پس‌زمینهٔ افزونه (پورتِ نوشتن کوکی). */
         const val EXTENSION_ORIGIN_PREFIX = "moz-extension://"
+
+        /** رویدادی که content script پس از اجرای اسکریپتِ بومی با نتیجه برمی‌گرداند. */
+        const val JS_RESULT_EVENT = "JS_RESULT"
+
+        /** مهلتِ پاسخِ صفحه به درخواستِ اجرای اسکریپت (حالت مطالعه/بلندخوانی). */
+        const val SCRIPT_TIMEOUT_MILLIS = 2_500L
 
         /**
          * پرچم‌های امن برای دکمه «پاک کردن کش»:
