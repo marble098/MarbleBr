@@ -856,7 +856,6 @@ private fun HomeBackdrop() {
 
 /* ------------------------------------------ کمکی ------------------------------------------ */
 
-
 /** دامنهٔ کوتاه یک نشانی برای نمایش. */
 internal fun siteDomain(url: String): String {
     val trimmed = url.trim()

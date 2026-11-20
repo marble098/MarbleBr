@@ -34,13 +34,11 @@ internal fun Modifier.liquidGlass(
     style: ChromeBarStyle,
     shape: androidx.compose.ui.graphics.Shape,
     elevation: androidx.compose.ui.unit.Dp = 8.dp,
-): Modifier {
-    return if (style == ChromeBarStyle.FLOATING) {
-        // شیشهٔ شناور: بدون بدنه و بدون سایه؛ فقط یک رینگ نورانیِ بسیار نازک برای تعریف لبه.
-        clip(shape)
-    } else {
-        Modifier.coreLiquidGlass(style = style, shape = shape, elevation = elevation)
-    }
+): Modifier = if (style == ChromeBarStyle.FLOATING) {
+    // شیشهٔ شناور: بدون بدنه و بدون سایه؛ فقط یک رینگ نورانیِ بسیار نازک برای تعریف لبه.
+    clip(shape)
+} else {
+    Modifier.coreLiquidGlass(style = style, shape = shape, elevation = elevation)
 }
 
 /**
