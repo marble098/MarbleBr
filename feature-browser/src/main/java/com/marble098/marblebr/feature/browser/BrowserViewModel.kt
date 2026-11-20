@@ -4,8 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.marble098.marblebr.core.database.BookmarkDao
 import com.marble098.marblebr.core.database.BookmarkEntity
-import com.marble098.marblebr.core.database.BrowserTabDao
-import com.marble098.marblebr.core.database.BrowserTabEntity
 import com.marble098.marblebr.core.database.ContainerDao
 import com.marble098.marblebr.core.database.DownloadDao
 import com.marble098.marblebr.core.database.DownloadEntity
@@ -62,7 +60,6 @@ class BrowserViewModel @Inject constructor(
     private val containerDao: ContainerDao,
     private val bookmarkDao: BookmarkDao,
     private val historyDao: HistoryDao,
-    private val browserTabDao: BrowserTabDao,
     private val downloadDao: DownloadDao,
     private val pwaShortcutInstaller: PwaShortcutInstaller,
     private val downloadLauncher: BrowserDownloadLauncher,
@@ -91,23 +88,7 @@ class BrowserViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val storedTabs = browserTabDao.observeAllTabs().first()
-            if (storedTabs.isNotEmpty()) {
-                val tabs = storedTabs.map { it.toDomain() }
-                val activeTab = tabs.first()
-                val container = containerDao.getById(activeTab.containerId)?.toDomain()
-                    ?: sessionManager.getOrCreateContainerForUrl(activeTab.url)
-                _uiState.update {
-                    it.copy(
-                        tabs = tabs,
-                        activeTabId = activeTab.id,
-                        activeContainer = container,
-                        addressBarInput = activeTab.url,
-                    )
-                }
-            } else {
-                openNewTab(initialUrl = "https://github.com", isPrivate = false)
-            }
+            openNewTab(initialUrl = "https://github.com", isPrivate = false)
         }
     }
 
@@ -190,7 +171,6 @@ class BrowserViewModel @Inject constructor(
                     addressBarInput = resolvedUrl,
                 )
             }
-            persistTabs()
         }
     }
 
@@ -206,7 +186,6 @@ class BrowserViewModel @Inject constructor(
                     addressBarInput = tab.url,
                 )
             }
-            persistTabs()
         }
     }
 
@@ -220,7 +199,6 @@ class BrowserViewModel @Inject constructor(
             val nextActive = if (state.activeTabId == tabId) remaining.last().id else state.activeTabId
             state.copy(tabs = remaining, activeTabId = nextActive)
         }
-        persistTabs()
         if (_uiState.value.tabs.isEmpty()) {
             openNewTab()
         }
@@ -365,17 +343,6 @@ class BrowserViewModel @Inject constructor(
         if (_uiState.value.activeTabId == tabId) {
             _uiState.update { it.copy(addressBarInput = url) }
         }
-        viewModelScope.launch {
-            val tab = _uiState.value.tabs.firstOrNull { it.id == tabId } ?: return@launch
-            if (!tab.isPrivate) {
-                browserTabDao.updateTabVisit(
-                    id = tab.id,
-                    url = url,
-                    title = tab.title.ifBlank { url },
-                    lastVisitedAtEpochMillis = System.currentTimeMillis(),
-                )
-            }
-        }
     }
 
     fun onPageTitleChanged(tabId: String, title: String) {
@@ -383,12 +350,6 @@ class BrowserViewModel @Inject constructor(
         viewModelScope.launch {
             val tab = _uiState.value.tabs.firstOrNull { it.id == tabId } ?: return@launch
             if (!tab.isPrivate) {
-                browserTabDao.updateTabVisit(
-                    id = tab.id,
-                    url = tab.url,
-                    title = title,
-                    lastVisitedAtEpochMillis = System.currentTimeMillis(),
-                )
                 val existing = historyDao.getLatestByUrl(tab.url)
                 if (existing != null) {
                     historyDao.updateVisit(existing.id, title, System.currentTimeMillis())
@@ -447,24 +408,4 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
-    private fun persistTabs() = viewModelScope.launch {
-        val tabs = _uiState.value.tabs
-        browserTabDao.deleteAllTabs()
-        tabs.filterNot { it.isPrivate }.withIndex().forEach { (index, tab) ->
-            browserTabDao.upsertTab(
-                BrowserTabEntity(
-                    id = tab.id,
-                    containerId = tab.containerId,
-                    contextId = tab.contextId,
-                    url = tab.url,
-                    title = tab.title,
-                    isPrivate = tab.isPrivate,
-                    isDesktopMode = tab.isDesktopMode,
-                    createdAtEpochMillis = tab.createdAtEpochMillis,
-                    lastVisitedAtEpochMillis = tab.lastVisitedAtEpochMillis,
-                    positionIndex = index,
-                )
-            )
-        }
-    }
 }

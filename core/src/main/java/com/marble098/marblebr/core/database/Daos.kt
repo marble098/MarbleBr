@@ -89,41 +89,11 @@ interface HistoryDao {
     @Query("SELECT * FROM history_items WHERE title LIKE '%' || :query || '%' OR url LIKE '%' || :query || '%' ORDER BY visitedAtEpochMillis DESC LIMIT 50")
     suspend fun search(query: String): List<HistoryEntity>
 
-    @Query("SELECT * FROM history_items WHERE url = :url ORDER BY visitedAtEpochMillis DESC LIMIT 1")
-    suspend fun getLatestByUrl(url: String): HistoryEntity?
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(item: HistoryEntity)
 
-    @Query("UPDATE history_items SET title = :title, visitedAtEpochMillis = :visitedAtEpochMillis WHERE id = :id")
-    suspend fun updateVisit(id: String, title: String, visitedAtEpochMillis: Long)
-
     @Query("DELETE FROM history_items")
     suspend fun clearAll()
-}
-
-@Dao
-interface BrowserTabDao {
-    @Query("SELECT * FROM browser_tabs WHERE isPrivate = 0 ORDER BY positionIndex ASC, lastVisitedAtEpochMillis DESC")
-    fun observeAllTabs(): Flow<List<BrowserTabEntity>>
-
-    @Query("SELECT * FROM browser_tabs WHERE id = :id LIMIT 1")
-    suspend fun getTab(id: String): BrowserTabEntity?
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsertTab(tab: BrowserTabEntity)
-
-    @Query("UPDATE browser_tabs SET positionIndex = :position WHERE id = :id")
-    suspend fun updateTabPosition(id: String, position: Int)
-
-    @Query("UPDATE browser_tabs SET url = :url, title = :title, lastVisitedAtEpochMillis = :lastVisitedAtEpochMillis WHERE id = :id")
-    suspend fun updateTabVisit(id: String, url: String, title: String, lastVisitedAtEpochMillis: Long)
-
-    @Query("DELETE FROM browser_tabs WHERE id = :id")
-    suspend fun deleteTab(id: String)
-
-    @Query("DELETE FROM browser_tabs")
-    suspend fun deleteAllTabs()
 }
 
 @Dao

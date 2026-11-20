@@ -171,23 +171,6 @@ data class DownloadEntity(
     )
 }
 
-@Entity(
-    tableName = "browser_tabs",
-    indices = [Index(value = ["positionIndex"]), Index(value = ["lastVisitedAtEpochMillis"])],
-)
-data class BrowserTabEntity(
-    @PrimaryKey val id: String,
-    val containerId: String,
-    val contextId: String,
-    val url: String,
-    val title: String,
-    val isPrivate: Boolean,
-    val isDesktopMode: Boolean,
-    val createdAtEpochMillis: Long,
-    val lastVisitedAtEpochMillis: Long,
-    val positionIndex: Int,
-)
-
 @Entity(tableName = "health_events", indices = [Index(value = ["containerId", "timestampEpochMillis"])])
 data class HealthEventEntity(
     @PrimaryKey val id: String,
