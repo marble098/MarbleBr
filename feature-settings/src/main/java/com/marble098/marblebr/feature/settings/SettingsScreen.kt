@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -237,8 +238,8 @@ private fun SettingsTab.title(strings: MarbleStrings): String = when (this) {
 
 /* ------------------------------------------------ تبِ ظاهر */
 
-@Composable
-private fun appearanceTab(
+@OptIn(ExperimentalLayoutApi::class)
+private fun LazyListScope.appearanceTab(
     strings: MarbleStrings,
     prefs: com.marble098.marblebr.core.preferences.BrowserPreferences,
     viewModel: SettingsViewModel,
@@ -293,8 +294,8 @@ private fun appearanceTab(
 
 /* ------------------------------------------------ تبِ مرورگر */
 
-@Composable
-private fun browserTab(
+@OptIn(ExperimentalLayoutApi::class)
+private fun LazyListScope.browserTab(
     strings: MarbleStrings,
     prefs: com.marble098.marblebr.core.preferences.BrowserPreferences,
     viewModel: SettingsViewModel,
@@ -422,8 +423,8 @@ private fun browserTab(
 
 /* ------------------------------------------------ تبِ محافظت */
 
-@Composable
-private fun protectionTab(
+@OptIn(ExperimentalLayoutApi::class)
+private fun LazyListScope.protectionTab(
     strings: MarbleStrings,
     prefs: com.marble098.marblebr.core.preferences.BrowserPreferences,
     viewModel: SettingsViewModel,
@@ -480,8 +481,7 @@ private fun protectionTab(
 /* ------------------------------------------------ تبِ شبکه */
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun networkTab(
+private fun LazyListScope.networkTab(
     strings: MarbleStrings,
     viewModel: SettingsViewModel,
     selectedDns: DnsMode,
@@ -585,8 +585,7 @@ private fun networkTab(
 
 /* ------------------------------------------------ تبِ درباره */
 
-@Composable
-private fun aboutTab(strings: MarbleStrings, appVersionName: String) {
+private fun LazyListScope.aboutTab(strings: MarbleStrings, appVersionName: String) {
     item {
         SettingsSection(
             icon = Icons.Default.Info,
