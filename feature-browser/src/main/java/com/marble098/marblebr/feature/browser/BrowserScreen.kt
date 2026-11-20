@@ -3,13 +3,8 @@ package com.marble098.marblebr.feature.browser
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.animateFloatAsState
-import androidx.compose.animation.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -315,12 +310,9 @@ fun BrowserScreen(
                 }
 
                 if (activeTab?.isLoading == true) {
-                    val progress by animateFloatAsState(
-                        targetValue = (activeTab.progress / 100f).coerceIn(0f, 1f),
-                        animationSpec = tween(200),
-                    )
+                    val progress = (activeTab.progress / 100f).coerceIn(0f, 1f)
                     LinearProgressIndicator(
-                        progress = { progress },
+                        progress = progress,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(3.dp),
@@ -328,7 +320,7 @@ fun BrowserScreen(
                     )
                 }
 
-                AnimatedVisibility(visible = uiState.isFindInPageVisible) {
+                if (uiState.isFindInPageVisible) {
                     FindInPageBar(
                         query = uiState.findQuery,
                         matchIndex = activeTab?.findMatchIndex ?: 0,
@@ -340,7 +332,7 @@ fun BrowserScreen(
                     )
                 }
 
-                AnimatedVisibility(visible = uiState.bannerMessage != null) {
+                if (uiState.bannerMessage != null) {
                     Card(
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -463,25 +455,20 @@ fun BrowserScreen(
                     onOpenSettings = onOpenSettings,
                 )
             } else if (activeTab != null && renderGeckoWebView && !isInspection && container != null) {
-                Crossfade(
-                    targetState = activeTab.id,
-                    animationSpec = tween(250),
-                ) { tabId ->
-                    val tab = uiState.tabs.firstOrNull { it.id == tabId } ?: activeTab
-                    val activeContainer = uiState.activeContainer
-                    if (tab.id == tabId && activeContainer != null) {
-                        GeckoSessionWebView(
-                            tab = tab,
-                            container = activeContainer,
-                            viewModel = viewModel,
-                        )
-                    } else {
-                        ReadyCard(
-                            tab = tab,
-                            onCaptureSnapshot = viewModel::captureManualSnapshotNow,
-                            onOpenVault = { onOpenVaultDashboard(tab.containerId) },
-                        )
-                    }
+                val tab = activeTab
+                val activeContainer = uiState.activeContainer
+                if (activeContainer != null) {
+                    GeckoSessionWebView(
+                        tab = tab,
+                        container = activeContainer,
+                        viewModel = viewModel,
+                    )
+                } else {
+                    ReadyCard(
+                        tab = tab,
+                        onCaptureSnapshot = viewModel::captureManualSnapshotNow,
+                        onOpenVault = { onOpenVaultDashboard(tab.containerId) },
+                    )
                 }
             } else {
                 ReadyCard(
@@ -1256,8 +1243,8 @@ private fun LinkRow(title: String, url: String, onClick: () -> Unit) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(MaterialTheme.shapes.medium)
             .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
