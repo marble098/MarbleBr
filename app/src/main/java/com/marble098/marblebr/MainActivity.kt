@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import android.view.WindowManager
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -23,11 +24,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -47,6 +51,7 @@ import com.marble098.marblebr.feature.vault.VaultDashboardViewModel
 import com.marble098.marblebr.vault.BiometricAuthResult
 import com.marble098.marblebr.vault.BiometricVaultLock
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -184,6 +189,21 @@ fun MarbleBrAppNavHost(
     val coroutineScope = rememberCoroutineScope()
     val strings = LocalMarbleStrings.current
     var isVaultBiometricUnlocked by remember { mutableStateOf(false) }
+    DisposableEffect(activity) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) isVaultBiometricUnlocked = false
+        }
+        activity.lifecycle.addObserver(observer)
+        onDispose { activity.lifecycle.removeObserver(observer) }
+    }
+
+    // Limit the exposure window even if the dashboard remains in the foreground.
+    LaunchedEffect(isVaultBiometricUnlocked) {
+        if (isVaultBiometricUnlocked) {
+            delay(5 * 60_000L)
+            isVaultBiometricUnlocked = false
+        }
+    }
 
     LaunchedEffect(initialUrl) {
         if (initialUrl != null) navController.popBackStack("browser", inclusive = false)
@@ -250,6 +270,9 @@ fun MarbleBrAppNavHost(
 
         composable("vault") {
             val vaultViewModel: VaultDashboardViewModel = hiltViewModel()
+            DisposableEffect(Unit) {
+                onDispose { isVaultBiometricUnlocked = false }
+            }
             VaultDashboardScreen(
                 viewModel = vaultViewModel,
                 isBiometricUnlocked = isVaultBiometricUnlocked,
@@ -260,10 +283,17 @@ fun MarbleBrAppNavHost(
                             title = strings.biometricPromptTitle,
                             subtitle = strings.biometricPromptSubtitle,
                         )
-                        if (result is BiometricAuthResult.Authenticated ||
-                            result is BiometricAuthResult.NotAvailableOrNotEnrolled
-                        ) {
-                            isVaultBiometricUnlocked = true
+                        when (result) {
+                            is BiometricAuthResult.Authenticated -> {
+                                if (activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
+                                    navController.currentDestination?.route == "vault"
+                                ) {
+                                    isVaultBiometricUnlocked = true
+                                }
+                            }
+                            is BiometricAuthResult.NotAvailableOrNotEnrolled ->
+                                Toast.makeText(activity, strings.credentialLockUnavailable, Toast.LENGTH_LONG).show()
+                            is BiometricAuthResult.Failed -> Unit
                         }
                     }
                 },

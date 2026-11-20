@@ -121,6 +121,7 @@ ALLOWED_ACTION_REPOS = {
     "gradle/actions",
     "gradle/gradle-build-action",
     "softprops/action-gh-release",
+    "reactivecircus/android-emulator-runner",
 }
 
 ACTION_LINE_RE = re.compile(r"(?P<indent>\s*)(?P<key>uses:\s*)(?P<repo>[\w.-]+/[\w.-]+)(?:/(?P<sub>[\w.-]+))?@(?P<ref>\S+)")

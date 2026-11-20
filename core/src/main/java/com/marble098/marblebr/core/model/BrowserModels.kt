@@ -76,6 +76,7 @@ data class CookieRecord(
     val isSecure: Boolean = true,
     val isHttpOnly: Boolean = false,
     val sameSite: String = "Lax",
+    val isHostOnly: Boolean = true,
 ) {
     /**
      * بررسی اینکه آیا این کوکی یکی از کوکی‌های کلیدی احراز هویت است یا خیر.

@@ -20,7 +20,7 @@ import javax.crypto.KeyGenerator
 /**
  * تست‌های سه قابلیتِ تازهٔ نگه‌داشتنِ ورود در لایهٔ Vault:
  * - «نسخهٔ طلایی» (قفل‌کردنِ نسخه و مصون‌بودن از چرخش)
- * - «نگهبان انقضا» (سنجش و تمدیدِ یک‌لمسیِ عمرِ ورود)
+ * - «نگهبان انقضا» (سنجش عمرِ ورود بدون تغییر انقضای سرور)
  * - نگهبانِ نسخه‌ها (نسخهٔ ناسالم جای نسخهٔ سالم را نمی‌گیرد)
  */
 class SessionVaultFeaturesTest {
@@ -91,31 +91,20 @@ class SessionVaultFeaturesTest {
     }
 
     @Test
-    fun `expiry guardian renews a short lived login`() = runTest {
-        vaultManager.captureSnapshot(
-            payload = payload(),
-            targetCookieExpirationDays = 7,
-            maxSnapshotsToKeep = 10,
+    fun `expiry guardian reports explicit expiry without renewing it`() = runTest {
+        val now = System.currentTimeMillis()
+        val expiry = now + 60_000L
+        val initial = payload().copy(
+            capturedAtEpochMillis = now,
+            cookies = payload().cookies.map { it.copy(isSessionOnly = false, expiresEpochMillis = expiry) },
         )
-
-        val before = vaultManager.assessExpiryForContainer("ctx_golden")
-        assertTrue(before.hasExpiringAuthCookie)
-        assertTrue(before.isExpired.not())
-        assertEquals(1, before.authCookieCount)
-
-        val renewed = vaultManager.renewSnapshotExpiry(containerId = "ctx_golden", targetExpirationDays = 30)
-        assertNotNull(renewed)
-
-        val after = vaultManager.assessExpiryForContainer("ctx_golden")
-        assertNotNull(after.daysUntilExpiry)
-        assertTrue((after.daysUntilExpiry ?: 0) >= 28)
-    }
-
-    @Test
-    fun `renewal returns null when there is nothing stored`() = runTest {
-        assertNull(vaultManager.renewSnapshotExpiry(containerId = "ctx_missing", targetExpirationDays = 30))
-        val assessment = vaultManager.assessExpiryForContainer("ctx_missing")
-        assertFalse(assessment.hasExpiringAuthCookie)
+        vaultManager.captureSnapshot(payload = initial, targetCookieExpirationDays = 30)
+        val assessment = vaultManager.assessExpiryForContainer("ctx_golden", now)
+        assertTrue(assessment.hasExpiringAuthCookie)
+        assertFalse(assessment.isExpired)
+        assertEquals(1, assessment.authCookieCount)
+        assertEquals(expiry, vaultManager.restoreLatestHealthySnapshot("ctx_golden")?.cookies?.single()?.expiresEpochMillis)
+        assertFalse(vaultManager.assessExpiryForContainer("ctx_missing", now).hasExpiringAuthCookie)
     }
 
     @Test

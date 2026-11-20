@@ -216,6 +216,14 @@ fun VaultDashboardScreen(
                 }
             }
 
+            item(key = "credentials") {
+                CredentialVaultSection(
+                    vault = viewModel.credentialVault,
+                    unlocked = isBiometricUnlocked,
+                    onUnlock = onRequestBiometricUnlock,
+                )
+            }
+
             item(key = "filters") {
                 VaultSearchAndFilters(
                     query = query,
@@ -1098,8 +1106,8 @@ private fun SnapshotRow(
  *
  * دو قابلیتِ تازهٔ نگه‌داشتنِ ورود در یک کارت جمع شده‌اند چون هر دو یک سؤال را جواب می‌دهند:
  * «آیا ورودهای من الان در خطرند؟»
- * - اگر ورودی نزدیک انقضا باشد، همین‌جا با یک لمس تمدید می‌شود (بدون باز کردن سایت).
- * - دکمهٔ «بیمهٔ فوری» پیش از هر کار پرخطر از همهٔ سایت‌های محافظت‌شده نسخهٔ تازه می‌گیرد.
+ * - اگر ورودی نزدیک انقضا باشد، تب باز پس از بررسی ورود می‌تواند دوباره ذخیره شود.
+ * - دکمهٔ «بیمهٔ فوری» از تب‌های محافظت‌شدهٔ باز نسخهٔ تازه می‌گیرد.
  */
 @Composable
 private fun ExpiryGuardianCard(

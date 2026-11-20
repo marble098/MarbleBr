@@ -62,7 +62,11 @@ class AndroidKeystoreSecretKeyProvider @Inject constructor() : SecretKeyProvider
 class AesGcmVaultCipher @Inject constructor(
     private val secretKeyProvider: SecretKeyProvider,
 ) {
-    fun encrypt(plaintext: String, associatedData: String = ""): EncryptedVaultBlob {
+    fun encrypt(
+        plaintext: String,
+        associatedData: String = "",
+        includePlaintextHash: Boolean = true,
+    ): EncryptedVaultBlob {
         val secretKey = secretKeyProvider.getOrCreateSecretKey()
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, secretKey)
@@ -76,7 +80,7 @@ class AesGcmVaultCipher @Inject constructor(
         return EncryptedVaultBlob(
             ciphertextBase64 = Base64.getEncoder().encodeToString(ciphertextBytes),
             ivBase64 = Base64.getEncoder().encodeToString(ivBytes),
-            plaintextSha256 = sha256Hex(plaintextBytes),
+            plaintextSha256 = if (includePlaintextHash) sha256Hex(plaintextBytes) else "",
         )
     }
 
@@ -94,7 +98,7 @@ class AesGcmVaultCipher @Inject constructor(
 
         val decryptedBytes = cipher.doFinal(ciphertextBytes)
         val computedSha256 = sha256Hex(decryptedBytes)
-        check(computedSha256 == blob.plaintextSha256) {
+        check(blob.plaintextSha256.isEmpty() || computedSha256 == blob.plaintextSha256) {
             "SHA-256 integrity check failed for Session Vault snapshot"
         }
         return String(decryptedBytes, Charsets.UTF_8)

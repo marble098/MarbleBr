@@ -28,6 +28,8 @@ import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Tune
@@ -85,6 +87,7 @@ internal data class BrowserMenuState(
     val isProtected: Boolean = false,
     val isDesktopMode: Boolean = false,
     val hasPage: Boolean = false,
+    val canManageSiteAccounts: Boolean = false,
     val downloadsCount: Int = 0,
 )
 
@@ -104,6 +107,8 @@ internal data class BrowserMenuActions(
     val onReadAloud: () -> Unit = {},
     val onReaderMode: () -> Unit = {},
     val onSitePermissions: () -> Unit = {},
+    val onSiteAccounts: () -> Unit = {},
+    val onSavePdf: () -> Unit = {},
 )
 
 @Composable
@@ -171,6 +176,12 @@ internal fun BrowserOverflowMenu(
                         testTag = "menu_share_link",
                     ) { onDismiss(); actions.onShareLink() }
                     MenuRow(
+                        icon = Icons.Default.Save,
+                        title = strings.contextSavePdf,
+                        accent = colors.primary,
+                        testTag = "menu_save_pdf",
+                    ) { onDismiss(); actions.onSavePdf() }
+                    MenuRow(
                         icon = Icons.Default.Bookmark,
                         title = strings.duplicateTab,
                         accent = colors.secondary,
@@ -214,6 +225,15 @@ internal fun BrowserOverflowMenu(
 
                 if (state.hasPage && !state.isPrivate) {
                     MenuSectionTitle(strings.menuSectionProtection)
+                    if (state.canManageSiteAccounts) {
+                        MenuRow(
+                            icon = Icons.Default.People,
+                            title = strings.accountsTitle,
+                            subtitle = strings.accountsDescription,
+                            accent = colors.secondary,
+                            testTag = "menu_site_accounts",
+                        ) { onDismiss(); actions.onSiteAccounts() }
+                    }
                     MenuRow(
                         icon = Icons.Default.Shield,
                         title = strings.menuSaveState,

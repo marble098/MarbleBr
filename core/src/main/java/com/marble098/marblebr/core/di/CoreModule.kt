@@ -10,6 +10,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 import com.marble098.marblebr.core.database.BookmarkDao
+import com.marble098.marblebr.core.database.CredentialDao
 import com.marble098.marblebr.core.database.ContainerDao
 import com.marble098.marblebr.core.database.DownloadDao
 import com.marble098.marblebr.core.database.HealthEventDao
@@ -43,6 +44,18 @@ object CoreModule {
         }
     }
 
+    /** Add the encrypted credential vault without removing any existing session data. */
+    private val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(connection: SQLiteConnection) {
+            connection.execSQL(
+                "CREATE TABLE IF NOT EXISTS saved_credentials (" +
+                    "id TEXT NOT NULL PRIMARY KEY, encryptedPayloadBase64 TEXT NOT NULL, " +
+                    "ivBase64 TEXT NOT NULL, payloadSha256 TEXT NOT NULL, " +
+                    "createdAtEpochMillis INTEGER NOT NULL, updatedAtEpochMillis INTEGER NOT NULL)",
+            )
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): MarbleBrDatabase =
@@ -51,10 +64,13 @@ object CoreModule {
             MarbleBrDatabase::class.java,
             "marblebr_vault.db",
         )
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             // آخرین سدِ دفاعی برای نسخه‌های نامعلوم/آینده؛ مسیر عادی همین مهاجرت است.
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
+
+    @Provides
+    fun provideCredentialDao(db: MarbleBrDatabase): CredentialDao = db.credentialDao()
 
     @Provides
     fun provideContainerDao(db: MarbleBrDatabase): ContainerDao = db.containerDao()

@@ -18,6 +18,49 @@ import java.util.Locale
  */
 abstract class MarbleStrings {
 
+    // Multi-account browsing, encrypted credentials and page actions.
+    abstract val accountsTitle: String
+    abstract val accountsDescription: String
+    abstract val accountCurrent: String
+    abstract val accountCreate: String
+    abstract val accountName: String
+    abstract val accountOpen: String
+    abstract val credentialVaultTitle: String
+    abstract val credentialVaultDescription: String
+    abstract val credentialLockRequired: String
+    abstract val credentialLockUnavailable: String
+    abstract val credentialAdd: String
+    abstract val credentialEdit: String
+    abstract val credentialSite: String
+    abstract val credentialUsername: String
+    abstract val credentialPassword: String
+    abstract val credentialNotes: String
+    abstract val credentialSave: String
+    abstract val credentialDelete: String
+    abstract val credentialDeleteBody: String
+    abstract val credentialInvalid: String
+    abstract val credentialFailed: String
+    abstract val credentialEmpty: String
+    abstract val credentialUnreadable: String
+    abstract val credentialGenerate: String
+    abstract val credentialShow: String
+    abstract val credentialHide: String
+    abstract val credentialCopyUser: String
+    abstract val credentialCopyPassword: String
+    abstract val credentialCopied: String
+    abstract val contextTitle: String
+    abstract val contextOpenTab: String
+    abstract val contextCopyLink: String
+    abstract val contextShareLink: String
+    abstract val contextSaveImage: String
+    abstract val contextCopyImage: String
+    abstract val contextShareText: String
+    abstract val contextSavePdf: String
+    abstract val pdfSaved: String
+    abstract val pdfFailed: String
+    abstract val credentialUnlock: String
+    abstract val accountSessionWarning: String
+
     // ---------------------------------------------------------------- عمومی
     abstract val appName: String
     abstract val back: String
@@ -527,6 +570,48 @@ abstract class MarbleStrings {
 }
 
 private object PersianStrings : MarbleStrings() {
+    override val accountsTitle = "حساب‌های این سایت"
+    override val accountsDescription = "هر حساب در فضای جداگانه ذخیره می‌شود. وارد حساب جدید شوید."
+    override val accountCurrent = "حساب فعال"
+    override val accountCreate = "افزودن حساب دیگر"
+    override val accountName = "نام حساب"
+    override val accountOpen = "باز کردن حساب"
+    override val credentialVaultTitle = "گذرواژه‌ها و حساب‌ها"
+    override val credentialVaultDescription = "فقط روی این دستگاه و به‌صورت رمزنگاری‌شده ذخیره می‌شوند."
+    override val credentialLockRequired = "برای دیدن گذرواژه‌ها با اثر انگشت یا قفل گوشی تأیید کنید."
+    override val credentialLockUnavailable = "ابتدا قفل صفحه یا اثر انگشت دستگاه را فعال کنید."
+    override val credentialAdd = "افزودن اطلاعات ورود"
+    override val credentialEdit = "ویرایش اطلاعات ورود"
+    override val credentialSite = "آدرس سایت (https://...)"
+    override val credentialUsername = "نام کاربری"
+    override val credentialPassword = "گذرواژه"
+    override val credentialNotes = "یادداشت"
+    override val credentialSave = "ذخیره"
+    override val credentialDelete = "حذف اطلاعات ورود؟"
+    override val credentialDeleteBody = "این اطلاعات فقط از مخزن گذرواژه حذف می‌شود."
+    override val credentialInvalid = "آدرس معتبر و نام کاربری یا گذرواژه را وارد کنید."
+    override val credentialFailed = "ذخیره اطلاعات ممکن نشد. دوباره تلاش کنید."
+    override val credentialEmpty = "هنوز اطلاعات ورودی ذخیره نشده است."
+    override val credentialUnreadable = "برخی اطلاعات خوانده نشدند یا مخزن در دسترس نیست؛ هیچ موردی خودکار حذف نشده است."
+    override val credentialGenerate = "ساخت گذرواژه قوی"
+    override val credentialShow = "نمایش گذرواژه"
+    override val credentialHide = "پنهان کردن گذرواژه"
+    override val credentialCopyUser = "کپی نام کاربری"
+    override val credentialCopyPassword = "کپی گذرواژه"
+    override val credentialCopied = "کپی شد؛ پس از ۳۰ ثانیه پاک می‌شود."
+    override val contextTitle = "گزینه‌های پیوند و تصویر"
+    override val contextOpenTab = "باز کردن پیوند در تب تازه"
+    override val contextCopyLink = "کپی پیوند"
+    override val contextShareLink = "اشتراک پیوند"
+    override val contextSaveImage = "دانلود تصویر"
+    override val contextCopyImage = "کپی آدرس تصویر"
+    override val contextShareText = "اشتراک متن"
+    override val contextSavePdf = "ذخیره صفحه به صورت PDF"
+    override val pdfSaved = "صفحه به صورت PDF ذخیره شد."
+    override val pdfFailed = "ذخیره صفحه ممکن نشد."
+    override val credentialUnlock = "باز کردن مخزن"
+    override val accountSessionWarning = "اگر سایت نشست را در سرور باطل کند، ورود دوباره لازم است."
+
     override val appName = "MarbleBr"
     override val back = "بازگشت"
     override val cancel = "بی خیال"
@@ -724,10 +809,10 @@ private object PersianStrings : MarbleStrings() {
     override val vaultUnprotectAll = "خاموش‌کردن مراقبت همه"
     override val vaultProtectAllOnDone = "مراقبت از همهٔ سایت‌ها روشن شد"
     override val vaultProtectAllOffDone = "مراقبت از همهٔ سایت‌ها خاموش شد"
-    override val vaultRestoreNeedsOpenTab = "کوکی‌ها برگشتند؛ برای بازگرداندن حافظهٔ صفحه، سایت را باز کن."
+    override val vaultRestoreNeedsOpenTab = "برای بازیابی، صفحهٔ همان سایت را در حساب مربوط باز نگه دار."
     override val vaultQuickActionsTitle = "کارهای سریع"
     override val vaultJumpToSite = "رفتن به سایت"
-    override val feedbackRestoreEmpty = "این نسخه داده‌ای برای بازگردانی نداشت."
+    override val feedbackRestoreEmpty = "بازیابی انجام نشد؛ صفحه و دسترسی شبکه را بررسی کن."
     override val quickPageSection = "این صفحه"
     override val quickLibrarySection = "کتابخانه"
     override val quickToolsSection = "محافظت و ابزار"
@@ -760,8 +845,8 @@ private object PersianStrings : MarbleStrings() {
     override fun feedbackKeepAliveOn(domain: String, minutes: Int) =
         "برای $domain هر $minutes دقیقه بی صدا زنده سازی انجام می شود"
     override fun feedbackKeepAliveOff(domain: String) = "زنده سازی خودکار $domain خاموش شد"
-    override fun feedbackRestored(label: String, cookies: Int) = "نسخه «$label» برگشت ($cookies کوکی)"
-    override fun feedbackSignedOut(domain: String) = "از $domain خارج شدی و نسخه هایش پاک شد"
+    override fun feedbackRestored(label: String, cookies: Int) = "بازیابی «$label» انجام شد ($cookies کوکی به مرورگر ارائه شد)؛ ورود را بررسی کن."
+    override fun feedbackSignedOut(domain: String) = "تب‌های $domain بسته و پاک‌سازی این حساب درخواست شد."
     override fun aboutBody(version: String) =
         "MarbleBr نسخه $version — ساخته شده که یک بار وارد شوی و بمانی. بدون ردیاب، بدون تبلیغ."
     override fun reloginAutoTitle(domain: String) = "ورود دوباره به $domain"
@@ -920,21 +1005,21 @@ private object PersianStrings : MarbleStrings() {
     override val vaultGoldenHint = "نسخهٔ طلایی هیچ‌وقت خودکار پاک نمی‌شود."
 
     override val vaultExpiryTitle = "نگهبان انقضا"
-    override val vaultExpiryBody = "این ورودها نزدیک انقضا هستند."
-    override val vaultExpiryAllFresh = "همه‌چیز تازه است."
+    override val vaultExpiryBody = "برای تازه‌سازی، سایت را باز و ورود را بررسی کنید؛ سپس نسخهٔ باز را ذخیره کنید."
+    override val vaultExpiryAllFresh = "در نسخه‌های بررسی‌شده کوکی نزدیک انقضا یافت نشد."
     override val vaultExpiryExpired = "منقضی شده"
-    override val vaultExpiryRenew = "تمدید"
-    override val vaultExpiryRenewAll = "تمدید همه"
+    override val vaultExpiryRenew = "ذخیرهٔ تب باز"
+    override val vaultExpiryRenewAll = "ذخیرهٔ تب‌های باز"
 
     override val vaultInsuranceTitle = "بیمهٔ نشست"
-    override val vaultInsuranceBody = "قبل از کارهای پرخطر، نسخهٔ تازه می‌سازیم."
+    override val vaultInsuranceBody = "از تب‌های محافظت‌شدهٔ باز نسخهٔ تازه می‌سازیم."
     override val vaultInsuranceRun = "بیمهٔ فوری"
 
     override fun vaultGoldenPinnedDone(domain: String) = "نسخهٔ $domain طلایی و قفل شد."
     override fun vaultGoldenRemoved(domain: String) = "قفل نسخهٔ $domain برداشته شد."
     override fun vaultExpiryDaysLeft(days: Int) = "$days روز مانده"
-    override fun vaultExpiryRenewed(domain: String) = "ورود $domain برای یک دورهٔ تازه تمدید شد."
-    override fun vaultExpiryRenewedCount(count: Int) = "ورود $count سایت تمدید شد."
+    override fun vaultExpiryRenewed(domain: String) = "نسخهٔ تب باز $domain ذخیره شد؛ تمدید ورود به سایت بستگی دارد."
+    override fun vaultExpiryRenewedCount(count: Int) = "از $count تب باز نسخه ذخیره شد؛ اعتبار ورود را سایت تعیین می‌کند."
     override fun vaultInsuranceDone(count: Int) = "از $count سایت نسخهٔ تازه گرفتیم."
 
     override val dnsSystem = "خودکار"
@@ -943,7 +1028,7 @@ private object PersianStrings : MarbleStrings() {
     override val statusHealthy = "سالم"
     override val statusProtected = "مراقبت فعال"
     override val statusHealing = "در حال ترمیم"
-    override val statusRecovered = "ترمیم شد"
+    override val statusRecovered = "تلاش برای بازیابی"
     override val statusNeedsSignIn = "نیاز به ورود دوباره"
     override val statusProtectionOff = "مراقبت خاموش"
     override val reasonProtectionOff = "برای این سایت مراقبت خاموش است."
@@ -952,12 +1037,54 @@ private object PersianStrings : MarbleStrings() {
     override val reasonLoginRedirect = "سایت تو را به صفحه ورود فرستاد."
     override val reasonCookieMissing = "کوکی ورودت ناپدید شد."
     override val reasonStorageCleared = "حافظه ی محلی سایت پاک شد."
-    override val reasonHealed = "نشستت را خودکار برگرداندیم؛ لازم نیست کاری کنی."
+    override val reasonHealed = "برای بازیابی نشست تلاش شد؛ وضعیت ورود را بررسی کن."
     override val reasonServerRevoked = "سایت نشست را بست؛ با اثر انگشت یا Passkey سریع برگرد."
     override val reasonUnknown = "اتفاقی برای نشست افتاد که بررسی شد."
 }
 
 private object EnglishStrings : MarbleStrings() {
+    override val accountsTitle = "Accounts on this site"
+    override val accountsDescription = "Each account has its own storage. Sign in to the new account."
+    override val accountCurrent = "Current account"
+    override val accountCreate = "Add another account"
+    override val accountName = "Account name"
+    override val accountOpen = "Open account"
+    override val credentialVaultTitle = "Passwords and accounts"
+    override val credentialVaultDescription = "Stored encrypted on this device only."
+    override val credentialLockRequired = "Authenticate with biometrics or your device screen lock to see passwords."
+    override val credentialLockUnavailable = "Set up a device screen lock or biometrics first."
+    override val credentialAdd = "Add login"
+    override val credentialEdit = "Edit login"
+    override val credentialSite = "Site URL (https://...)"
+    override val credentialUsername = "Username"
+    override val credentialPassword = "Password"
+    override val credentialNotes = "Notes"
+    override val credentialSave = "Save"
+    override val credentialDelete = "Delete this login?"
+    override val credentialDeleteBody = "This removes the login from the password vault only."
+    override val credentialInvalid = "Enter a valid site URL and a username or password."
+    override val credentialFailed = "Could not save the login. Please try again."
+    override val credentialEmpty = "No saved logins yet."
+    override val credentialUnreadable = "Some entries could not be read or the vault is unavailable; nothing was deleted automatically."
+    override val credentialGenerate = "Generate strong password"
+    override val credentialShow = "Show password"
+    override val credentialHide = "Hide password"
+    override val credentialCopyUser = "Copy username"
+    override val credentialCopyPassword = "Copy password"
+    override val credentialCopied = "Copied; cleared after 30 seconds."
+    override val contextTitle = "Link and image actions"
+    override val contextOpenTab = "Open link in new tab"
+    override val contextCopyLink = "Copy link"
+    override val contextShareLink = "Share link"
+    override val contextSaveImage = "Download image"
+    override val contextCopyImage = "Copy image address"
+    override val contextShareText = "Share text"
+    override val contextSavePdf = "Save page as PDF"
+    override val pdfSaved = "Page saved as PDF."
+    override val pdfFailed = "Could not save the page."
+    override val credentialUnlock = "Unlock vault"
+    override val accountSessionWarning = "If the site revokes a session on its server, you must sign in again."
+
     override val appName = "MarbleBr"
     override val back = "Back"
     override val cancel = "Cancel"
@@ -1155,10 +1282,10 @@ private object EnglishStrings : MarbleStrings() {
     override val vaultUnprotectAll = "Unprotect all"
     override val vaultProtectAllOnDone = "Protection turned on for all sites"
     override val vaultProtectAllOffDone = "Protection turned off for all sites"
-    override val vaultRestoreNeedsOpenTab = "Cookies restored; open the site to restore page storage."
+    override val vaultRestoreNeedsOpenTab = "Keep the site open in the matching account to restore its data."
     override val vaultQuickActionsTitle = "Quick actions"
     override val vaultJumpToSite = "Jump to site"
-    override val feedbackRestoreEmpty = "This snapshot had nothing to restore."
+    override val feedbackRestoreEmpty = "Nothing could be restored; check the open page and network connection."
     override val quickPageSection = "This page"
     override val quickLibrarySection = "Library"
     override val quickToolsSection = "Protection & tools"
@@ -1191,8 +1318,8 @@ private object EnglishStrings : MarbleStrings() {
     override fun feedbackKeepAliveOn(domain: String, minutes: Int) =
         "$domain gets a quiet check-in every $minutes minutes"
     override fun feedbackKeepAliveOff(domain: String) = "Background check-ins for $domain are off"
-    override fun feedbackRestored(label: String, cookies: Int) = "Restored “$label” ($cookies cookies)"
-    override fun feedbackSignedOut(domain: String) = "Signed out of $domain and deleted its copies"
+    override fun feedbackRestored(label: String, cookies: Int) = "Restore attempted for “$label” ($cookies cookies offered to the browser); check your sign-in."
+    override fun feedbackSignedOut(domain: String) = "Closed tabs and requested cleanup for this $domain account."
     override fun aboutBody(version: String) =
         "MarbleBr version $version — built so you sign in once and stay in. No trackers, no ads."
     override fun reloginAutoTitle(domain: String) = "Sign in to $domain again"
@@ -1351,21 +1478,21 @@ private object EnglishStrings : MarbleStrings() {
     override val vaultGoldenHint = "A golden version is never deleted automatically."
 
     override val vaultExpiryTitle = "Expiry guardian"
-    override val vaultExpiryBody = "These logins are about to expire — renew them with one tap."
-    override val vaultExpiryAllFresh = "All logins are fresh — nothing to renew."
+    override val vaultExpiryBody = "Open the site and check your login, then save the open tab. Only the site can renew it."
+    override val vaultExpiryAllFresh = "No expiring cookie was found in the snapshots checked."
     override val vaultExpiryExpired = "Expired"
-    override val vaultExpiryRenew = "Renew"
-    override val vaultExpiryRenewAll = "Renew all"
+    override val vaultExpiryRenew = "Save open tab"
+    override val vaultExpiryRenewAll = "Save open tabs"
 
     override val vaultInsuranceTitle = "Session insurance"
-    override val vaultInsuranceBody = "We take a fresh copy before risky actions."
+    override val vaultInsuranceBody = "Take a fresh copy of protected tabs that are open."
     override val vaultInsuranceRun = "Insure now"
 
     override fun vaultGoldenPinnedDone(domain: String) = "The $domain version is now golden and locked."
     override fun vaultGoldenRemoved(domain: String) = "The lock on the $domain version was removed."
     override fun vaultExpiryDaysLeft(days: Int) = "$days days left"
-    override fun vaultExpiryRenewed(domain: String) = "The $domain login was renewed for a fresh period."
-    override fun vaultExpiryRenewedCount(count: Int) = "Renewed the login of $count sites."
+    override fun vaultExpiryRenewed(domain: String) = "Saved the open $domain tab. Login renewal depends on the site."
+    override fun vaultExpiryRenewedCount(count: Int) = "Saved $count open tabs; login validity depends on the site."
     override fun vaultInsuranceDone(count: Int) = "Took a fresh copy of $count sites."
 
     override val dnsSystem = "Automatic"
@@ -1374,7 +1501,7 @@ private object EnglishStrings : MarbleStrings() {
     override val statusHealthy = "Healthy"
     override val statusProtected = "Protection on"
     override val statusHealing = "Healing"
-    override val statusRecovered = "Restored"
+    override val statusRecovered = "Restore attempted"
     override val statusNeedsSignIn = "Needs a new sign-in"
     override val statusProtectionOff = "Protection off"
     override val reasonProtectionOff = "Protection is off for this site."
@@ -1383,7 +1510,7 @@ private object EnglishStrings : MarbleStrings() {
     override val reasonLoginRedirect = "The site sent you to its login page."
     override val reasonCookieMissing = "Your login cookie disappeared."
     override val reasonStorageCleared = "The site’s local storage was wiped."
-    override val reasonHealed = "We restored your session automatically — nothing for you to do."
+    override val reasonHealed = "Session restore was attempted; check whether you are still signed in."
     override val reasonServerRevoked = "The site ended your session — get back in with your fingerprint or a passkey."
     override val reasonUnknown = "Something touched your session, so we checked it."
 }

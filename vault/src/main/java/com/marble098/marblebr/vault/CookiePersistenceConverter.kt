@@ -10,15 +10,14 @@ import javax.inject.Singleton
 
 /**
  * ویژگی ۱ Never Sign-out Engine:
- * تبدیل کوکی‌های Session (بدون تاریخ انقضا) یا کوکی‌های کوتاه‌مدت به کوکی‌های ماندگار (Persistent)
- * با انقضای بلند و قابل تنظیم برای هر سایت.
+ * تبدیل کوکی‌های Session بدون تاریخ انقضا به کوکی‌های ماندگار با عمر قابل تنظیم.
+ * تاریخ انقضای صریح سرور هرگز تغییر نمی‌کند.
  */
 @Singleton
 class CookiePersistenceConverter @Inject constructor() {
 
     /**
-     * اگر کوکی از نوع Session باشد یا تاریخ انقضای آن کمتر از مقدار هدف باشد،
-     * آن را به یک کوکی ماندگار با انقضای `targetExpirationDays` تبدیل می‌کند.
+     * فقط کوکی بدون تاریخ انقضا ماندگار می‌شود؛ انقضای صریح حتی اگر گذشته باشد حفظ می‌شود.
      */
     fun promoteToPersistent(
         cookie: CookieRecord,
@@ -27,13 +26,7 @@ class CookiePersistenceConverter @Inject constructor() {
     ): CookieRecord {
         val safeDays = targetExpirationDays.coerceIn(MIN_EXPIRATION_DAYS, MAX_EXPIRATION_DAYS)
         val targetExpiryMillis = nowEpochMillis + TimeUnit.DAYS.toMillis(safeDays.toLong())
-        val currentExpiry = cookie.expiresEpochMillis
-
-        val shouldExtend = cookie.isSessionOnly ||
-            currentExpiry == null ||
-            currentExpiry < targetExpiryMillis
-
-        return if (shouldExtend) {
+        return if (cookie.expiresEpochMillis == null) {
             cookie.copy(
                 expiresEpochMillis = targetExpiryMillis,
                 isSessionOnly = false,

@@ -20,7 +20,10 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -50,8 +53,12 @@ class SmartKeepAliveWorker @AssistedInject constructor(
                 val snapshot = vaultManager.restoreLatestHealthySnapshot(container.id) ?: return@runCatching
                 if (snapshot.cookies.isEmpty()) return@runCatching
 
-                val targetUrl = buildTargetUrl(container.domain, container.keepAliveEndpointPath)
-                val cookieHeader = snapshot.cookies.joinToString("; ") { "${it.name}=${it.value}" }
+                val targetUrl = CookieRequestPolicy.targetUrl(snapshot.origin, container.keepAliveEndpointPath) ?: return@runCatching
+                val targetHost = URI(targetUrl).host ?: return@runCatching
+                if (targetHost.lowercase().removePrefix("www.") != container.domain) return@runCatching
+                val eligible = CookieRequestPolicy.cookiesForUrl(snapshot.cookies, targetUrl)
+                if (eligible.isEmpty()) return@runCatching
+                val cookieHeader = eligible.joinToString("; ") { "${it.name}=${it.value}" }
 
                 val connection = (URL(targetUrl).openConnection() as HttpURLConnection).apply {
                     requestMethod = "HEAD"
@@ -74,7 +81,7 @@ class SmartKeepAliveWorker @AssistedInject constructor(
                             val updatedCookies = mergeRefreshedCookies(
                                 existing = snapshot.cookies,
                                 setCookieHeaders = setCookieHeaders,
-                                defaultDomain = container.domain,
+                                defaultDomain = targetHost,
                                 expirationDays = container.cookieExpirationDays,
                             )
                             vaultManager.captureSnapshot(
@@ -103,13 +110,25 @@ class SmartKeepAliveWorker @AssistedInject constructor(
         defaultDomain: String,
         expirationDays: Int,
     ): List<CookieRecord> {
-        val byName = existing.associateBy { it.name }.toMutableMap()
+        fun key(cookie: CookieRecord) = Triple(cookie.domain.removePrefix(".").lowercase(), cookie.path, cookie.name)
+        val byScope = existing.associateBy(::key).toMutableMap()
         for (rawHeader in setCookieHeaders) {
             val parsed = parseSetCookieHeader(rawHeader, defaultDomain) ?: continue
-            val promoted = cookieConverter.promoteToPersistent(parsed, expirationDays)
-            byName[promoted.name] = promoted
+            val domain = parsed.domain.removePrefix(".").lowercase()
+            val host = defaultDomain.lowercase()
+            if (host != domain && (parsed.isHostOnly || !host.endsWith(".$domain"))) continue
+            val expiry = parsed.expiresEpochMillis
+            if (expiry != null && expiry <= System.currentTimeMillis()) {
+                byScope.remove(key(parsed))
+            } else {
+                byScope[key(parsed)] = if (expiry == null) {
+                    cookieConverter.promoteToPersistent(parsed, expirationDays)
+                } else {
+                    parsed
+                }
+            }
         }
-        return byName.values.toList()
+        return byScope.values.toList()
     }
 
     internal fun parseSetCookieHeader(rawHeader: String, defaultDomain: String): CookieRecord? {
@@ -125,37 +144,47 @@ class SmartKeepAliveWorker @AssistedInject constructor(
 
         var domain = defaultDomain
         var path = "/"
-        var isSecure = true
+        var isSecure = false
         var isHttpOnly = false
+        var isHostOnly = true
         var sameSite = "Lax"
+        var expiry: Long? = null
+        var maxAge: Long? = null
 
         for (attr in segments.drop(1)) {
             val lower = attr.lowercase()
             when {
-                lower.startsWith("domain=") -> domain = attr.substringAfter("=").trim()
+                lower.startsWith("domain=") -> {
+                    domain = attr.substringAfter("=").trim()
+                    isHostOnly = false
+                }
                 lower.startsWith("path=") -> path = attr.substringAfter("=").trim()
                 lower == "secure" -> isSecure = true
                 lower == "httponly" -> isHttpOnly = true
                 lower.startsWith("samesite=") -> sameSite = attr.substringAfter("=").trim()
+                lower.startsWith("max-age=") -> maxAge = attr.substringAfter("=").trim().toLongOrNull()
+                lower.startsWith("expires=") -> expiry = runCatching {
+                    ZonedDateTime.parse(attr.substringAfter("=").trim(), DateTimeFormatter.RFC_1123_DATE_TIME)
+                        .toInstant().toEpochMilli()
+                }.getOrNull()
             }
         }
 
+        if (maxAge != null) {
+            expiry = if (maxAge <= 0) 0L else System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(maxAge.coerceAtMost(63_072_000))
+        }
         return CookieRecord(
             name = name,
             value = value,
             domain = domain,
             path = path,
-            isSessionOnly = true,
+            isSessionOnly = expiry == null,
+            expiresEpochMillis = expiry,
             isSecure = isSecure,
             isHttpOnly = isHttpOnly,
+            isHostOnly = isHostOnly,
             sameSite = sameSite,
         )
-    }
-
-    private fun buildTargetUrl(domain: String, path: String): String {
-        val cleanHost = domain.removePrefix("https://").removePrefix("http://").trimEnd('/')
-        val cleanPath = if (path.startsWith("/")) path else "/$path"
-        return "https://$cleanHost$cleanPath"
     }
 
     companion object {

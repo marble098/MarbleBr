@@ -187,3 +187,14 @@ data class HealthEventEntity(
     val descriptionFa: String,
     val timestampEpochMillis: Long,
 )
+
+/** Only ciphertext and non-sensitive timestamps are persisted for saved credentials. */
+@Entity(tableName = "saved_credentials")
+data class CredentialEntity(
+    @PrimaryKey val id: String,
+    val encryptedPayloadBase64: String,
+    val ivBase64: String,
+    val payloadSha256: String,
+    val createdAtEpochMillis: Long,
+    val updatedAtEpochMillis: Long,
+)
