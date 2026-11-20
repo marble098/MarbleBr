@@ -18,7 +18,6 @@ import java.util.Locale
  */
 abstract class MarbleStrings {
 
-
     // Multi-account browsing, encrypted credentials and page actions.
     abstract val accountsTitle: String
     abstract val accountsDescription: String

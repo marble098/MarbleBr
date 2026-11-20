@@ -94,6 +94,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -197,7 +198,7 @@ fun BrowserScreen(
     var pendingCloseTabId by remember { mutableStateOf<String?>(null) }
 
     val activeTab = uiState.activeTab
-    var pdfTargetTabId by remember { mutableStateOf<String?>(null) }
+    var pdfTargetTabId by rememberSaveable { mutableStateOf<String?>(null) }
     val pdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         val tabId = pdfTargetTabId
         pdfTargetTabId = null

@@ -15,13 +15,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -89,12 +92,13 @@ private fun UnlockedCredentials(vault: CredentialVault) {
     var showingForm by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<SavedCredential?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
+    var formError by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
     val filtered = credentials.filter {
         it.fields.site.contains(query, true) || it.fields.username.contains(query, true)
     }
 
-    Button(onClick = { editing = null; showingForm = true }, modifier = Modifier.testTag("credential_add")) {
+    Button(onClick = { editing = null; formError = null; showingForm = true }, modifier = Modifier.testTag("credential_add")) {
         Text(strings.credentialAdd)
     }
     if (credentials.isNotEmpty()) {
@@ -125,7 +129,7 @@ private fun UnlockedCredentials(vault: CredentialVault) {
                     }) { Text(strings.credentialCopyPassword) }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(onClick = { editing = credential; showingForm = true }) { Text(strings.credentialEdit) }
+                    TextButton(onClick = { editing = credential; formError = null; showingForm = true }) { Text(strings.credentialEdit) }
                     TextButton(onClick = { pendingDelete = credential }) { Text(strings.vaultDelete) }
                 }
             }
@@ -135,10 +139,11 @@ private fun UnlockedCredentials(vault: CredentialVault) {
         CredentialForm(
             initial = editing?.fields,
             saving = saving,
+            errorMessage = formError,
             onDismiss = { if (!saving) showingForm = false },
             onSave = { fields ->
                 if (!CredentialVault.isValidSite(fields.site) || (fields.username.isBlank() && fields.password.isBlank())) {
-                    message = strings.credentialInvalid
+                    formError = strings.credentialInvalid
                 } else {
                     saving = true
                     scope.launch {
@@ -148,7 +153,7 @@ private fun UnlockedCredentials(vault: CredentialVault) {
                             showingForm = false
                             message = null
                         } else {
-                            message = strings.credentialFailed
+                            formError = strings.credentialFailed
                         }
                     }
                 }
@@ -175,6 +180,7 @@ private fun UnlockedCredentials(vault: CredentialVault) {
 private fun CredentialForm(
     initial: CredentialFields?,
     saving: Boolean,
+    errorMessage: String?,
     onDismiss: () -> Unit,
     onSave: (CredentialFields) -> Unit,
 ) {
@@ -200,7 +206,10 @@ private fun CredentialForm(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     trailingIcon = {
                         IconButton(onClick = { revealed = !revealed }) {
-                            Text(if (revealed) "◉" else "○")
+                            Icon(
+                                if (revealed) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (revealed) strings.credentialHide else strings.credentialShow,
+                            )
                         }
                     },
                 )
@@ -208,6 +217,7 @@ private fun CredentialForm(
                     Text(strings.credentialGenerate)
                 }
                 OutlinedTextField(notes, { notes = it }, label = { Text(strings.credentialNotes) }, maxLines = 4)
+                errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
         },
         confirmButton = {
@@ -237,8 +247,11 @@ internal fun copySensitive(context: Context, value: String) {
         runCatching {
             val current = clipboard.primaryClip
             if (current?.description?.label?.toString() == label) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) clipboard.clearPrimaryClip()
-                else clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    clipboard.clearPrimaryClip()
+                } else {
+                    clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
+                }
             }
         }
     }, 30_000L)

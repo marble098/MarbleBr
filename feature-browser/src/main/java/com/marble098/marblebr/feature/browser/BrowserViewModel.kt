@@ -116,9 +116,13 @@ class BrowserViewModel @Inject constructor(
 
     val siteAccounts: StateFlow<List<WebAppContainer>> = combine(containerDao.observeAll(), uiState) { entries, state ->
         val domain = state.activeContainer?.domain
-        if (domain == null || state.activeTab?.isPrivate == true) emptyList() else entries
+        if (domain == null || state.activeTab?.isPrivate == true) {
+            emptyList()
+        } else {
+            entries
             .filter { it.domain == domain && !it.isPinnedPwa }
             .map { it.toDomain() }
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val containers = mutableMapOf<String, WebAppContainer>()
@@ -379,7 +383,9 @@ class BrowserViewModel @Inject constructor(
         val tab = createTab(source.isPrivate, desktop = source.isDesktopMode)
         if (source.url.isNotBlank()) {
             viewModelScope.launch {
-                val account = if (source.isPrivate) null else {
+                val account = if (source.isPrivate) {
+                    null
+                } else {
                     containers[source.id] ?: containerDao.getById(source.containerId)?.toDomain()
                 }
                 if (uiState.value.tabs.any { it.id == tab.id }) loadPage(tab, source.url, account)

@@ -724,7 +724,6 @@ class ContainerSessionManager @Inject constructor(
                         }
                     })
                 }
-
             },
             NATIVE_BRIDGE_APP_ID,
         )
@@ -806,7 +805,9 @@ class ContainerSessionManager @Inject constructor(
         )
         if (!vaultManager.evaluatePayloadHealth(payload) &&
             !(manual && (payload.cookies.isNotEmpty() || payload.localStorage.isNotEmpty() || payload.sessionStorage.isNotEmpty()))
-        ) return false
+        ) {
+            return false
+        }
         val strings = localizationManager.current()
         vaultManager.captureSnapshot(
             payload = payload,
@@ -982,7 +983,9 @@ class ContainerSessionManager @Inject constructor(
             val hostOnly = item.optBoolean("isHostOnly", true)
             if (domain.isBlank() || (hostOnly && domain != host) ||
                 (!hostOnly && domain != host && !host.endsWith(".$domain"))
-            ) return@mapNotNull null
+            ) {
+                return@mapNotNull null
+            }
             CookieRecord(
                 name = item.optString("name"),
                 value = item.optString("value"),

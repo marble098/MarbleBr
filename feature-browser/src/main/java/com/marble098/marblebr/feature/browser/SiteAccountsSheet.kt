@@ -42,8 +42,11 @@ internal fun SiteAccountsSheet(
                     .padding(vertical = 10.dp).testTag("site_account_${account.id}"),
             ) {
                 Text(account.displayName, modifier = Modifier.weight(1f))
-                if (account.id == activeId) Text(strings.accountCurrent, color = MaterialTheme.colorScheme.primary)
-                else Text(strings.accountOpen, color = MaterialTheme.colorScheme.primary)
+                if (account.id == activeId) {
+                    Text(strings.accountCurrent, color = MaterialTheme.colorScheme.primary)
+                } else {
+                    Text(strings.accountOpen, color = MaterialTheme.colorScheme.primary)
+                }
             }
         }
         Button(onClick = { adding = true }, modifier = Modifier.testTag("site_account_add")) {
