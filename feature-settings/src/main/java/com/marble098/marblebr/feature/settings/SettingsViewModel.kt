@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.marble098.marblebr.core.i18n.AppLanguage
 import com.marble098.marblebr.core.i18n.LocalizationManager
+import com.marble098.marblebr.core.model.BackButtonBehavior
+import com.marble098.marblebr.core.model.ChromeBarStyle
 import com.marble098.marblebr.core.model.DnsMode
 import com.marble098.marblebr.core.model.HomeShortcutPosition
 import com.marble098.marblebr.core.model.ProxyDnsConfig
@@ -116,6 +118,18 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             preferencesRepository.setHomeShortcutPosition(position)
         }
+    }
+
+    fun setChromeBarStyle(style: ChromeBarStyle) {
+        viewModelScope.launch { preferencesRepository.setChromeBarStyle(style) }
+    }
+
+    fun setBackButtonBehavior(behavior: BackButtonBehavior) {
+        viewModelScope.launch { preferencesRepository.setBackButtonBehavior(behavior) }
+    }
+
+    fun setAskBeforeClosingTabs(enabled: Boolean) {
+        viewModelScope.launch { preferencesRepository.setAskBeforeClosingTabs(enabled) }
     }
 
     fun updateDnsAndProxy(

@@ -1,5 +1,7 @@
 package com.marble098.marblebr.core.i18n
 
+import com.marble098.marblebr.core.model.BackButtonBehavior
+import com.marble098.marblebr.core.model.ChromeBarStyle
 import com.marble098.marblebr.core.model.DnsMode
 import com.marble098.marblebr.core.model.HealthReason
 import com.marble098.marblebr.core.model.ProxyType
@@ -232,11 +234,91 @@ abstract class MarbleStrings {
     abstract val shortcutPositionBottom: String
     abstract val homeSeeAll: String
 
+    // ------------------------------------------- تب‌بندی و نوارهای شیشه‌ای
+    abstract val settingsTabAppearance: String
+    abstract val settingsTabBrowser: String
+    abstract val settingsTabProtection: String
+    abstract val settingsTabNetwork: String
+    abstract val settingsTabAbout: String
+    abstract val chromeBarStyleTitle: String
+    abstract val chromeBarStyleDescription: String
+    abstract val chromeSolid: String
+    abstract val chromeGlass: String
+    abstract val chromeFloating: String
+    abstract val backBehaviorTitle: String
+    abstract val backBehaviorDescription: String
+    abstract val backSmart: String
+    abstract val backPageThenHome: String
+    abstract val backHome: String
+    abstract val backPageThenExit: String
+    abstract val backAsk: String
+    abstract val backAskTitle: String
+    abstract val backAskBody: String
+    abstract val backAskToPage: String
+    abstract val backAskToHome: String
+    abstract val backAskExit: String
+    abstract val tabsBehaviorTitle: String
+    abstract val askBeforeClosingTabs: String
+    abstract val askBeforeClosingTabsDescription: String
+    abstract val closeTabConfirmTitle: String
+    abstract fun closeTabConfirmBody(title: String): String
+
+    // ------------------------------------------------ میانبرهای کاربردی
+    abstract val quickActionsTitle: String
+    abstract val quickCopyLink: String
+    abstract val quickShare: String
+    abstract val quickScreenshot: String
+    abstract val quickFindInPage: String
+    abstract val quickDesktop: String
+    abstract val quickPrivate: String
+    abstract val quickSaveState: String
+    abstract val quickTimeMachine: String
+    abstract val quickDownloads: String
+    abstract val quickClearCache: String
+    abstract val quickAddShortcut: String
+    abstract val quickRefresh: String
+    abstract val quickHome: String
+    abstract val quickTabs: String
+    abstract val quickSettings: String
+    abstract val quickBookmarks: String
+    abstract val quickSignOut: String
+    abstract val quickNewTab: String
+    abstract val quickSiteSignedInFor(days: Int, minutes: Int): String
+
+    // --------------------------------------------- پنل استار دادن به مخزن
+    abstract val starRepoBoldLine: String
+    abstract val starRepoHeadline: String
+    abstract val starRepoSubline: String
+    abstract val starRepoButton: String
+    abstract val starRepoLater: String
+    abstract val starRepoNever: String
+    abstract val starRepoTelegram: String
+    abstract val starRepoWeb: String
+    abstract val starRepoThanks: String
+    abstract val starRepoBadgeFree: String
+    abstract val starRepoBadgePrivate: String
+    abstract val starRepoBadgeFast: String
+    abstract val starRepoBadgeBilingual: String
+
     // ------------------------------------------- برچسب‌های شمارشی
     fun themeModeLabel(mode: ThemeMode): String = when (mode) {
         ThemeMode.SYSTEM -> themeSystem
         ThemeMode.LIGHT -> themeLight
         ThemeMode.DARK -> themeDark
+    }
+
+    fun chromeBarStyleLabel(style: ChromeBarStyle): String = when (style) {
+        ChromeBarStyle.SOLID -> chromeSolid
+        ChromeBarStyle.GLASS -> chromeGlass
+        ChromeBarStyle.FLOATING -> chromeFloating
+    }
+
+    fun backBehaviorLabel(behavior: BackButtonBehavior): String = when (behavior) {
+        BackButtonBehavior.SMART -> backSmart
+        BackButtonBehavior.PAGE_THEN_HOME -> backPageThenHome
+        BackButtonBehavior.HOME -> backHome
+        BackButtonBehavior.PAGE_THEN_EXIT -> backPageThenExit
+        BackButtonBehavior.ASK -> backAsk
     }
 
     fun languageLabel(language: AppLanguage): String = when (language) {
@@ -537,6 +619,71 @@ private object PersianStrings : MarbleStrings() {
 
     override val homeSeeAll = "مشاهده همه »"
 
+    override val settingsTabAppearance = "ظاهر"
+    override val settingsTabBrowser = "مرورگر"
+    override val settingsTabProtection = "محافظت"
+    override val settingsTabNetwork = "شبکه"
+    override val settingsTabAbout = "درباره"
+    override val chromeBarStyleTitle = "شکل نوارهای بالا و پایین"
+    override val chromeBarStyleDescription = "«شناور» یعنی نوارها کاملاً شیشه‌ای و بی‌پس‌زمینه‌اند و صفحه از پشتشان دیده می‌شود."
+    override val chromeSolid = "ساده و مات"
+    override val chromeGlass = "شیشه‌ای مات"
+    override val chromeFloating = "شیشه‌ای شناور"
+    override val backBehaviorTitle = "دکمهٔ بازگشت"
+    override val backBehaviorDescription = "انتخاب کن وقتی دکمهٔ بازگشت گوشی را می‌زنی چه اتفاقی بیفتد."
+    override val backSmart = "هوشمند (پیشنهادی)"
+    override val backPageThenHome = "اول صفحهٔ قبلی، بعد خانه"
+    override val backHome = "همیشه به خانه"
+    override val backPageThenExit = "اول صفحهٔ قبلی، بعد خروج"
+    override val backAsk = "هر بار از من بپرس"
+    override val backAskTitle = "برگرد به کجا؟"
+    override val backAskBody = "دکمهٔ بازگشت را زدی؛ حالا خودت انتخاب کن."
+    override val backAskToPage = "به صفحهٔ قبلی همین سایت"
+    override val backAskToHome = "به صفحهٔ خانه"
+    override val backAskExit = "خروج از برنامه"
+    override val tabsBehaviorTitle = "رفتار تب‌ها"
+    override val askBeforeClosingTabs = "تأیید قبل از بستن تب"
+    override val askBeforeClosingTabsDescription = "اگر یک تب باز باشد و بخواهی ببندیش، اول از تو می‌پرسیم."
+    override val closeTabConfirmTitle = "این تب بسته شود؟"
+    override fun closeTabConfirmBody(title: String) = "تب «$title» بسته می‌شود؛ اگر خواستی با «بازگشایی تب بسته‌شده» برمی‌گردد."
+
+    override val quickActionsTitle = "میانبرهای سریع"
+    override val quickCopyLink = "کپی لینک"
+    override val quickShare = "اشتراک"
+    override val quickScreenshot = "عکس از صفحه"
+    override val quickFindInPage = "جستجو در صفحه"
+    override val quickDesktop = "دسکتاپ"
+    override val quickPrivate = "تب خصوصی"
+    override val quickSaveState = "ذخیره ورود"
+    override val quickTimeMachine = "برگشت به عقب"
+    override val quickDownloads = "دانلودها"
+    override val quickClearCache = "خالی کردن کش"
+    override val quickAddShortcut = "میانبر خانه"
+    override val quickRefresh = "نوسازی"
+    override val quickHome = "خانه"
+    override val quickTabs = "تب‌ها"
+    override val quickSettings = "تنظیمات"
+    override val quickBookmarks = "نشان‌ها"
+    override val quickSignOut = "خروج کامل"
+    override val quickNewTab = "تب تازه"
+    override fun quickSiteSignedInFor(days: Int, minutes: Int) =
+        "این سایت $days روز وارد می‌ماند · هر $minutes دقیقه بی‌صدا زنده می‌شود"
+
+    override val starRepoBoldLine = "به MarbleBr استار بده ⭐"
+    override val starRepoHeadline = "یک استار، هزار امید"
+    override val starRepoSubline =
+        "اگر MarbleBr کارت را راه انداخت، با یک استار در گیت‌هاب به ما انرژی بده تا سریع‌تر بهترش کنیم."
+    override val starRepoButton = "همین حالا استار می‌دهم ⭐"
+    override val starRepoLater = "باشه، بعداً"
+    override val starRepoNever = "دیگر نشان نده"
+    override val starRepoTelegram = "کانال تلگرام ما"
+    override val starRepoWeb = "دیدن مخزن در گیت‌هاب"
+    override val starRepoThanks = "ممنون که با ما هستی 💙"
+    override val starRepoBadgeFree = "رایگان"
+    override val starRepoBadgePrivate = "بدون ردیاب"
+    override val starRepoBadgeFast = "سبک و سریع"
+    override val starRepoBadgeBilingual = "دوزبانه"
+
     override val dnsSystem = "خودکار"
     override val dnsCustom = "سفارشی"
     override val proxyNone = "بدون پروکسی"
@@ -773,6 +920,71 @@ private object EnglishStrings : MarbleStrings() {
     override val shortcutPositionBottom = "Bottom"
 
     override val homeSeeAll = "See all →"
+
+    override val settingsTabAppearance = "Appearance"
+    override val settingsTabBrowser = "Browser"
+    override val settingsTabProtection = "Protection"
+    override val settingsTabNetwork = "Network"
+    override val settingsTabAbout = "About"
+    override val chromeBarStyleTitle = "Top and bottom bar style"
+    override val chromeBarStyleDescription = "\u201cFloating\u201d means the bars are pure glass with no background, so the page shows through them."
+    override val chromeSolid = "Plain and solid"
+    override val chromeGlass = "Frosted glass"
+    override val chromeFloating = "Floating glass"
+    override val backBehaviorTitle = "Back button"
+    override val backBehaviorDescription = "Choose what happens when you press your phone\u2019s back button."
+    override val backSmart = "Smart (recommended)"
+    override val backPageThenHome = "Previous page, then Home"
+    override val backHome = "Always Home"
+    override val backPageThenExit = "Previous page, then exit"
+    override val backAsk = "Ask me every time"
+    override val backAskTitle = "Go back where?"
+    override val backAskBody = "You pressed back \u2014 pick what should happen."
+    override val backAskToPage = "Previous page on this site"
+    override val backAskToHome = "The Home screen"
+    override val backAskExit = "Exit the app"
+    override val tabsBehaviorTitle = "Tabs behaviour"
+    override val askBeforeClosingTabs = "Confirm before closing a tab"
+    override val askBeforeClosingTabsDescription = "If a tab is open and you close it, we\u2019ll ask first."
+    override val closeTabConfirmTitle = "Close this tab?"
+    override fun closeTabConfirmBody(title: String) = "The tab \u201c$title\u201d will be closed. You can bring it back with \u201cReopen closed tab\u201d."
+
+    override val quickActionsTitle = "Quick shortcuts"
+    override val quickCopyLink = "Copy link"
+    override val quickShare = "Share"
+    override val quickScreenshot = "Page screenshot"
+    override val quickFindInPage = "Find on page"
+    override val quickDesktop = "Desktop"
+    override val quickPrivate = "Private tab"
+    override val quickSaveState = "Save login"
+    override val quickTimeMachine = "Time machine"
+    override val quickDownloads = "Downloads"
+    override val quickClearCache = "Clear cache"
+    override val quickAddShortcut = "Home shortcut"
+    override val quickRefresh = "Reload"
+    override val quickHome = "Home"
+    override val quickTabs = "Tabs"
+    override val quickSettings = "Settings"
+    override val quickBookmarks = "Bookmarks"
+    override val quickSignOut = "Sign out fully"
+    override val quickNewTab = "New tab"
+    override fun quickSiteSignedInFor(days: Int, minutes: Int) =
+        "This site stays signed in for $days days \u00b7 quiet check-in every $minutes min"
+
+    override val starRepoBoldLine = "Star MarbleBr \u2b50"
+    override val starRepoHeadline = "One star, a thousand hopes"
+    override val starRepoSubline =
+        "If MarbleBr made your day easier, one star on GitHub gives us the push to make it even better."
+    override val starRepoButton = "I\u2019ll star it now \u2b50"
+    override val starRepoLater = "Sure, later"
+    override val starRepoNever = "Don\u2019t show again"
+    override val starRepoTelegram = "Our Telegram channel"
+    override val starRepoWeb = "Open the repo"
+    override val starRepoThanks = "Thanks for being here \ud83d\udc99"
+    override val starRepoBadgeFree = "Free"
+    override val starRepoBadgePrivate = "No trackers"
+    override val starRepoBadgeFast = "Light & fast"
+    override val starRepoBadgeBilingual = "Bilingual"
 
     override val dnsSystem = "Automatic"
     override val dnsCustom = "Custom"

@@ -7,7 +7,9 @@ import android.os.Bundle
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Easing
+import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -48,6 +50,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * منحنی حرکتِ نرم و «جهنده» برای گذارهای اپ (حس Material 3 Expressive).
+ */
+private val MarbleEasing: Easing = CubicBezierEasing(0.2f, 0.9f, 0.1f, 1f)
+
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
 
@@ -80,21 +87,6 @@ class MainActivity : AppCompatActivity() {
 
             val rateLaunchThreshold = 3
 
-            fun openPlayStore() {
-                val packageName = this.packageName
-                val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName")).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                if (marketIntent.resolveActivity(packageManager) != null) {
-                    startActivity(marketIntent)
-                    return
-                }
-                val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName")).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                startActivity(Intent.createChooser(webIntent, null))
-            }
-
             LaunchedEffect(prefs.rateDialogShown, prefs.rateLaunchCount) {
                 if (!prefs.rateDialogShown && prefs.rateLaunchCount >= rateLaunchThreshold) {
                     showRateDialog = true
@@ -113,12 +105,11 @@ class MainActivity : AppCompatActivity() {
 
             if (showRateDialog) {
                 RateAppDialog(
-                    onRateNow = {
+                    onStarNow = {
                         showRateDialog = false
                         coroutineScope.launch {
                             preferencesRepository.setRateDialogShown(true)
                         }
-                        openPlayStore()
                     },
                     onLater = { showRateDialog = false },
                     onNever = {
@@ -197,13 +188,26 @@ fun MarbleBrAppNavHost(
         navController = navController,
         startDestination = "browser",
         enterTransition = {
-            fadeIn(tween(190)) + scaleIn(tween(270, easing = FastOutSlowInEasing), initialScale = 0.94f) +
-                slideInVertically(tween(270, easing = FastOutSlowInEasing)) { it / 22 }
+            // صفحهٔ تازه از پایین می‌آید، کمی بزرگ می‌شود و نرم روشن می‌شود.
+            fadeIn(tween(durationMillis = 220, delayMillis = 40)) +
+                slideInVertically(tween(durationMillis = 420, easing = MarbleEasing)) { full -> full / 6 } +
+                scaleIn(tween(durationMillis = 420, easing = MarbleEasing), initialScale = 0.92f)
         },
-        exitTransition = { fadeOut(tween(120)) },
-        popEnterTransition = { fadeIn(tween(190)) },
+        exitTransition = {
+            // صفحهٔ پشتی آرام عقب می‌رود و محو می‌شود تا حس عمق بدهد.
+            fadeOut(tween(durationMillis = 180, easing = FastOutLinearInEasing)) +
+                slideOutVertically(tween(durationMillis = 320, easing = MarbleEasing)) { full -> -full / 14 } +
+                scaleOut(tween(durationMillis = 320, easing = MarbleEasing), targetScale = 0.94f)
+        },
+        popEnterTransition = {
+            fadeIn(tween(durationMillis = 200)) +
+                scaleIn(tween(durationMillis = 380, easing = MarbleEasing), initialScale = 0.94f) +
+                slideInVertically(tween(durationMillis = 380, easing = MarbleEasing)) { full -> -full / 18 }
+        },
         popExitTransition = {
-            fadeOut(tween(160)) + scaleOut(tween(220), targetScale = 0.96f) + slideOutVertically(tween(220)) { it / 28 }
+            fadeOut(tween(durationMillis = 200)) +
+                scaleOut(tween(durationMillis = 340, easing = MarbleEasing), targetScale = 1.04f) +
+                slideOutVertically(tween(durationMillis = 340, easing = MarbleEasing)) { full -> full / 5 }
         },
     ) {
         composable("browser") {

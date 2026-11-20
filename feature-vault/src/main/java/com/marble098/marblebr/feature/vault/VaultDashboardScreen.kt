@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -45,8 +46,16 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material3.ModalBottomSheet
+import com.marble098.marblebr.core.designsystem.SiteBadgeLogo
+import com.marble098.marblebr.core.designsystem.siteBadgeAccent
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -59,6 +68,9 @@ import com.marble098.marblebr.core.model.WebAppContainer
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+/** تعداد باکس‌های سایت در هر ردیف. */
+private const val SITES_PER_ROW = 2
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,6 +87,7 @@ fun VaultDashboardScreen(
     val strings = LocalMarbleStrings.current
 
     var pendingSignOutContainer by remember { mutableStateOf<WebAppContainer?>(null) }
+    var detailsContainer by remember { mutableStateOf<WebAppContainer?>(null) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -197,16 +210,25 @@ fun VaultDashboardScreen(
                 }
             }
 
-            items(containers, key = { it.id }) { container ->
-                ContainerControlCard(
-                    container = container,
-                    onToggleNeverSignOut = { viewModel.toggleSiteNeverSignOut(container, it) },
-                    onCookieDaysChanged = { viewModel.updateCookieExpirationDays(container, it) },
-                    onToggleKeepAlive = {
-                        viewModel.updateKeepAlivePolicy(container, it, container.keepAliveIntervalMinutes)
-                    },
-                    onSignOutNowClicked = { pendingSignOutContainer = container },
-                )
+            // ۵) همهٔ سایت‌های «واردشده» به‌صورت باکس‌های کنار هم، با لوگوی سایت روی هر باکس.
+            containers.chunked(SITES_PER_ROW).forEach { rowContainers ->
+                item(key = "site_row_" + rowContainers.joinToString("-") { it.id }) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        rowContainers.forEach { container ->
+                            SiteBox(
+                                container = container,
+                                modifier = Modifier.weight(1f),
+                                onClick = { detailsContainer = container },
+                            )
+                        }
+                        repeat(SITES_PER_ROW - rowContainers.size) {
+                            Spacer(Modifier.weight(1f))
+                        }
+                    }
+                }
             }
 
             item {
@@ -272,6 +294,25 @@ fun VaultDashboardScreen(
         }
     }
 
+    detailsContainer?.let { selected ->
+        ModalBottomSheet(
+            onDismissRequest = { detailsContainer = null },
+            containerColor = MaterialTheme.colorScheme.surface,
+        ) {
+            ContainerControlPanel(
+                container = selected,
+                onToggleNeverSignOut = { viewModel.toggleSiteNeverSignOut(selected, it) },
+                onCookieDaysChanged = { viewModel.updateCookieExpirationDays(selected, it) },
+                onToggleKeepAlive = { viewModel.updateKeepAlivePolicy(selected, it, selected.keepAliveIntervalMinutes) },
+                onSignOutNowClicked = {
+                    detailsContainer = null
+                    pendingSignOutContainer = selected
+                },
+            )
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+
     pendingSignOutContainer?.let { target ->
         AlertDialog(
             onDismissRequest = { pendingSignOutContainer = null },
@@ -333,8 +374,81 @@ private fun SectionHeader(
     }
 }
 
+/**
+ * باکسِ یک سایتِ واردشده در شبکهٔ «سایت‌ها».
+ *
+ * لوگوی سایت روی خودِ باکس می‌نشیند و باکس‌ها کنار هم چیده می‌شوند. لمس هر باکس،
+ * پنلِ کاملِ تنظیمات همان سایت را باز می‌کند.
+ */
 @Composable
-private fun ContainerControlCard(
+private fun SiteBox(
+    container: WebAppContainer,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val strings = LocalMarbleStrings.current
+    val accent = remember(container.domain) { siteBadgeAccent(container.domain) }
+    Card(
+        modifier = modifier
+            .testTag("container_card_${container.id}")
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 14.dp, horizontal = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            SiteBadgeLogo(
+                displayName = container.displayName,
+                domain = container.domain,
+                size = 48.dp,
+            )
+            Text(
+                text = container.displayName.ifBlank { container.domain },
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = container.domain,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(if (container.neverSignOutEnabled) accent else MaterialTheme.colorScheme.outline),
+                )
+                Text(
+                    text = if (container.neverSignOutEnabled) {
+                        strings.feedbackProtection(container.domain, true)
+                    } else {
+                        strings.feedbackProtection(container.domain, false)
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContainerControlPanel(
     container: WebAppContainer,
     onToggleNeverSignOut: (Boolean) -> Unit,
     onCookieDaysChanged: (Int) -> Unit,
@@ -346,27 +460,35 @@ private fun ContainerControlCard(
         mutableFloatStateOf(container.cookieExpirationDays.toFloat())
     }
 
-    Card(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .testTag("container_card_${container.id}"),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = container.displayName.ifBlank { container.domain },
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
+                SiteBadgeLogo(
+                    displayName = container.displayName,
+                    domain = container.domain,
+                    size = 38.dp,
                 )
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = container.displayName.ifBlank { container.domain },
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = container.domain,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Switch(
                     checked = container.neverSignOutEnabled,
                     onCheckedChange = onToggleNeverSignOut,
@@ -417,7 +539,6 @@ private fun ContainerControlCard(
                 Spacer(Modifier.width(8.dp))
                 Text(strings.signOutNow)
             }
-        }
     }
 }
 
