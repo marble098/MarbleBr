@@ -10,10 +10,10 @@ import com.marble098.marblebr.core.model.ThemeMode
 import java.util.Locale
 
 /**
- * همه‌ی متن‌های قابل‌نمایش MarbleBr در یک جا و به دو زبان.
+ * همه ی متن های قابل نمایش MarbleBr در یک جا و به دو زبان.
  *
- * متن‌ها عمداً ساده، کوتاه و صمیمی نوشته شده‌اند: هر گزینه می‌گوید «چه کاری می‌کند» و «چه سودی دارد»،
- * بدون اصطلاح فنیِ گیج‌کننده.
+ * متن ها عمداً ساده، کوتاه و صمیمی نوشته شده اند: هر گزینه می گوید «چه کاری می کند» و «چه سودی دارد»،
+ * بدون اصطلاح فنیِ گیج کننده.
  */
 abstract class MarbleStrings {
 
@@ -105,7 +105,7 @@ abstract class MarbleStrings {
     abstract val emptyDownloads: String
     abstract val downloadNotificationText: String
 
-    // -------------------------------------------- پیام‌های کوتاه (بنر)
+    // -------------------------------------------- پیام های کوتاه (بنر)
     abstract val bannerBookmarkAdded: String
     abstract val bannerBookmarkRemoved: String
     abstract val bannerShortcutAdded: String
@@ -180,7 +180,7 @@ abstract class MarbleStrings {
     abstract val feedbackRestoreFailed: String
     abstract val gotIt: String
 
-    // ----------------------------------------------------- فرمت‌ها
+    // ----------------------------------------------------- فرمت ها
     abstract fun tabsCount(count: Int): String
     abstract fun adsBlocked(count: Int): String
     abstract fun downloadsMenu(count: Int): String
@@ -208,7 +208,7 @@ abstract class MarbleStrings {
     abstract fun manualSnapshotLabel(domain: String): String
     abstract fun pwaShortcutLongLabel(title: String): String
 
-    // --------------------------------------------------- صفحه‌ی خانه
+    // --------------------------------------------------- صفحه ی خانه
     abstract val homeTitle: String
     abstract val homeIntro: String
     abstract val homeSearchHint: String
@@ -217,14 +217,14 @@ abstract class MarbleStrings {
     abstract val homeShortcutsTitle: String
     abstract val homeEmptyShortcuts: String
 
-    // --------------------------------------------------- امتیاز‌دهی
+    // --------------------------------------------------- امتیاز دهی
     abstract val rateTitle: String
     abstract val rateMessage: String
     abstract val rateNow: String
     abstract val rateLater: String
     abstract val rateDontAskAgain: String
 
-    // --------------------------------------------- تنظیمات صفحه‌ی خانه
+    // --------------------------------------------- تنظیمات صفحه ی خانه
     abstract val homeScreenTitle: String
     abstract val searchEngineTitle: String
     abstract val searchEngineDescription: String
@@ -234,7 +234,7 @@ abstract class MarbleStrings {
     abstract val shortcutPositionBottom: String
     abstract val homeSeeAll: String
 
-    // ------------------------------------------- تب‌بندی و نوارهای شیشه‌ای
+    // ------------------------------------------- تب بندی و نوارهای شیشه ای
     abstract val settingsTabAppearance: String
     abstract val settingsTabBrowser: String
     abstract val settingsTabProtection: String
@@ -300,7 +300,7 @@ abstract class MarbleStrings {
     abstract val starRepoBadgeFast: String
     abstract val starRepoBadgeBilingual: String
 
-    // ------------------------------------------- برچسب‌های شمارشی
+    // ------------------------------------------- برچسب های شمارشی
     fun themeModeLabel(mode: ThemeMode): String = when (mode) {
         ThemeMode.SYSTEM -> themeSystem
         ThemeMode.LIGHT -> themeLight
@@ -362,11 +362,11 @@ abstract class MarbleStrings {
         HealthReason.UNKNOWN -> reasonUnknown
     }
 
-    /** متنِ انگلیسی/فارسیِ امن برای خواندن کدِ ذخیره‌شده در گزارش رویدادها. */
+    /** متنِ انگلیسی/فارسیِ امن برای خواندن کدِ ذخیره شده در گزارش رویدادها. */
     fun healthReasonLabelOrNull(code: String): HealthReason? =
         runCatching { HealthReason.valueOf(code) }.getOrNull()
 
-    // ------------------------------------------------- برچسب‌های داخلی
+    // ------------------------------------------------- برچسب های داخلی
     protected abstract val dnsSystem: String
     protected abstract val dnsCustom: String
     protected abstract val proxyNone: String
@@ -405,14 +405,14 @@ abstract class MarbleStrings {
 private object PersianStrings : MarbleStrings() {
     override val appName = "MarbleBr"
     override val back = "بازگشت"
-    override val cancel = "بی‌خیال"
+    override val cancel = "بی خیال"
     override val ok = "باشه"
     override val later = "بعداً"
     override val close = "بستن"
     override val dismiss = "بستن پیام"
 
     override val languageTitle = "زبان برنامه"
-    override val languageDescription = "با «خودکار»، MarbleBr هم‌زبان گوشی‌ات می‌شود. اگر خواستی، فارسی یا انگلیسی را دستی انتخاب کن."
+    override val languageDescription = "با «خودکار»، MarbleBr هم زبان گوشی ات می شود. اگر خواستی، فارسی یا انگلیسی را دستی انتخاب کن."
     override val languageSystem = "خودکار (مثل گوشی)"
     override val languagePersian = "فارسی"
     override val languageEnglish = "English"
@@ -421,16 +421,16 @@ private object PersianStrings : MarbleStrings() {
     override val themeSystem = "مثل گوشی"
     override val themeLight = "روشن"
     override val themeDark = "تاریک"
-    override val dynamicColorTitle = "رنگ‌های خودِ گوشی"
-    override val dynamicColorDescription = "روی اندروید ۱۲ و بالاتر، رنگ برنامه با تم گوشی‌ات هماهنگ می‌شود."
+    override val dynamicColorTitle = "رنگ های خودِ گوشی"
+    override val dynamicColorDescription = "روی اندروید 12 و بالاتر، رنگ برنامه با تم گوشی ات هماهنگ می شود."
 
     override val addressPlaceholder = "آدرس سایت را بنویس یا سرچ کن"
     override val copyLink = "کپی پیوند"
-    override val shareLink = "اشتراک‌گذاری پیوند"
-    override val browserMenu = "گزینه‌های بیشتر"
-    override val tabsLabel = "تب‌ها"
+    override val shareLink = "اشتراک گذاری پیوند"
+    override val browserMenu = "گزینه های بیشتر"
+    override val tabsLabel = "تب ها"
     override val protectionLabel = "محافظت"
-    override val bookmarksLabel = "نشان‌ها"
+    override val bookmarksLabel = "نشان ها"
     override val settingsLabel = "تنظیمات"
     override val bookmarkToggle = "نشان کردن این صفحه"
     override val reload = "بارگذاری دوباره"
@@ -438,9 +438,9 @@ private object PersianStrings : MarbleStrings() {
     override val goForward = "صفحه بعد"
     override val protectionOnChip = "مراقب این سایت هستیم"
     override val protectionOffChip = "مراقبت از این سایت خاموش است"
-    override val privateTabChip = "تب خصوصی: چیزی ذخیره نمی‌شود"
+    override val privateTabChip = "تب خصوصی: چیزی ذخیره نمی شود"
     override val menuSaveState = "همین حالا ذخیره کن"
-    override val menuSaveStateHint = "یک نسخه امن از ورودت می‌سازیم"
+    override val menuSaveStateHint = "یک نسخه امن از ورودت می سازیم"
     override val menuTimeMachine = "برگرد به نسخه قبلی"
     override val menuTimeMachineHint = "اگر از حسابی پریدی بیرون، از اینجا برگردان"
     override val menuFindInPage = "جستجو در این صفحه"
@@ -455,11 +455,11 @@ private object PersianStrings : MarbleStrings() {
     override val findClose = "بستن جستجو"
     override val reloginTitle = "برای ادامه دوباره وارد شو"
     override val reloginConfirm = "بازگردان به حسابم"
-    override val reloginDismiss = "نه، خودم وارد می‌شوم"
-    override val readyTitle = "آماده‌ی مراقبت هستیم"
+    override val reloginDismiss = "نه، خودم وارد می شوم"
+    override val readyTitle = "آماده ی مراقبت هستیم"
     override val readyBody = "کافی است یک آدرس بزنی. ما پشت صحنه مواظبیم که از حسابت بیرون نیفتی."
     override val quickSaveState = "ذخیره وضعیت"
-    override val quickEarlierCopies = "نسخه‌های قبلی"
+    override val quickEarlierCopies = "نسخه های قبلی"
     override val newTab = "تب جدید"
     override val newPrivateTab = "تب خصوصی"
     override val closeTab = "بستن تب"
@@ -468,60 +468,60 @@ private object PersianStrings : MarbleStrings() {
     override val addressSelectionTitle = "انتخاب متن نوار آدرس"
     override val addressSelectionDescription = "هنگام لمس نوار آدرس، نحوهٔ انتخاب متن را تعیین کنید."
     override val addressSelectAll = "همهٔ آدرس"
-    override val addressSelectPart = "بخش لمس‌شده"
+    override val addressSelectPart = "بخش لمس شده"
     override val addressCursor = "فقط نشانگر"
     override val googleNewTab = "باز کردن گوگل در تب جدید"
-    override val googleNewTabDescription = "اگر خاموش باشد، تب جدید صفحهٔ خانه را نشان می‌دهد و هیچ سایتی بارگیری نمی‌شود."
+    override val googleNewTabDescription = "اگر خاموش باشد، تب جدید صفحهٔ خانه را نشان می دهد و هیچ سایتی بارگیری نمی شود."
     override val goToAddress = "برو به آدرس"
     override val navigationFailed = "آدرس باز نشد. دوباره تلاش کنید."
     override val stopLoading = "توقف بارگیری"
     override val duplicateTab = "ایجاد نسخهٔ دوم تب"
-    override val reopenTab = "بازگشایی تب بسته‌شده"
-    override val closeAllTabs = "بستن همهٔ تب‌ها"
-    override val confirmCloseAllTabs = "همهٔ تب‌های عادی و خصوصی بسته شوند؟"
-    override val searchTabs = "جستجو در تب‌ها"
+    override val reopenTab = "بازگشایی تب بسته شده"
+    override val closeAllTabs = "بستن همهٔ تب ها"
+    override val confirmCloseAllTabs = "همهٔ تب های عادی و خصوصی بسته شوند؟"
+    override val searchTabs = "جستجو در تب ها"
     override val noTabs = "هیچ تب بازی نیست."
     override val noMatchingTabs = "تبی با این عبارت پیدا نشد."
     override val clearHistory = "پاک کردن تاریخچه"
-    override val emptyBookmarks = "هنوز چیزی نشان نکرده‌ای. با آیکن نشان بالای صفحه، هر سایتی را ذخیره کن."
-    override val emptyHistory = "اینجا خالی است؛ سایت‌هایی که باز کنی اینجا می‌آیند."
-    override val emptyDownloads = "هنوز فایلی دانلود نکرده‌ای."
+    override val emptyBookmarks = "هنوز چیزی نشان نکرده ای. با آیکن نشان بالای صفحه، هر سایتی را ذخیره کن."
+    override val emptyHistory = "اینجا خالی است؛ سایت هایی که باز کنی اینجا می آیند."
+    override val emptyDownloads = "هنوز فایلی دانلود نکرده ای."
     override val downloadNotificationText = "در حال دانلود با MarbleBr"
 
-    override val bannerBookmarkAdded = "به نشان‌ها اضافه شد"
-    override val bannerBookmarkRemoved = "از نشان‌ها حذف شد"
+    override val bannerBookmarkAdded = "به نشان ها اضافه شد"
+    override val bannerBookmarkRemoved = "از نشان ها حذف شد"
     override val bannerShortcutAdded = "میانبر ساخته شد؛ از صفحه اصلی بازش کن"
-    override val bannerShortcutCreated = "فضای جداگانه‌ی این سایت آماده شد"
+    override val bannerShortcutCreated = "فضای جداگانه ی این سایت آماده شد"
     override val bannerSnapshotSaved = "یک نسخه امن از ورودت ذخیره شد"
-    override val bannerCacheCleared = "حافظه موقت خالی شد و همچنان وارد حساب‌هایت هستی"
+    override val bannerCacheCleared = "حافظه موقت خالی شد و همچنان وارد حساب هایت هستی"
     override val bannerHistoryCleared = "تاریخچه پاک شد"
     override val bannerDownloadStarted = "دانلود شروع شد"
     override val downloadFailed = "دانلود ناموفق بود"
     override val downloadInProgress = "در حال دانلود"
     override val snapshotUnavailable = "برای این صفحه دادهٔ نشست قابل ذخیره در دسترس نیست."
-    override val bannerDesktopOn = "حالا نسخه دسکتاپ را می‌بینی"
-    override val bannerDesktopOff = "حالا نسخه موبایل را می‌بینی"
+    override val bannerDesktopOn = "حالا نسخه دسکتاپ را می بینی"
+    override val bannerDesktopOff = "حالا نسخه موبایل را می بینی"
 
     override val settingsTitle = "تنظیمات"
     override val settingsIntro = "هر چیزی را که لازم داری ساده و کوتاه اینجا تنظیم کن."
     override val protectionSectionTitle = "اینکه وارد بمانی"
-    override val protectionSectionBody = "این گزینه‌ها تعیین می‌کنند MarbleBr چطور کمکت کند از حساب‌ها بیرون نیفتی."
-    override val globalNeverSignOutTitle = "مراقبت از سایت‌های جدید"
-    override val globalNeverSignOutDescription = "برای هر سایت تازه، محافظت از ورود به‌طور خودکار روشن باشد."
+    override val protectionSectionBody = "این گزینه ها تعیین می کنند MarbleBr چطور کمکت کند از حساب ها بیرون نیفتی."
+    override val globalNeverSignOutTitle = "مراقبت از سایت های جدید"
+    override val globalNeverSignOutDescription = "برای هر سایت تازه، محافظت از ورود به طور خودکار روشن باشد."
     override val biometricTitle = "قفل اثر انگشت"
-    override val biometricDescription = "برای دیدن نسخه‌های ذخیره‌شده، اثر انگشت یا رمز گوشی لازم باشد."
-    override val keepAliveTitle = "زنده نگه‌داشتن در پس‌زمینه"
-    override val keepAliveDescription = "سایت‌هایی که زود بیرونت می‌کنند، هر چند وقت یک‌بار بی‌صدا بازدید می‌شوند."
+    override val biometricDescription = "برای دیدن نسخه های ذخیره شده، اثر انگشت یا رمز گوشی لازم باشد."
+    override val keepAliveTitle = "زنده نگه داشتن در پس زمینه"
+    override val keepAliveDescription = "سایت هایی که زود بیرونت می کنند، هر چند وقت یک بار بی صدا بازدید می شوند."
     override val credentialTitle = "ورود سریع با اثر انگشت"
-    override val credentialDescription = "اگر خود سایت نشستت را بست، با Passkey یا رمز ذخیره‌شده سریع برمی‌گردی."
+    override val credentialDescription = "اگر خود سایت نشستت را بست، با Passkey یا رمز ذخیره شده سریع برمی گردی."
     override val adBlockTitle = "بستن تبلیغ و ردیاب"
-    override val adBlockDescription = "صفحه‌ها سبک‌تر و سریع‌تر باز می‌شوند و کمتر ردیابی می‌شوی."
+    override val adBlockDescription = "صفحه ها سبک تر و سریع تر باز می شوند و کمتر ردیابی می شوی."
     override val freeSpaceTitle = "خالی کردن حافظه موقت"
-    override val freeSpaceDescription = "فقط فایل‌های اضافی پاک می‌شوند؛ هیچ حسابی خارج نمی‌شود."
+    override val freeSpaceDescription = "فقط فایل های اضافی پاک می شوند؛ هیچ حسابی خارج نمی شود."
     override val freeSpaceButton = "خالی کن"
     override val freeSpaceDone = "حافظه موقت خالی شد"
-    override val networkTitle = "شبکه (برای کاربران حرفه‌ای)"
-    override val networkBody = "اگر DNS امن یا پروکسی خاصی می‌خواهی، از اینجا تنظیم کن. برای بیشتر آدم‌ها لازم نیست."
+    override val networkTitle = "شبکه (برای کاربران حرفه ای)"
+    override val networkBody = "اگر DNS امن یا پروکسی خاصی می خواهی، از اینجا تنظیم کن. برای بیشتر آدم ها لازم نیست."
     override val dnsLabel = "DNS امن"
     override val dnsCustomHint = "آدرس سرور (با https شروع شود)"
     override val proxyLabel = "پروکسی"
@@ -531,61 +531,61 @@ private object PersianStrings : MarbleStrings() {
     override val networkSaved = "تنظیمات شبکه ذخیره شد"
     override val aboutTitle = "درباره"
 
-    override val vaultTitle = "مراقبت از حساب‌ها"
-    override val vaultIntro = "اینجا می‌بینی MarbleBr از کدام سایت‌ها محافظت می‌کند و چه نسخه‌هایی ذخیره کرده است."
-    override val vaultSecurityTitle = "همه‌چیز روی همین گوشی می‌ماند"
-    override val vaultSecurityBody = "نسخه‌های امن ورودت با کلید سخت‌افزاری گوشی رمز می‌شوند و جایی فرستاده نمی‌شوند."
+    override val vaultTitle = "مراقبت از حساب ها"
+    override val vaultIntro = "اینجا می بینی MarbleBr از کدام سایت ها محافظت می کند و چه نسخه هایی ذخیره کرده است."
+    override val vaultSecurityTitle = "همه چیز روی همین گوشی می ماند"
+    override val vaultSecurityBody = "نسخه های امن ورودت با کلید سخت افزاری گوشی رمز می شوند و جایی فرستاده نمی شوند."
     override val unlockVault = "باز کردن با اثر انگشت"
-    override val biometricPromptTitle = "قفل مراقبت از حساب‌ها"
-    override val biometricPromptSubtitle = "برای دیدن نسخه‌های ذخیره‌شده، هویتت را تأیید کن"
+    override val biometricPromptTitle = "قفل مراقبت از حساب ها"
+    override val biometricPromptSubtitle = "برای دیدن نسخه های ذخیره شده، هویتت را تأیید کن"
     override val biometricCancelled = "تأیید هویت لغو شد"
-    override val reloginUnavailable = "برای این سایت ورود ذخیره‌شده‌ای پیدا نشد"
-    override val reloginUnsupportedType = "این نوع ورود پشتیبانی نمی‌شود"
+    override val reloginUnavailable = "برای این سایت ورود ذخیره شده ای پیدا نشد"
+    override val reloginUnsupportedType = "این نوع ورود پشتیبانی نمی شود"
     override val reloginPromptSubtitle = "سایت نشستت را بست؛ با اثر انگشت دوباره وارد شو"
-    override val sitesSectionTitle = "سایت‌ها"
+    override val sitesSectionTitle = "سایت ها"
     override val sitesSectionBody = "هر سایت فضای جدا دارد؛ خروج از یکی به بقیه کاری ندارد."
     override val protectThisSite = "مراقبت از این سایت"
     override val signOutNow = "کامل خارج شو"
-    override val signOutConfirmTitle = "از این سایت خارج می‌شوی؟"
-    override val signOutConfirmBody = "ورود فعلی و همه‌ی نسخه‌های ذخیره‌شده‌ی این سایت پاک می‌شوند. بقیه سایت‌ها دست‌نخورده می‌مانند."
+    override val signOutConfirmTitle = "از این سایت خارج می شوی؟"
+    override val signOutConfirmBody = "ورود فعلی و همه ی نسخه های ذخیره شده ی این سایت پاک می شوند. بقیه سایت ها دست نخورده می مانند."
     override val signOutConfirmAction = "بله، خارج شو"
     override val timeMachineTitle = "برگشت به عقب"
     override val timeMachineBody = "یک نسخه را انتخاب کن تا ورودت به همان زمان برگردد."
-    override val emptySnapshots = "هنوز نسخه‌ای ساخته نشده. وقتی سایت باز کنی، خودکار ساخته می‌شود."
+    override val emptySnapshots = "هنوز نسخه ای ساخته نشده. وقتی سایت باز کنی، خودکار ساخته می شود."
     override val emptySites = "هنوز سایتی اضافه نشده. کافی است یک آدرس باز کنی."
-    override val backgroundSnapshotLabel = "نسخه پس‌زمینه"
+    override val backgroundSnapshotLabel = "نسخه پس زمینه"
     override val restore = "برگردان"
     override val healthLogTitle = "چه اتفاقی افتاد؟"
-    override val healthLogBody = "هر وقت چیزی برای ورودت پیش بیاید، اینجا با زبان ساده ثبت می‌شود."
+    override val healthLogBody = "هر وقت چیزی برای ورودت پیش بیاید، اینجا با زبان ساده ثبت می شود."
     override val feedbackRestoreFailed = "نتوانستیم این نسخه را بخوانیم"
     override val gotIt = "باشه"
 
     override fun tabsCount(count: Int) = "$count تب باز"
     override fun adsBlocked(count: Int) = "$count تبلیغ و ردیاب بسته شد"
     override fun downloadsMenu(count: Int) = "دانلودها ($count)"
-    override fun openTabsTitle(count: Int) = "تب‌های باز ($count)"
-    override fun bookmarksCount(count: Int) = "نشان‌ها ($count)"
+    override fun openTabsTitle(count: Int) = "تب های باز ($count)"
+    override fun bookmarksCount(count: Int) = "نشان ها ($count)"
     override fun historyCount(count: Int) = "تاریخچه ($count)"
-    override fun savedPath(path: String) = "ذخیره‌شده در: $path"
+    override fun savedPath(path: String) = "ذخیره شده در: $path"
     override fun reloginBody(domain: String) =
-        "سایت $domain تو را از حساب خارج کرده است. با اثر انگشت یا Passkey می‌توانی سریع برگردی."
-    override fun adBlockChip(count: Int) = "تبلیغ بسته‌شده: $count"
-    override fun sitesCount(count: Int) = "سایت‌ها ($count)"
-    override fun keepAliveEvery(minutes: Int) = "بی‌صدا بازدید کن (هر $minutes دقیقه)"
+        "سایت $domain تو را از حساب خارج کرده است. با اثر انگشت یا Passkey می توانی سریع برگردی."
+    override fun adBlockChip(count: Int) = "تبلیغ بسته شده: $count"
+    override fun sitesCount(count: Int) = "سایت ها ($count)"
+    override fun keepAliveEvery(minutes: Int) = "بی صدا بازدید کن (هر $minutes دقیقه)"
     override fun keepSignedInFor(days: Int) = "ورود را $days روز نگه دار"
-    override fun signOutDialogTitle(domain: String) = "از $domain خارج می‌شوی؟"
+    override fun signOutDialogTitle(domain: String) = "از $domain خارج می شوی؟"
     override fun signOutDialogBody(domain: String) =
-        "ورود فعلی و نسخه‌های ذخیره‌شده‌ی $domain پاک می‌شوند. بقیه سایت‌ها دست‌نخورده می‌مانند."
+        "ورود فعلی و نسخه های ذخیره شده ی $domain پاک می شوند. بقیه سایت ها دست نخورده می مانند."
     override fun snapshotLine(date: String, cookies: Int, storageKeys: Int) =
-        "ذخیره‌شده در $date · $cookies کوکی · $storageKeys کلید حافظه"
+        "ذخیره شده در $date · $cookies کوکی · $storageKeys کلید حافظه"
     override fun feedbackProtection(domain: String, enabled: Boolean) =
         if (enabled) "مراقبت از $domain روشن شد" else "مراقبت از $domain خاموش شد"
-    override fun feedbackCookieDays(domain: String, days: Int) = "ورود به $domain حالا $days روز می‌ماند"
+    override fun feedbackCookieDays(domain: String, days: Int) = "ورود به $domain حالا $days روز می ماند"
     override fun feedbackKeepAliveOn(domain: String, minutes: Int) =
-        "برای $domain هر $minutes دقیقه بی‌صدا زنده‌سازی انجام می‌شود"
-    override fun feedbackKeepAliveOff(domain: String) = "زنده‌سازی خودکار $domain خاموش شد"
+        "برای $domain هر $minutes دقیقه بی صدا زنده سازی انجام می شود"
+    override fun feedbackKeepAliveOff(domain: String) = "زنده سازی خودکار $domain خاموش شد"
     override fun feedbackRestored(label: String, cookies: Int) = "نسخه «$label» برگشت ($cookies کوکی)"
-    override fun feedbackSignedOut(domain: String) = "از $domain خارج شدی و نسخه‌هایش پاک شد"
+    override fun feedbackSignedOut(domain: String) = "از $domain خارج شدی و نسخه هایش پاک شد"
     override fun aboutBody(version: String) =
         "MarbleBr نسخه $version — ساخته شده که یک بار وارد شوی و بمانی. بدون ردیاب، بدون تبلیغ."
     override fun reloginAutoTitle(domain: String) = "ورود دوباره به $domain"
@@ -593,13 +593,13 @@ private object PersianStrings : MarbleStrings() {
     override fun manualSnapshotLabel(domain: String) = "نسخه دستی — $domain"
     override fun pwaShortcutLongLabel(title: String) = "$title (بدون خروج خودکار)"
 
-    override val homeTitle = "صفحه‌ی خانه"
+    override val homeTitle = "صفحه ی خانه"
     override val homeIntro = "ابتدا را از اینجا آغاز کنید"
     override val homeSearchHint = "جستجو یا آدرس سایت را بنویسید…"
     override val homeRecentTitle = "بازدیدهای اخیر"
     override val homeEmptyRecent = "هنوز بازدیدی ندارید"
     override val homeShortcutsTitle = "میانبرهای شما"
-    override val homeEmptyShortcuts = "هنوز میانبری ندارید. سایت‌های مورد علاقه را از مرورگر ذخیره کنید."
+    override val homeEmptyShortcuts = "هنوز میانبری ندارید. سایت های مورد علاقه را از مرورگر ذخیره کنید."
 
     override val rateTitle = "به MarbleBr استار بدهید"
     override val rateMessage =
@@ -608,12 +608,12 @@ private object PersianStrings : MarbleStrings() {
     override val rateLater = "بعداً"
     override val rateDontAskAgain = "نخواهم داد، دوباره نشان نده"
 
-    override val homeScreenTitle = "تنظیمات صفحه‌ی خانه"
+    override val homeScreenTitle = "تنظیمات صفحه ی خانه"
     override val searchEngineTitle = "موتور جستجو"
     override val searchEngineDescription =
-        "موتور جستجوی پیش‌فرض برای نوار آدرس و صفحه‌ی خانه را انتخاب کنید."
-    override val homeShortcutPositionTitle = "محل دکمه‌ی میانبر صفحه‌ی خانه"
-    override val shortcutPositionNone = "هیچ‌کدام"
+        "موتور جستجوی پیش فرض برای نوار آدرس و صفحه ی خانه را انتخاب کنید."
+    override val homeShortcutPositionTitle = "محل دکمه ی میانبر صفحه ی خانه"
+    override val shortcutPositionNone = "هیچ کدام"
     override val shortcutPositionTop = "بالا"
     override val shortcutPositionBottom = "پایین"
 
@@ -625,12 +625,12 @@ private object PersianStrings : MarbleStrings() {
     override val settingsTabNetwork = "شبکه"
     override val settingsTabAbout = "درباره"
     override val chromeBarStyleTitle = "شکل نوارهای بالا و پایین"
-    override val chromeBarStyleDescription = "«شناور» یعنی نوارها کاملاً شیشه‌ای و بی‌پس‌زمینه‌اند و صفحه از پشتشان دیده می‌شود."
+    override val chromeBarStyleDescription = "«شناور» یعنی نوارها کاملاً شیشه ای و بی پس زمینه اند و صفحه از پشتشان دیده می شود."
     override val chromeSolid = "ساده و مات"
-    override val chromeGlass = "شیشه‌ای مات"
-    override val chromeFloating = "شیشه‌ای شناور"
+    override val chromeGlass = "شیشه ای مات"
+    override val chromeFloating = "شیشه ای شناور"
     override val backBehaviorTitle = "دکمهٔ بازگشت"
-    override val backBehaviorDescription = "انتخاب کن وقتی دکمهٔ بازگشت گوشی را می‌زنی چه اتفاقی بیفتد."
+    override val backBehaviorDescription = "انتخاب کن وقتی دکمهٔ بازگشت گوشی را می زنی چه اتفاقی بیفتد."
     override val backSmart = "هوشمند (پیشنهادی)"
     override val backPageThenHome = "اول صفحهٔ قبلی، بعد خانه"
     override val backHome = "همیشه به خانه"
@@ -641,11 +641,11 @@ private object PersianStrings : MarbleStrings() {
     override val backAskToPage = "به صفحهٔ قبلی همین سایت"
     override val backAskToHome = "به صفحهٔ خانه"
     override val backAskExit = "خروج از برنامه"
-    override val tabsBehaviorTitle = "رفتار تب‌ها"
+    override val tabsBehaviorTitle = "رفتار تب ها"
     override val askBeforeClosingTabs = "تأیید قبل از بستن تب"
-    override val askBeforeClosingTabsDescription = "اگر یک تب باز باشد و بخواهی ببندیش، اول از تو می‌پرسیم."
+    override val askBeforeClosingTabsDescription = "اگر یک تب باز باشد و بخواهی ببندیش، اول از تو می پرسیم."
     override val closeTabConfirmTitle = "این تب بسته شود؟"
-    override fun closeTabConfirmBody(title: String) = "تب «$title» بسته می‌شود؛ اگر خواستی با «بازگشایی تب بسته‌شده» برمی‌گردد."
+    override fun closeTabConfirmBody(title: String) = "تب «$title» بسته می شود؛ اگر خواستی با «بازگشایی تب بسته شده» برمی گردد."
 
     override val quickActionsTitle = "میانبرهای سریع"
     override val quickCopyLink = "کپی لینک"
@@ -661,23 +661,23 @@ private object PersianStrings : MarbleStrings() {
     override val quickAddShortcut = "میانبر خانه"
     override val quickRefresh = "نوسازی"
     override val quickHome = "خانه"
-    override val quickTabs = "تب‌ها"
+    override val quickTabs = "تب ها"
     override val quickSettings = "تنظیمات"
-    override val quickBookmarks = "نشان‌ها"
+    override val quickBookmarks = "نشان ها"
     override val quickSignOut = "خروج کامل"
     override val quickNewTab = "تب تازه"
     override fun quickSiteSignedInFor(days: Int, minutes: Int) =
-        "این سایت $days روز وارد می‌ماند · هر $minutes دقیقه بی‌صدا زنده می‌شود"
+        "این سایت $days روز وارد می ماند · هر $minutes دقیقه بی صدا زنده می شود"
 
     override val starRepoBoldLine = "به MarbleBr استار بده ⭐"
     override val starRepoHeadline = "یک استار، هزار امید"
     override val starRepoSubline =
-        "اگر MarbleBr کارت را راه انداخت، با یک استار در گیت‌هاب به ما انرژی بده تا سریع‌تر بهترش کنیم."
-    override val starRepoButton = "همین حالا استار می‌دهم ⭐"
+        "اگر MarbleBr کارت را راه انداخت، با یک استار در گیت هاب به ما انرژی بده تا سریع تر بهترش کنیم."
+    override val starRepoButton = "همین حالا استار می دهم ⭐"
     override val starRepoLater = "باشه، بعداً"
     override val starRepoNever = "دیگر نشان نده"
     override val starRepoTelegram = "کانال تلگرام ما"
-    override val starRepoWeb = "دیدن مخزن در گیت‌هاب"
+    override val starRepoWeb = "دیدن مخزن در گیت هاب"
     override val starRepoThanks = "ممنون که با ما هستی 💙"
     override val starRepoBadgeFree = "رایگان"
     override val starRepoBadgePrivate = "بدون ردیاب"
@@ -694,11 +694,11 @@ private object PersianStrings : MarbleStrings() {
     override val statusNeedsSignIn = "نیاز به ورود دوباره"
     override val statusProtectionOff = "مراقبت خاموش"
     override val reasonProtectionOff = "برای این سایت مراقبت خاموش است."
-    override val reasonHealthy = "همه‌چیز مرتب است؛ همچنان وارد حسابی."
+    override val reasonHealthy = "همه چیز مرتب است؛ همچنان وارد حسابی."
     override val reasonUnauthorized = "سایت درخواست تو را رد کرد."
     override val reasonLoginRedirect = "سایت تو را به صفحه ورود فرستاد."
     override val reasonCookieMissing = "کوکی ورودت ناپدید شد."
-    override val reasonStorageCleared = "حافظه‌ی محلی سایت پاک شد."
+    override val reasonStorageCleared = "حافظه ی محلی سایت پاک شد."
     override val reasonHealed = "نشستت را خودکار برگرداندیم؛ لازم نیست کاری کنی."
     override val reasonServerRevoked = "سایت نشست را بست؛ با اثر انگشت یا Passkey سریع برگرد."
     override val reasonUnknown = "اتفاقی برای نشست افتاد که بررسی شد."
