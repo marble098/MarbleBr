@@ -3,6 +3,7 @@ package com.marble098.marblebr.vault
 import com.marble098.marblebr.core.database.CredentialDao
 import com.marble098.marblebr.core.database.CredentialEntity
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -28,6 +29,12 @@ data class SavedCredential(
     val updatedAtEpochMillis: Long,
 )
 
+data class CredentialReadResult(
+    val credentials: List<SavedCredential> = emptyList(),
+    val unreadableCount: Int = 0,
+    val storageUnavailable: Boolean = false,
+)
+
 /** Credentials are encrypted in full; neither site, username, password nor notes are Room columns. */
 @Singleton
 class CredentialVault @Inject constructor(
@@ -36,10 +43,11 @@ class CredentialVault @Inject constructor(
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    // Collect only while the credential UI is unlocked. A corrupted record is not silently deleted.
-    fun observeCredentials(): Flow<List<SavedCredential>> = dao.observeAll().map { entries ->
-        entries.mapNotNull { entity -> runCatching { decrypt(entity) }.getOrNull() }
-    }
+    // Collect only while unlocked; keep unreadable records intact and report them to the user.
+    fun observeCredentials(): Flow<CredentialReadResult> = dao.observeAll().map { entries ->
+        val readable = entries.mapNotNull { entity -> runCatching { decrypt(entity) }.getOrNull() }
+        CredentialReadResult(readable, unreadableCount = entries.size - readable.size)
+    }.catch { emit(CredentialReadResult(storageUnavailable = true)) }
 
     suspend fun save(fields: CredentialFields, id: String? = null): SavedCredential {
         require(isValidSite(fields.site)) { "An HTTP(S) site URL is required" }

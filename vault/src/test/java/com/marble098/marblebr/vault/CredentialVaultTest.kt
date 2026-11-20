@@ -26,12 +26,12 @@ class CredentialVaultTest {
         for (secret in listOf(fields.site, fields.username, fields.password, fields.notes)) {
             assertFalse(stored.toString().contains(secret))
         }
-        assertEquals(fields, vault.observeCredentials().first().single().fields)
+        assertEquals(fields, vault.observeCredentials().first().credentials.single().fields)
         vault.save(fields.copy(password = "new-password"), saved.id)
-        assertEquals("new-password", vault.observeCredentials().first().single().fields.password)
+        assertEquals("new-password", vault.observeCredentials().first().credentials.single().fields.password)
         assertEquals(saved.createdAtEpochMillis, dao.getById(saved.id)?.createdAtEpochMillis)
         vault.delete(saved.id)
-        assertTrue(vault.observeCredentials().first().isEmpty())
+        assertTrue(vault.observeCredentials().first().credentials.isEmpty())
     }
 
     @Test
@@ -39,7 +39,10 @@ class CredentialVaultTest {
         val saved = vault.save(CredentialFields("https://example.org", "user", "password"))
         val entry = dao.getById(saved.id)!!
         dao.upsert(entry.copy(id = "different-id"))
-        assertEquals(listOf(saved.id), vault.observeCredentials().first().map { it.id })
+        val result = vault.observeCredentials().first()
+        assertEquals(listOf(saved.id), result.credentials.map { it.id })
+        assertEquals(1, result.unreadableCount)
+        assertNotEquals(null, dao.getById("different-id"))
     }
 
     @Test

@@ -49,16 +49,14 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
+data class PageContextTarget(val linkUrl: String?, val imageUrl: String?)
+
 /**
- * نتیجهٔ بازگردانیِ یک نسخه روی مرورگر.
- *
- * @param cookiesRestored تعداد کوکی‌هایی که واقعاً نوشته شد.
+ * @param cookiesRestored تعداد هدرهای پیشنهادی به Gecko، نه تأیید پذیرش نهایی کوکی‌ها.
  * @param storageKeysRestored تعداد کلیدهای localStorage/sessionStorage که نوشته شد.
  * @param openTabMissing تبی با همان حساب و origin باز نبود؛ هیچ داده‌ای در حساب دیگری نوشته نشد.
  * @param payloadUnavailable نسخه رمزگشایی نشد (خراب یا حذف‌شده).
  */
-data class PageContextTarget(val linkUrl: String?, val imageUrl: String?)
-
 data class VaultRestoreOutcome(
     val cookiesRestored: Int = 0,
     val storageKeysRestored: Int = 0,
@@ -72,7 +70,7 @@ data class VaultRestoreOutcome(
  * هر وب‌اپ یا PWA یک کانتینر مستقل با `contextId` اختصاصی دریافت می‌کند:
  * - خرابی یا پاک‌سازی یک کانتینر هیچ اثری روی بقیه ندارد.
  * - دکمه «پاک کردن کش» صرفاً `ClearFlags.ALL_CACHES` (`NETWORK_CACHE | IMAGE_CACHE`) را پاک می‌کند و هرگز نشست‌ها را پاک نمی‌کند.
- * - دکمه «Sign out now» داده‌های همان `contextId` و اسنپ‌شات‌های Session Vault آن سایت را به‌طور کامل پاک می‌کند.
+ * - دکمه «Sign out now» پاک‌سازی همان `contextId` را درخواست و اسنپ‌شات‌های آن حساب را حذف می‌کند.
  */
 @Singleton
 class ContainerSessionManager @Inject constructor(
@@ -108,6 +106,8 @@ class ContainerSessionManager @Inject constructor(
     private val scriptRequests = ConcurrentHashMap<String, CompletableDeferred<String?>>()
 
     private var installedExtension: WebExtension? = null
+    private var extensionReady: GeckoResult<WebExtension>? = null
+    private val pendingInitialLoads = ConcurrentHashMap<String, String>()
 
     @Volatile
     private var geckoRuntime: GeckoRuntime? = null
@@ -240,20 +240,6 @@ class ContainerSessionManager @Inject constructor(
             onContextMenu = onContextMenu,
         )
 
-        if (!isPrivate) {
-            val attachBridge: (WebExtension) -> Unit = { extension ->
-                attachSessionExtensionBridge(session, extension, container, onHealthRestored, onServerRevokedFallbackRequired)
-            }
-            val extension = installedExtension
-            if (extension != null) {
-                attachBridge(extension)
-            } else {
-                runtime.webExtensionController.ensureBuiltIn(EXTENSION_ASSET_URI, EXTENSION_ID).accept { available ->
-                    if (available != null && activeSessions[tabId] === session) attachBridge(available)
-                }
-            }
-        }
-
         // تصمیمِ دسترسی‌ها: پخش خودکار همیشه از روی پروفایل پاسخ داده می‌شود (اگر کاربر
         // اجازه نداده باشد بلاک است) و بقیه هم همان پروفایل را دنبال می‌کنند.
         session.permissionDelegate = object : GeckoSession.PermissionDelegate {
@@ -286,7 +272,34 @@ class ContainerSessionManager @Inject constructor(
         activeSessions[tabId] = session
         sessionContainers[session] = container.id
         session.open(runtime)
-        session.loadUri(initialUrl)
+        if (isPrivate) {
+            session.loadUri(initialUrl)
+        } else {
+            val available = installedExtension
+            if (available != null) {
+                attachSessionExtensionBridge(session, available, container, onHealthRestored, onServerRevokedFallbackRequired)
+                session.loadUri(initialUrl)
+            } else {
+                // Install/attach before the first page loads. Otherwise a fresh install can miss
+                // the content script entirely and never receive the tab's cookie policy.
+                pendingInitialLoads[tabId] = initialUrl
+                extensionReady?.accept({ extension ->
+                    if (activeSessions[tabId] === session) {
+                        if (extension != null) {
+                            attachSessionExtensionBridge(session, extension, container, onHealthRestored, onServerRevokedFallbackRequired)
+                        }
+                        pendingInitialLoads.remove(tabId)?.let(session::loadUri)
+                    }
+                }, {
+                    if (activeSessions[tabId] === session) pendingInitialLoads.remove(tabId)?.let(session::loadUri)
+                })
+                // A stuck extension install must not prevent ordinary browsing indefinitely.
+                engineScope.launch {
+                    delay(EXTENSION_START_TIMEOUT_MILLIS)
+                    if (activeSessions[tabId] === session) pendingInitialLoads.remove(tabId)?.let(session::loadUri)
+                }
+            }
+        }
         return session
     }
 
@@ -318,13 +331,18 @@ class ContainerSessionManager @Inject constructor(
     }
 
     fun loadInOpenSession(tabId: String, url: String) {
-        activeSessions[tabId]?.loadUri(url)
+        if (pendingInitialLoads.containsKey(tabId)) {
+            pendingInitialLoads[tabId] = url
+        } else {
+            activeSessions[tabId]?.loadUri(url)
+        }
     }
 
     /** نشستِ بازِ فعلیِ یک تب؛ برای اتصالِ دوبارهٔ نما هنگام بازترکیب (recomposition) استفاده می‌شود. */
     fun activeSession(tabId: String): GeckoSession? = activeSessions[tabId]
 
     fun stopLoading(tabId: String) {
+        pendingInitialLoads.remove(tabId)
         activeSessions[tabId]?.stop()
     }
 
@@ -508,6 +526,7 @@ class ContainerSessionManager @Inject constructor(
     }
 
     fun closeTabSession(tabId: String) {
+        pendingInitialLoads.remove(tabId)
         val session = activeSessions.remove(tabId) ?: return
         sessionContainers.remove(session)
         capturePorts.remove(session)?.disconnect()
@@ -624,31 +643,29 @@ class ContainerSessionManager @Inject constructor(
 
     /** Apply changed settings to already-open tabs as well as future ones. */
     suspend fun refreshCookiePolicies() {
-        val global = neverSignOutGlobalEnabled()
         for ((session, port) in capturePorts) {
             val container = sessionContainers[session]?.let { containerDao.getById(it)?.toDomain() }
-            if (container != null) sendCookiePolicy(port, container, global)
+            if (container != null) sendCookiePolicy(port, container)
         }
     }
 
-    private fun sendCookiePolicy(port: WebExtension.Port, container: WebAppContainer, global: Boolean) {
+    private fun sendCookiePolicy(port: WebExtension.Port, container: WebAppContainer) {
         runCatching {
             port.postMessage(
                 JSONObject().put("type", "SET_COOKIE_POLICY")
-                    .put("enabled", global && container.neverSignOutEnabled)
-                    .put("days", container.cookieExpirationDays),
+                    .put("enabled", container.neverSignOutEnabled)
+                    .put("days", container.cookieExpirationDays)
+                    .put("persistStorage", container.storagePersistRequested),
             )
         }
     }
 
     private fun installNeverSignOutExtension(runtime: GeckoRuntime) {
-        runtime.webExtensionController
-            .ensureBuiltIn(EXTENSION_ASSET_URI, EXTENSION_ID)
-            .accept { extension ->
-                if (extension != null) {
-                    installedExtension = extension
-                }
-            }
+        val ready = runtime.webExtensionController.ensureBuiltIn(EXTENSION_ASSET_URI, EXTENSION_ID)
+        extensionReady = ready
+        ready.accept({ extension -> installedExtension = extension }, { _ ->
+            // Browsing still works without the extension.
+        })
     }
 
     private fun attachSessionExtensionBridge(
@@ -667,7 +684,7 @@ class ContainerSessionManager @Inject constructor(
                     capturePorts[session] = port
                     engineScope.launch {
                         val fresh = containerDao.getById(container.id)?.toDomain() ?: container
-                        sendCookiePolicy(port, fresh, neverSignOutGlobalEnabled())
+                        sendCookiePolicy(port, fresh)
                     }
                     port.setDelegate(object : WebExtension.PortDelegate {
                         override fun onPortMessage(message: Any, port: WebExtension.Port) {
@@ -694,7 +711,7 @@ class ContainerSessionManager @Inject constructor(
                                     if (json.has("requestId") && !manual) return
                                     engineScope.launch {
                                         val fresh = containerDao.getById(container.id)?.toDomain() ?: container
-                                        val enabled = neverSignOutGlobalEnabled() && fresh.neverSignOutEnabled
+                                        val enabled = fresh.neverSignOutEnabled
                                         val saved = if (manual || enabled) {
                                             runCatching { savePageSnapshot(json, fresh, manual) }.getOrDefault(false)
                                         } else {
@@ -999,29 +1016,9 @@ class ContainerSessionManager @Inject constructor(
                 isHostOnly = hostOnly,
             ).takeIf { it.name.isNotBlank() }
         }
-        val visible = parseDocumentCookieString(json.optString("cookieString"), host, origin.startsWith("https://"))
-            .filterNot { candidate -> observed.any { it.name == candidate.name } }
-        return observed + visible
-    }
-
-    private fun parseDocumentCookieString(cookieString: String, domain: String, secure: Boolean): List<CookieRecord> {
-        if (cookieString.isBlank()) return emptyList()
-        return cookieString.split(";")
-            .mapNotNull { pair ->
-                val trimmed = pair.trim()
-                val idx = trimmed.indexOf('=')
-                if (idx <= 0) return@mapNotNull null
-                val name = trimmed.substring(0, idx).trim()
-                val value = trimmed.substring(idx + 1).trim()
-                CookieRecord(
-                    name = name,
-                    value = value,
-                    domain = domain,
-                    isSessionOnly = true,
-                    isSecure = secure,
-                    isHostOnly = true,
-                )
-            }
+        // document.cookie omits path/domain/expiry/HttpOnly metadata. Guessing it would widen
+        // cookie scope or overwrite an HttpOnly cookie on restore; only use observed headers.
+        return observed
     }
 
     private fun jsonObjectToMap(obj: JSONObject?): Map<String, String> {
@@ -1064,6 +1061,7 @@ class ContainerSessionManager @Inject constructor(
     }
 
     companion object {
+        private const val EXTENSION_START_TIMEOUT_MILLIS = 10_000L
         const val EXTENSION_ASSET_URI = "resource://android/assets/extensions/never_signout/"
         const val EXTENSION_ID = "never_signout@marblebr.marble098.com"
         const val NATIVE_BRIDGE_APP_ID = "marble_never_signout"

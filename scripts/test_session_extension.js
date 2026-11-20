@@ -7,7 +7,7 @@ const listeners = {};
 const event = name => ({ addListener: fn => { listeners[name] = fn; } });
 const browser = {
   runtime: { onMessage: event("message") },
-  webRequest: { onHeadersReceived: event("headers"), onCompleted: event("completed") },
+  webRequest: { onBeforeRequest: event("before"), onHeadersReceived: event("headers"), onCompleted: event("completed") },
   tabs: { onRemoved: event("removed"), sendMessage: () => Promise.resolve() }
 };
 const code = fs.readFileSync("engine/src/main/assets/extensions/never_signout/background.js", "utf8");
@@ -26,6 +26,11 @@ const headers = (id, values, url = "https://my.mci.ir/login") => listeners.heade
   assert.match(first.responseHeaders[0].value, /Max-Age=864000/);
   headers(2, ["session=two; Path=/; Secure; HttpOnly"]);
   assert.equal(headers(3, ["session=off; Path=/"]).responseHeaders, undefined);
+  // Policy is bound to the page origin, not every network request made by that tab.
+  const thirdParty = headers(1, ["other=private; Path=/"], "https://third-party.test/tracker");
+  assert.equal(thirdParty.responseHeaders, undefined);
+  const navigated = headers(1, ["other=private; Path=/"], "https://other-site.test/home");
+  assert.equal(navigated.responseHeaders, undefined);
   const one = (await send(1, { type: "GET_CAPTURED_COOKIES" })).cookies;
   const two = (await send(2, { type: "GET_CAPTURED_COOKIES" })).cookies;
   assert.equal(one.length, 1);
@@ -33,6 +38,13 @@ const headers = (id, values, url = "https://my.mci.ir/login") => listeners.heade
   assert.equal(one[0].isHttpOnly, true);
   assert.equal(one[0].isHostOnly, true);
   assert.equal(two[0].value, "two");
+  listeners.before({ tabId: 1, type: "main_frame", url: "https://other-site.test/home" });
+  assert.equal(headers(1, ["old=unmodified; Path=/"]).responseHeaders, undefined);
+  assert.equal((await send(1, { type: "GET_CAPTURED_COOKIES" })).cookies.length, 0);
+  const newOrigin = { tab: { id: 1 }, frameId: 0, url: "https://other-site.test/home" };
+  await listeners.message({ type: "SET_POLICY", enabled: true, days: 8 }, newOrigin);
+  assert.equal(headers(1, ["old=unmodified; Path=/"]).responseHeaders, undefined);
+  await send(1, { type: "SET_POLICY", enabled: true, days: 10 });
   const explicit = headers(1, ["logout=; Max-Age=0; Path=/"]);
   assert.doesNotMatch(explicit.responseHeaders[0].value, /Max-Age=864000/);
   const capped = headers(1, ["short=ok; Max-Age=5; Path=/"]);
@@ -44,7 +56,7 @@ const headers = (id, values, url = "https://my.mci.ir/login") => listeners.heade
   assert.ok(prepared.nonce);
   // The same nonce in another tab or origin must never receive these cookies.
   assert.equal(headers(2, [], `https://my.mci.ir/?__marble_vault_restore=${prepared.nonce}`).responseHeaders.length, 0);
-  assert.equal(headers(1, [], `https://evil.test/?__marble_vault_restore=${prepared.nonce}`).responseHeaders.length, 0);
+  assert.equal(headers(1, [], `https://evil.test/?__marble_vault_restore=${prepared.nonce}`).responseHeaders?.length || 0, 0);
   const restored = headers(1, [], `https://my.mci.ir/?__marble_vault_restore=${prepared.nonce}`);
   assert.match(restored.responseHeaders[0].value, /^session=one;.*HttpOnly/);
   assert.doesNotMatch(restored.responseHeaders[0].value, /Domain=/);

@@ -3,6 +3,7 @@
   "use strict";
   const NATIVE_APP = "marble_never_signout";
   let port = null;
+  let autoCaptureEnabled = false;
 
   async function ensurePersistentStorage() {
     try {
@@ -44,7 +45,7 @@
     try { persisted = await navigator.storage.persisted(); } catch (_) {}
     return {
       event: "STORAGE_SNAPSHOT", origin: location.origin, href: location.href,
-      cookieString: document.cookie || "", cookies,
+      cookies,
       localStorage: localDump, sessionStorage: sessionDump, indexedDbDump: idbDump,
       storagePersisted: persisted === true
     };
@@ -80,17 +81,18 @@
   }
 
   function sendSnapshot() {
-    if (!port) return;
+    if (!port || !autoCaptureEnabled) return;
     collectStorageSnapshot().then(snapshot => port.postMessage(snapshot)).catch(() => {});
   }
 
-  ensurePersistentStorage();
   try {
     port = browser.runtime.connectNative(NATIVE_APP);
     port.onMessage.addListener(async message => {
       if (!message || !message.type) return;
       if (message.type === "SET_COOKIE_POLICY") {
-        try { await browser.runtime.sendMessage({ type: "SET_POLICY", enabled: message.enabled, days: message.days }); } catch (_) {}
+        autoCaptureEnabled = message.enabled === true;
+        try { await browser.runtime.sendMessage({ type: "SET_POLICY", enabled: autoCaptureEnabled, days: message.days }); } catch (_) {}
+        if (autoCaptureEnabled && message.persistStorage === true) ensurePersistentStorage();
       } else if (message.type === "APPLY_VAULT_SNAPSHOT") {
         let result = { cookieCount: 0, storageKeyCount: 0 };
         try { result = await restoreSnapshot(message.payload); } catch (_) {}

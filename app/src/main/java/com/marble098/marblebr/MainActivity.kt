@@ -51,6 +51,7 @@ import com.marble098.marblebr.feature.vault.VaultDashboardViewModel
 import com.marble098.marblebr.vault.BiometricAuthResult
 import com.marble098.marblebr.vault.BiometricVaultLock
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -196,6 +197,14 @@ fun MarbleBrAppNavHost(
         onDispose { activity.lifecycle.removeObserver(observer) }
     }
 
+    // Limit the exposure window even if the dashboard remains in the foreground.
+    LaunchedEffect(isVaultBiometricUnlocked) {
+        if (isVaultBiometricUnlocked) {
+            delay(5 * 60_000L)
+            isVaultBiometricUnlocked = false
+        }
+    }
+
     LaunchedEffect(initialUrl) {
         if (initialUrl != null) navController.popBackStack("browser", inclusive = false)
     }
@@ -275,7 +284,13 @@ fun MarbleBrAppNavHost(
                             subtitle = strings.biometricPromptSubtitle,
                         )
                         when (result) {
-                            is BiometricAuthResult.Authenticated -> isVaultBiometricUnlocked = true
+                            is BiometricAuthResult.Authenticated -> {
+                                if (activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
+                                    navController.currentDestination?.route == "vault"
+                                ) {
+                                    isVaultBiometricUnlocked = true
+                                }
+                            }
                             is BiometricAuthResult.NotAvailableOrNotEnrolled ->
                                 Toast.makeText(activity, strings.credentialLockUnavailable, Toast.LENGTH_LONG).show()
                             is BiometricAuthResult.Failed -> Unit

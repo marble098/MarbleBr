@@ -58,11 +58,16 @@ class SessionVaultManager @Inject constructor(
         triggerReason: String = "AUTO_PERIODIC",
         label: String = "",
     ): SessionSnapshotMeta {
-        val promotedCookies = cookieConverter.promoteAll(
-            cookies = payload.cookies,
-            targetExpirationDays = targetCookieExpirationDays,
-            nowEpochMillis = payload.capturedAtEpochMillis,
-        )
+        // Automatic snapshots must not silently extend or resurrect an explicit server expiry.
+        // Only session cookies (with no expiry) are promoted. Manual renewal is a separate action.
+        val promotedCookies = payload.cookies.mapNotNull { cookie ->
+            val expiry = cookie.expiresEpochMillis
+            when {
+                expiry != null && expiry <= payload.capturedAtEpochMillis -> null
+                expiry != null -> cookie
+                else -> cookieConverter.promoteToPersistent(cookie, targetCookieExpirationDays, payload.capturedAtEpochMillis)
+            }
+        }
         val normalizedPayload = payload.copy(cookies = promotedCookies)
         val isHealthy = evaluatePayloadHealth(normalizedPayload) ||
             (triggerReason == "MANUAL_USER_CAPTURE" &&

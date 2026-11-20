@@ -41,6 +41,7 @@ abstract class MarbleStrings {
     abstract val credentialInvalid: String
     abstract val credentialFailed: String
     abstract val credentialEmpty: String
+    abstract val credentialUnreadable: String
     abstract val credentialGenerate: String
     abstract val credentialShow: String
     abstract val credentialHide: String
@@ -591,6 +592,7 @@ private object PersianStrings : MarbleStrings() {
     override val credentialInvalid = "آدرس معتبر و نام کاربری یا گذرواژه را وارد کنید."
     override val credentialFailed = "ذخیره اطلاعات ممکن نشد. دوباره تلاش کنید."
     override val credentialEmpty = "هنوز اطلاعات ورودی ذخیره نشده است."
+    override val credentialUnreadable = "برخی اطلاعات خوانده نشدند یا مخزن در دسترس نیست؛ هیچ موردی خودکار حذف نشده است."
     override val credentialGenerate = "ساخت گذرواژه قوی"
     override val credentialShow = "نمایش گذرواژه"
     override val credentialHide = "پنهان کردن گذرواژه"
@@ -807,10 +809,10 @@ private object PersianStrings : MarbleStrings() {
     override val vaultUnprotectAll = "خاموش‌کردن مراقبت همه"
     override val vaultProtectAllOnDone = "مراقبت از همهٔ سایت‌ها روشن شد"
     override val vaultProtectAllOffDone = "مراقبت از همهٔ سایت‌ها خاموش شد"
-    override val vaultRestoreNeedsOpenTab = "کوکی‌ها برگشتند؛ برای بازگرداندن حافظهٔ صفحه، سایت را باز کن."
+    override val vaultRestoreNeedsOpenTab = "برای بازیابی، صفحهٔ همان سایت را در حساب مربوط باز نگه دار."
     override val vaultQuickActionsTitle = "کارهای سریع"
     override val vaultJumpToSite = "رفتن به سایت"
-    override val feedbackRestoreEmpty = "این نسخه داده‌ای برای بازگردانی نداشت."
+    override val feedbackRestoreEmpty = "بازیابی انجام نشد؛ صفحه و دسترسی شبکه را بررسی کن."
     override val quickPageSection = "این صفحه"
     override val quickLibrarySection = "کتابخانه"
     override val quickToolsSection = "محافظت و ابزار"
@@ -843,8 +845,8 @@ private object PersianStrings : MarbleStrings() {
     override fun feedbackKeepAliveOn(domain: String, minutes: Int) =
         "برای $domain هر $minutes دقیقه بی صدا زنده سازی انجام می شود"
     override fun feedbackKeepAliveOff(domain: String) = "زنده سازی خودکار $domain خاموش شد"
-    override fun feedbackRestored(label: String, cookies: Int) = "نسخه «$label» برگشت ($cookies کوکی)"
-    override fun feedbackSignedOut(domain: String) = "از $domain خارج شدی و نسخه هایش پاک شد"
+    override fun feedbackRestored(label: String, cookies: Int) = "بازیابی «$label» انجام شد ($cookies کوکی به مرورگر ارائه شد)؛ ورود را بررسی کن."
+    override fun feedbackSignedOut(domain: String) = "تب‌های $domain بسته و پاک‌سازی این حساب درخواست شد."
     override fun aboutBody(version: String) =
         "MarbleBr نسخه $version — ساخته شده که یک بار وارد شوی و بمانی. بدون ردیاب، بدون تبلیغ."
     override fun reloginAutoTitle(domain: String) = "ورود دوباره به $domain"
@@ -1026,7 +1028,7 @@ private object PersianStrings : MarbleStrings() {
     override val statusHealthy = "سالم"
     override val statusProtected = "مراقبت فعال"
     override val statusHealing = "در حال ترمیم"
-    override val statusRecovered = "ترمیم شد"
+    override val statusRecovered = "تلاش برای بازیابی"
     override val statusNeedsSignIn = "نیاز به ورود دوباره"
     override val statusProtectionOff = "مراقبت خاموش"
     override val reasonProtectionOff = "برای این سایت مراقبت خاموش است."
@@ -1035,7 +1037,7 @@ private object PersianStrings : MarbleStrings() {
     override val reasonLoginRedirect = "سایت تو را به صفحه ورود فرستاد."
     override val reasonCookieMissing = "کوکی ورودت ناپدید شد."
     override val reasonStorageCleared = "حافظه ی محلی سایت پاک شد."
-    override val reasonHealed = "نشستت را خودکار برگرداندیم؛ لازم نیست کاری کنی."
+    override val reasonHealed = "برای بازیابی نشست تلاش شد؛ وضعیت ورود را بررسی کن."
     override val reasonServerRevoked = "سایت نشست را بست؛ با اثر انگشت یا Passkey سریع برگرد."
     override val reasonUnknown = "اتفاقی برای نشست افتاد که بررسی شد."
 }
@@ -1063,6 +1065,7 @@ private object EnglishStrings : MarbleStrings() {
     override val credentialInvalid = "Enter a valid site URL and a username or password."
     override val credentialFailed = "Could not save the login. Please try again."
     override val credentialEmpty = "No saved logins yet."
+    override val credentialUnreadable = "Some entries could not be read or the vault is unavailable; nothing was deleted automatically."
     override val credentialGenerate = "Generate strong password"
     override val credentialShow = "Show password"
     override val credentialHide = "Hide password"
@@ -1279,10 +1282,10 @@ private object EnglishStrings : MarbleStrings() {
     override val vaultUnprotectAll = "Unprotect all"
     override val vaultProtectAllOnDone = "Protection turned on for all sites"
     override val vaultProtectAllOffDone = "Protection turned off for all sites"
-    override val vaultRestoreNeedsOpenTab = "Cookies restored; open the site to restore page storage."
+    override val vaultRestoreNeedsOpenTab = "Keep the site open in the matching account to restore its data."
     override val vaultQuickActionsTitle = "Quick actions"
     override val vaultJumpToSite = "Jump to site"
-    override val feedbackRestoreEmpty = "This snapshot had nothing to restore."
+    override val feedbackRestoreEmpty = "Nothing could be restored; check the open page and network connection."
     override val quickPageSection = "This page"
     override val quickLibrarySection = "Library"
     override val quickToolsSection = "Protection & tools"
@@ -1315,8 +1318,8 @@ private object EnglishStrings : MarbleStrings() {
     override fun feedbackKeepAliveOn(domain: String, minutes: Int) =
         "$domain gets a quiet check-in every $minutes minutes"
     override fun feedbackKeepAliveOff(domain: String) = "Background check-ins for $domain are off"
-    override fun feedbackRestored(label: String, cookies: Int) = "Restored “$label” ($cookies cookies)"
-    override fun feedbackSignedOut(domain: String) = "Signed out of $domain and deleted its copies"
+    override fun feedbackRestored(label: String, cookies: Int) = "Restore attempted for “$label” ($cookies cookies offered to the browser); check your sign-in."
+    override fun feedbackSignedOut(domain: String) = "Closed tabs and requested cleanup for this $domain account."
     override fun aboutBody(version: String) =
         "MarbleBr version $version — built so you sign in once and stay in. No trackers, no ads."
     override fun reloginAutoTitle(domain: String) = "Sign in to $domain again"
@@ -1498,7 +1501,7 @@ private object EnglishStrings : MarbleStrings() {
     override val statusHealthy = "Healthy"
     override val statusProtected = "Protection on"
     override val statusHealing = "Healing"
-    override val statusRecovered = "Restored"
+    override val statusRecovered = "Restore attempted"
     override val statusNeedsSignIn = "Needs a new sign-in"
     override val statusProtectionOff = "Protection off"
     override val reasonProtectionOff = "Protection is off for this site."
@@ -1507,7 +1510,7 @@ private object EnglishStrings : MarbleStrings() {
     override val reasonLoginRedirect = "The site sent you to its login page."
     override val reasonCookieMissing = "Your login cookie disappeared."
     override val reasonStorageCleared = "The site’s local storage was wiped."
-    override val reasonHealed = "We restored your session automatically — nothing for you to do."
+    override val reasonHealed = "Session restore was attempted; check whether you are still signed in."
     override val reasonServerRevoked = "The site ended your session — get back in with your fingerprint or a passkey."
     override val reasonUnknown = "Something touched your session, so we checked it."
 }

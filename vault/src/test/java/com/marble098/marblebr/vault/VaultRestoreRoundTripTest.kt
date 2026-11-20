@@ -65,6 +65,19 @@ class VaultRestoreRoundTripTest {
     }
 
     @Test
+    fun `capture preserves explicit expiry and drops expired cookies`() = runTest {
+        val original = payload()
+        val session = original.cookies.single().copy(name = "session", isSessionOnly = true)
+        val explicit = session.copy(name = "short_session", isSessionOnly = false, expiresEpochMillis = 5_000L)
+        val expired = explicit.copy(name = "expired_session", expiresEpochMillis = 999L)
+        val saved = vaultManager.captureSnapshot(original.copy(cookies = listOf(session, explicit, expired)))
+        val restored = requireNotNull(vaultManager.restoreSnapshotById(saved.id))
+        assertEquals(listOf("session", "short_session"), restored.cookies.map { it.name })
+        assertTrue(requireNotNull(restored.cookies.first().expiresEpochMillis) > 5_000L)
+        assertEquals(5_000L, restored.cookies.last().expiresEpochMillis)
+    }
+
+    @Test
     fun `latest healthy snapshot is the newest healthy one`() = runTest {
         vaultManager.captureSnapshot(payload = payload(cookieValue = "older"), label = "first")
         vaultManager.captureSnapshot(

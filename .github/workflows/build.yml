@@ -46,7 +46,9 @@ jobs:
         run: ./scripts/test_publish_release.sh
 
       - name: Run session extension isolation tests
-        run: node scripts/test_session_extension.js
+        run: |
+          node scripts/test_session_extension.js
+          node scripts/test_session_content.js
 
       - name: Set up JDK 21
         uses: actions/setup-java@v6

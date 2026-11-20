@@ -104,7 +104,9 @@
     if (tabId === null || !origin) return undefined;
     if (message.type === "SET_POLICY") {
       const days = Math.max(7, Math.min(MAX_DAYS, Number(message.days) || 365));
-      policies.set(tabId, { enabled: message.enabled === true, days });
+      // A tab may later navigate to an unrelated website or load third-party resources.
+      // A policy granted for this document must never promote cookies for those origins.
+      policies.set(tabId, { enabled: message.enabled === true, days, origin });
       if (message.enabled !== true) jars.delete(tabId);
       return Promise.resolve({ ok: true });
     }
@@ -132,6 +134,18 @@
     return undefined;
   });
 
+  // Revoke the previous document's policy as soon as a top-level navigation leaves its origin.
+  // Otherwise a new page could cause that policy to act on embedded requests to the old site.
+  browser.webRequest.onBeforeRequest.addListener(details => {
+    if (details.type !== "main_frame" || details.tabId < 0) return;
+    const policy = policies.get(details.tabId);
+    if (policy && policy.origin !== originOf(details.url)) {
+      policies.delete(details.tabId);
+      jars.delete(details.tabId);
+      restores.delete(details.tabId);
+    }
+  }, { urls: ["<all_urls>"] });
+
   browser.webRequest.onHeadersReceived.addListener(details => {
     const origin = originOf(details.url);
     if (!origin || details.tabId < 0) return {};
@@ -147,7 +161,7 @@
       }
     }
     const policy = policies.get(details.tabId);
-    if (!policy?.enabled) return {};
+    if (!policy?.enabled || policy.origin !== origin) return {};
     const jar = getJar(details.tabId, origin);
     const now = Date.now();
     for (const header of headers) {

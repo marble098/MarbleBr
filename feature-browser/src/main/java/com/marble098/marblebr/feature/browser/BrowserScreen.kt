@@ -257,7 +257,7 @@ fun BrowserScreen(
         domain = if (showHome) "" else activeTab?.url?.let(::siteDomain).orEmpty(),
         displayName = activeTab?.title.orEmpty(),
         isPrivate = activeTab?.isPrivate == true,
-        isProtected = !showHome && activeTab?.isPrivate != true && prefs.globalNeverSignOutEnabled,
+        isProtected = !showHome && activeTab?.isPrivate != true && uiState.activeContainer?.neverSignOutEnabled == true,
         isDesktopMode = activeTab?.isDesktopMode == true,
         hasPage = hasPage && !showHome,
         downloadsCount = downloads.size,

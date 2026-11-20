@@ -121,7 +121,11 @@ class SmartKeepAliveWorker @AssistedInject constructor(
             if (expiry != null && expiry <= System.currentTimeMillis()) {
                 byScope.remove(key(parsed))
             } else {
-                byScope[key(parsed)] = cookieConverter.promoteToPersistent(parsed, expirationDays)
+                byScope[key(parsed)] = if (expiry == null) {
+                    cookieConverter.promoteToPersistent(parsed, expirationDays)
+                } else {
+                    parsed
+                }
             }
         }
         return byScope.values.toList()

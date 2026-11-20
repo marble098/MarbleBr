@@ -47,6 +47,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
 import com.marble098.marblebr.vault.CredentialFields
+import com.marble098.marblebr.vault.CredentialReadResult
 import com.marble098.marblebr.vault.CredentialVault
 import com.marble098.marblebr.vault.SavedCredential
 import com.marble098.marblebr.vault.StrongPasswordGenerator
@@ -85,7 +86,8 @@ private fun UnlockedCredentials(vault: CredentialVault) {
         onDispose { if (!alreadySecure) window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
     }
     val flow = remember(vault) { vault.observeCredentials() }
-    val credentials by flow.collectAsState(initial = emptyList())
+    val readResult by flow.collectAsState(initial = CredentialReadResult())
+    val credentials = readResult.credentials
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<SavedCredential?>(null) }
@@ -109,8 +111,11 @@ private fun UnlockedCredentials(vault: CredentialVault) {
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
-    } else {
+    } else if (!readResult.storageUnavailable && readResult.unreadableCount == 0) {
         Text(strings.credentialEmpty, style = MaterialTheme.typography.bodySmall)
+    }
+    if (readResult.unreadableCount > 0 || readResult.storageUnavailable) {
+        Text(strings.credentialUnreadable, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
     message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
     filtered.forEach { credential ->
