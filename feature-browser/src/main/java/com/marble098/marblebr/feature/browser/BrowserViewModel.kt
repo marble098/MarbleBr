@@ -451,7 +451,20 @@ class BrowserViewModel @Inject constructor(
         val tabs = _uiState.value.tabs
         browserTabDao.deleteAllTabs()
         tabs.filterNot { it.isPrivate }.withIndex().forEach { (index, tab) ->
-            browserTabDao.upsertTab(BrowserTabEntity.fromDomain(tab, index))
+            browserTabDao.upsertTab(
+                BrowserTabEntity(
+                    id = tab.id,
+                    containerId = tab.containerId,
+                    contextId = tab.contextId,
+                    url = tab.url,
+                    title = tab.title,
+                    isPrivate = tab.isPrivate,
+                    isDesktopMode = tab.isDesktopMode,
+                    createdAtEpochMillis = tab.createdAtEpochMillis,
+                    lastVisitedAtEpochMillis = tab.lastVisitedAtEpochMillis,
+                    positionIndex = index,
+                )
+            )
         }
     }
 }
