@@ -11,6 +11,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -34,6 +35,7 @@ import com.marble098.marblebr.feature.vault.VaultDashboardViewModel
 import com.marble098.marblebr.vault.BiometricAuthResult
 import com.marble098.marblebr.vault.BiometricVaultLock
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -116,7 +118,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-    private fun openPlayStore() {
+    fun openPlayStore() {
         val packageName = this.packageName
         val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName")).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -181,7 +183,7 @@ fun MarbleBrAppNavHost(
                     }
                 },
                 renderGeckoWebView = renderGeckoWebView,
-                initialShowHome = initialUrlFromIntent.isNullOrBlank(),
+                initialShowHome = initialUrl.isNullOrBlank(),
             )
         }
 
