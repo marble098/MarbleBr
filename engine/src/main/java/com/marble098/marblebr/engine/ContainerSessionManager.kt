@@ -8,7 +8,11 @@ import com.marble098.marblebr.core.model.CookieRecord
 import com.marble098.marblebr.core.model.HealthGuardAction
 import com.marble098.marblebr.core.model.HealthReason
 import com.marble098.marblebr.core.model.ProxyDnsConfig
+import com.marble098.marblebr.core.model.PermissionState
 import com.marble098.marblebr.core.model.ProxyType
+import com.marble098.marblebr.core.model.ReaderTextEngine
+import com.marble098.marblebr.core.model.SitePermission
+import com.marble098.marblebr.core.model.SitePermissionProfile
 import com.marble098.marblebr.core.model.SessionHealthSignal
 import com.marble098.marblebr.core.model.SessionSnapshotMeta
 import com.marble098.marblebr.core.model.SessionSnapshotPayload
@@ -76,6 +80,8 @@ class ContainerSessionManager @Inject constructor(
 ) {
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val activeSessions = ConcurrentHashMap<String, GeckoSession>()
+    /** پروفایلِ دسترسی‌های هر تب؛ delegate هر نشست همین را می‌خواند. */
+    private val permissionProfiles = ConcurrentHashMap<String, SitePermissionProfile>()
 
     // پورت‌ها از تردِ Gecko هم لمس می‌شوند؛ نگه‌داشتن آن‌ها در ConcurrentHashMap از
     // ConcurrentModificationException و نشتِ پورتِ بسته‌شده جلوگیری می‌کند.
@@ -219,6 +225,34 @@ class ContainerSessionManager @Inject constructor(
             }
         }
 
+        // تصمیمِ دسترسی‌ها: پخش خودکار همیشه از روی پروفایل پاسخ داده می‌شود (اگر کاربر
+        // اجازه نداده باشد بلاک است) و بقیه هم همان پروفایل را دنبال می‌کنند.
+        session.permissionDelegate = object : GeckoSession.PermissionDelegate {
+            override fun onContentPermissionRequest(
+                session: GeckoSession,
+                perm: GeckoSession.PermissionDelegate.ContentPermission,
+            ): GeckoResult<Int> = GeckoResult.fromValue(decisionFor(tabId, perm.permission))
+
+            override fun onMediaPermissionRequest(
+                session: GeckoSession,
+                uri: String,
+                video: Array<out GeckoSession.PermissionDelegate.MediaSource>?,
+                audio: Array<out GeckoSession.PermissionDelegate.MediaSource>?,
+                callback: GeckoSession.PermissionDelegate.MediaCallback,
+            ) {
+                val profile = permissionProfiles[tabId]
+                val videoAllowed = profile?.stateOf(SitePermission.CAMERA) == PermissionState.ALLOW
+                val audioAllowed = profile?.stateOf(SitePermission.MICROPHONE) == PermissionState.ALLOW
+                val videoSource = video?.firstOrNull()?.takeIf { videoAllowed }
+                val audioSource = audio?.firstOrNull()?.takeIf { audioAllowed }
+                if (videoSource == null && audioSource == null) {
+                    callback.reject()
+                } else {
+                    callback.accept(videoSource, audioSource)
+                }
+            }
+        }
+
         activeSessions[tabId] = session
         session.open(runtime)
         session.loadUri(initialUrl)
@@ -283,15 +317,81 @@ class ContainerSessionManager @Inject constructor(
         activeSessions[tabId]?.finder?.clear()
     }
 
+    /* ---------------------------------- حالت مطالعه و بلندخوانی ---------------------------------- */
+
     /**
-     * ویژگی ۷ Never Sign-out Engine:
-     * دکمه «پاک کردن کش» فقط و فقط کش شبکه و تصاویر (`ALL_CACHES`) را پاک می‌کند
-     * و هرگز به کوکی‌ها (`COOKIES`)، حافظه محلی (`DOM_STORAGES`) یا نشست‌ها (`AUTH_SESSIONS`) دست نمی‌زند.
+     * روشن/خاموش کردنِ «حالت مطالعه».
+     *
+     * اسکریپت در همان صفحه اجرا می‌شود (بدون بارگذاری دوباره) و عناصر مزاحم را پنهان می‌کند.
+     * @return `true` اگر اسکریپت با موفقیت اجرا شد.
      */
-    fun clearCachesOnly(): Long {
-        val flags = SAFE_CACHE_ONLY_CLEAR_FLAGS
-        geckoRuntime?.storageController?.clearData(flags)
-        return flags
+    fun setReaderMode(tabId: String, enabled: Boolean, onResult: (Boolean) -> Unit = {}) {
+        val session = activeSessions[tabId]
+        if (session == null) {
+            onResult(false)
+            return
+        }
+        val script = if (enabled) ReaderTextEngine.readerScript else ReaderTextEngine.readerResetScript
+        runCatching { session.evaluateJS(script) }
+            .onSuccess { onResult(true) }
+            .onFailure { onResult(false) }
+    }
+
+    /**
+     * استخراج متنِ اصلیِ صفحه برای بلندخوانی.
+     *
+     * @param onText متنی که باید خوانده شود؛ رشتهٔ خالی یعنی صفحه متنی نداشت.
+     */
+    fun readPageText(tabId: String, onText: (String) -> Unit) {
+        val session = activeSessions[tabId]
+        if (session == null) {
+            onText("")
+            return
+        }
+        runCatching {
+            session.evaluateJS(ReaderTextEngine.extractReadableTextScript).accept { result ->
+                val raw = result as? String
+                val text = ReaderTextEngine.extractReadableText(raw)
+                onText(if (ReaderTextEngine.hasEnoughText(text)) text else "")
+            }
+        }.onFailure { onText("") }
+    }
+
+    /**
+     * اعمالِ «دسترسی‌های سایت» روی نشست.
+     *
+     * - **جاوااسکریپت** با `session.settings.allowJavascript` روشن/خاموش می‌شود (همان راهی که
+     *   مرورگرهای بزرگ استفاده می‌کنند و بلافاصله اثر می‌گذارد).
+     * - **بقیهٔ دسترسی‌ها** (موقعیت، اعلان، دوربین/میکروفون، پخش خودکار) از طریق
+     *   [GeckoSession.PermissionDelegate] پاسخ داده می‌شوند؛ پروفایل فعالِ هر تب در
+     *   `permissionProfiles` نگه داشته می‌شود و delegate همان را می‌خواند.
+     */
+    fun applySitePermissions(tabId: String, profile: SitePermissionProfile) {
+        permissionProfiles[tabId] = profile
+        val session = activeSessions[tabId] ?: return
+        session.settings.allowJavascript = profile.javascriptAllowed()
+    }
+
+    /** پروفایلِ فعالِ دسترسی‌های یک تب (برای نمایش در پنل تنظیمات سایت). */
+    fun permissionProfileOf(tabId: String): SitePermissionProfile =
+        permissionProfiles[tabId] ?: SitePermissionProfile(domain = "")
+
+    /** تصمیمِ نهایی برای یک دسترسیِ محتوا؛ هم delegate و هم پنل از همین تابع استفاده می‌کنند. */
+    private fun decisionFor(tabId: String, permission: Int): Int {
+        val profile = permissionProfiles[tabId]
+        val state = when (permission) {
+            GeckoSession.PermissionDelegate.PERMISSION_GEOLOCATION -> profile?.stateOf(SitePermission.GEOLOCATION)
+            GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION -> profile?.stateOf(SitePermission.NOTIFICATIONS)
+            GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_AUDIBLE,
+            GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_INAUDIBLE,
+            -> profile?.stateOf(SitePermission.AUTOPLAY)
+            else -> null
+        } ?: PermissionState.ASK
+        return when (state) {
+            PermissionState.ALLOW -> GeckoSession.PermissionDelegate.ContentPermission.VALUE_ALLOW
+            PermissionState.BLOCK -> GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY
+            PermissionState.ASK -> GeckoSession.PermissionDelegate.ContentPermission.VALUE_PROMPT
+        }
     }
 
     /**

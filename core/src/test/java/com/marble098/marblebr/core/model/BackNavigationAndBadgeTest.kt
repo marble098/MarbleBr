@@ -1,9 +1,11 @@
 package com.marble098.marblebr.core.model
 
+import androidx.compose.ui.graphics.luminance
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.abs
 
 /**
  * تست‌های منطق دکمهٔ بازگشت و نشانِ سایت‌ها (بدون وابستگی به اندروید).
@@ -116,5 +118,43 @@ class BackNavigationAndBadgeTest {
     @Test
     fun `www prefix is ignored`() {
         assertEquals(SiteBadge.of("", "example.org"), SiteBadge.of("", "www.example.org"))
+    }
+}
+
+/**
+ * تست پالت‌های رنگی: هر پالت باید هم روشن و هم تاریک ساخته شود و متنِ روی سطح‌ها
+ * همیشه کنتراست کافی داشته باشد (نسبتِ روشنایی بین متن و پس‌زمینه).
+ */
+class PaletteEngineTest {
+
+    @Test
+    fun `every selectable palette builds light and dark schemes`() {
+        com.marble098.marblebr.core.designsystem.SelectablePalettes.filter {
+            it != com.marble098.marblebr.core.model.ColorPalette.DYNAMIC
+        }.forEach { palette ->
+            val light = com.marble098.marblebr.core.designsystem.paletteColorScheme(palette, dark = false)
+            val dark = com.marble098.marblebr.core.designsystem.paletteColorScheme(palette, dark = true)
+            assertNotEquals("$palette light scheme must have a primary", 0, light.primary.value.toInt())
+            assertNotEquals("$palette dark scheme must have a primary", 0, dark.primary.value.toInt())
+            assertTrue("$palette light bg should be bright", light.background.luminance() > 0.5f)
+            assertTrue("$palette dark bg should be dark", dark.background.luminance() < 0.3f)
+            assertTrue(
+                "$palette light text contrast",
+                abs(light.onBackground.luminance() - light.background.luminance()) > 0.4f,
+            )
+            assertTrue(
+                "$palette dark text contrast",
+                abs(dark.onBackground.luminance() - dark.background.luminance()) > 0.4f,
+            )
+        }
+    }
+
+    @Test
+    fun `dynamic palette falls back to a real palette`() {
+        val scheme = com.marble098.marblebr.core.designsystem.paletteColorScheme(
+            com.marble098.marblebr.core.model.ColorPalette.DYNAMIC,
+            dark = false,
+        )
+        assertTrue(scheme.primary.luminance() > 0f)
     }
 }

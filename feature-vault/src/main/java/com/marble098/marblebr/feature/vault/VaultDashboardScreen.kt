@@ -18,6 +18,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -167,10 +170,19 @@ fun VaultDashboardScreen(
     ) {
         VaultBackdrop()
 
+        // نوار وضعیت (status bar): پیش از این، محتوای اسکرول‌شوندهٔ این صفحه از لبهٔ بالای
+        // پنجره شروع می‌شد و سربرگ زیر نوار وضعیتِ گوشی می‌رفت. حالا ارتفاع نوار وضعیت به
+        // padding بالای فهرست اضافه می‌شود تا هیچ چیزی زیر آن نباشد (لبه‌به‌لبه حفظ می‌شود).
+        val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 36.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(
+                start = MarbleLayout.Screen,
+                end = MarbleLayout.Screen,
+                top = statusBarTop + MarbleLayout.Inner,
+                bottom = 36.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(MarbleLayout.SectionGap),
         ) {
             item(key = "topbar") {
                 VaultTopBar(

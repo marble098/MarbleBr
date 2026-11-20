@@ -134,6 +134,7 @@ class MainActivity : AppCompatActivity() {
                 themeMode = prefs.themeMode,
                 dynamicColor = prefs.dynamicColorEnabled,
                 language = prefs.language,
+                palette = prefs.colorPalette,
             ) {
                 MarbleBrAppNavHost(
                     activity = this@MainActivity,

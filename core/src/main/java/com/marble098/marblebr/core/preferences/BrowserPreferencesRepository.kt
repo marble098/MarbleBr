@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import com.marble098.marblebr.core.i18n.AppLanguage
 import com.marble098.marblebr.core.model.BackButtonBehavior
 import com.marble098.marblebr.core.model.ChromeBarStyle
+import com.marble098.marblebr.core.model.ColorPalette
 import com.marble098.marblebr.core.model.DnsMode
 import com.marble098.marblebr.core.model.HomeShortcutPosition
 import com.marble098.marblebr.core.model.ProxyDnsConfig
@@ -33,12 +34,13 @@ data class BrowserPreferences(
     val credentialFallbackEnabled: Boolean = true,
     val adBlockEnabled: Boolean = true,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val dynamicColorEnabled: Boolean = true,
+    val colorPalette: ColorPalette = ColorPalette.DYNAMIC,
+    val dynamicColorEnabled: Boolean = false,
     val language: AppLanguage = AppLanguage.SYSTEM,
     val proxyDnsConfig: ProxyDnsConfig = ProxyDnsConfig(),
     val searchEngineTemplate: String = "https://www.google.com/search?q=%s",
     val selectedSearchEngineId: String = SearchEngine.DEFAULT.id,
-    val homeShortcutPosition: HomeShortcutPosition = HomeShortcutPosition.BOTTOM,
+    val homeShortcutPosition: HomeShortcutPosition = HomeShortcutPosition.BUILT_IN,
     val chromeBarStyle: ChromeBarStyle = ChromeBarStyle.FLOATING,
     val backButtonBehavior: BackButtonBehavior = BackButtonBehavior.SMART,
     val askBeforeClosingTabs: Boolean = false,
@@ -61,6 +63,7 @@ class BrowserPreferencesRepository @Inject constructor(
         val CREDENTIAL_FALLBACK = booleanPreferencesKey("credential_fallback")
         val AD_BLOCK_ENABLED = booleanPreferencesKey("ad_block_enabled")
         val THEME_MODE = stringPreferencesKey("theme_mode")
+        val COLOR_PALETTE = stringPreferencesKey("color_palette")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val LANGUAGE = stringPreferencesKey("app_language")
         val DNS_MODE = stringPreferencesKey("dns_mode")
@@ -107,7 +110,10 @@ class BrowserPreferencesRepository @Inject constructor(
             credentialFallbackEnabled = prefs[Keys.CREDENTIAL_FALLBACK] ?: true,
             adBlockEnabled = prefs[Keys.AD_BLOCK_ENABLED] ?: true,
             themeMode = theme,
-            dynamicColorEnabled = prefs[Keys.DYNAMIC_COLOR] ?: true,
+            colorPalette = prefs[Keys.COLOR_PALETTE]?.let {
+                runCatching { ColorPalette.valueOf(it) }.getOrNull()
+            } ?: ColorPalette.DYNAMIC,
+            dynamicColorEnabled = prefs[Keys.DYNAMIC_COLOR] ?: false,
             language = language,
             proxyDnsConfig = ProxyDnsConfig(
                 dnsMode = dnsMode,
@@ -120,7 +126,7 @@ class BrowserPreferencesRepository @Inject constructor(
             selectedSearchEngineId = prefs[Keys.SELECTED_SEARCH_ENGINE_ID] ?: SearchEngine.DEFAULT.id,
             homeShortcutPosition = prefs[Keys.HOME_SHORTCUT_POSITION]?.let {
                 runCatching { HomeShortcutPosition.valueOf(it) }.getOrNull()
-            } ?: HomeShortcutPosition.BOTTOM,
+            } ?: HomeShortcutPosition.BUILT_IN,
             chromeBarStyle = ChromeBarStyle.entries.firstOrNull { it.name == prefs[Keys.CHROME_BAR_STYLE] }
                 ?: ChromeBarStyle.FLOATING,
             backButtonBehavior = BackButtonBehavior.entries.firstOrNull { it.name == prefs[Keys.BACK_BUTTON_BEHAVIOR] }
@@ -186,6 +192,14 @@ class BrowserPreferencesRepository @Inject constructor(
 
     suspend fun setThemeMode(mode: ThemeMode) {
         dataStore.edit { it[Keys.THEME_MODE] = mode.name }
+    }
+
+    /** انتخاب پالت رنگی؛ حالت «رنگ‌های گوشی» همان Material You است. */
+    suspend fun setColorPalette(palette: ColorPalette) {
+        dataStore.edit {
+            it[Keys.COLOR_PALETTE] = palette.name
+            it[Keys.DYNAMIC_COLOR] = palette == ColorPalette.DYNAMIC
+        }
     }
 
     suspend fun setDynamicColorEnabled(enabled: Boolean) {
