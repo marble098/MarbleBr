@@ -877,6 +877,7 @@ fun BrowserAddressField(
                 // لمسِ نوار (نه خودِ متن) → فوکوس، انتخاب کامل و مکان‌نمای انتها.
                 focusRequester.requestFocus()
                 keyboard?.show()
+                input = input.copy(selection = addressSelection(input.text, input.selection.end, mode))
                 tapSelectRequest++
             }
             .padding(start = 12.dp, end = 4.dp),

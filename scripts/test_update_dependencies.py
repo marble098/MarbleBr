@@ -116,6 +116,7 @@ def test_action_parsing() -> None:
     check(match.group("sub") == "setup-gradle", "extracts action sub-path")
     check(match.group("ref") == "v4", "extracts action ref")
     check("gradle/actions" in ud.ALLOWED_ACTION_REPOS, "official gradle action allow-listed")
+    check("reactivecircus/android-emulator-runner" in ud.ALLOWED_ACTION_REPOS, "emulator action updated by the same workflow")
 
 
 def find_duplicate_yaml_keys(text: str) -> list[str]:

@@ -165,13 +165,14 @@ class ContainerSessionManager @Inject constructor(
             val existing = containerDao.getById(id)?.takeIf { it.domain == domain && !it.isPinnedPwa }
             if (existing != null) return@withLock existing.toDomain()
         }
+        val preferences = preferencesRepository.preferencesFlow.first()
         val container = WebAppContainer(
             id = id,
             domain = domain,
             displayName = customDisplayName ?: domain,
             contextId = "marble_ctx_$id",
-            neverSignOutEnabled = preferencesRepository.preferencesFlow.first().globalNeverSignOutEnabled,
-            cookieExpirationDays = 365,
+            neverSignOutEnabled = preferences.globalNeverSignOutEnabled,
+            cookieExpirationDays = preferences.defaultCookieLifetimeDays.coerceIn(7, 730),
             keepAliveEnabled = true,
             keepAliveIntervalMinutes = 30,
             isPinnedPwa = isPinnedPwa,
