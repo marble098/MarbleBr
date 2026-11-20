@@ -30,10 +30,11 @@ object CookieRequestPolicy {
             val domainMatches = host == domain || (!cookie.isHostOnly && host.endsWith(".$domain"))
             val pathMatches = requestPath == path ||
                 (requestPath.startsWith(path) && (path.endsWith("/") || requestPath.getOrNull(path.length) == '/'))
+            val expiry = cookie.expiresEpochMillis
             val safeValue = cookie.name.isNotBlank() && cookie.name.none { it in "=;\r\n" } &&
                 cookie.value.none { it in ";\r\n" }
             domain.isNotBlank() && domainMatches && pathMatches && safeValue &&
-                (!cookie.isSecure || isHttps) && (cookie.expiresEpochMillis == null || cookie.expiresEpochMillis > now)
+                (!cookie.isSecure || isHttps) && (expiry == null || expiry > now)
         }
     }
 }

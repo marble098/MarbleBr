@@ -117,7 +117,8 @@ class SmartKeepAliveWorker @AssistedInject constructor(
             val domain = parsed.domain.removePrefix(".").lowercase()
             val host = defaultDomain.lowercase()
             if (host != domain && (parsed.isHostOnly || !host.endsWith(".$domain"))) continue
-            if (parsed.expiresEpochMillis != null && parsed.expiresEpochMillis <= System.currentTimeMillis()) {
+            val expiry = parsed.expiresEpochMillis
+            if (expiry != null && expiry <= System.currentTimeMillis()) {
                 byScope.remove(key(parsed))
             } else {
                 byScope[key(parsed)] = cookieConverter.promoteToPersistent(parsed, expirationDays)
