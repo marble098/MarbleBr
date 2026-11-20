@@ -167,7 +167,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private data class IncomingNavigation(val url: String, val pinnedContainerId: String?)
-
 }
 
 @Composable
