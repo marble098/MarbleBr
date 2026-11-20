@@ -438,7 +438,7 @@ class ContainerSessionManager @Inject constructor(
     suspend fun capturePageSnapshot(tabId: String, pageUrl: String): Boolean {
         val session = activeSessions[tabId] ?: return false
         val port = capturePorts[session] ?: return false
-        if (!sameOrigin(port.sender.url, pageUrl) || session in snapshotRequests) return false
+        if (!sameOrigin(port.sender.url, pageUrl) || snapshotRequests.containsKey(session)) return false
         val request = SnapshotRequest(UUID.randomUUID().toString(), CompletableDeferred())
         snapshotRequests[session] = request
         return try {
