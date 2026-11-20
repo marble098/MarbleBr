@@ -271,7 +271,7 @@ abstract class MarbleStrings {
     abstract val quickFindInPage: String
     abstract val quickDesktop: String
     abstract val quickPrivate: String
-    abstract val quickSaveState: String
+    abstract val quickSaveLogin: String
     abstract val quickTimeMachine: String
     abstract val quickDownloads: String
     abstract val quickClearCache: String
@@ -654,7 +654,7 @@ private object PersianStrings : MarbleStrings() {
     override val quickFindInPage = "جستجو در صفحه"
     override val quickDesktop = "دسکتاپ"
     override val quickPrivate = "تب خصوصی"
-    override val quickSaveState = "ذخیره ورود"
+    override val quickSaveLogin = "ذخیره ورود"
     override val quickTimeMachine = "برگشت به عقب"
     override val quickDownloads = "دانلودها"
     override val quickClearCache = "خالی کردن کش"
@@ -956,7 +956,7 @@ private object EnglishStrings : MarbleStrings() {
     override val quickFindInPage = "Find on page"
     override val quickDesktop = "Desktop"
     override val quickPrivate = "Private tab"
-    override val quickSaveState = "Save login"
+    override val quickSaveLogin = "Save login"
     override val quickTimeMachine = "Time machine"
     override val quickDownloads = "Downloads"
     override val quickClearCache = "Clear cache"

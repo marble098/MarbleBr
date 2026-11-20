@@ -332,7 +332,7 @@ fun BrowserScreen(
                     if (!showHome) {
                         QuickShortcutChip(
                             icon = Icons.Default.Fingerprint,
-                            label = strings.quickSaveState,
+                            label = strings.quickSaveLogin,
                             style = prefs.chromeBarStyle,
                             modifier = Modifier.weight(1f),
                             enabled = activeTab?.isPrivate != true,
@@ -1718,7 +1718,7 @@ private fun QuickActionsSheet(
                 perform(onOpenSettings)
             }
             if (pageUrl != null && activeTab?.isPrivate != true) {
-                QuickActionTile(strings.quickSaveState, Icons.Default.Fingerprint, MaterialTheme.colorScheme.primary) {
+                QuickActionTile(strings.quickSaveLogin, Icons.Default.Fingerprint, MaterialTheme.colorScheme.primary) {
                     perform { viewModel.captureManualSnapshotNow() }
                 }
                 QuickActionTile(strings.quickTimeMachine, Icons.Default.History, MaterialTheme.colorScheme.tertiary) {
