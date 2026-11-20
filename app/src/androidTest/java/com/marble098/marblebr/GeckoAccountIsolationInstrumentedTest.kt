@@ -112,10 +112,16 @@ class GeckoAccountIsolationInstrumentedTest {
                 assertTrue("Storage restore failed: $outcome", outcome.storageKeysRestored > 0)
                 navigate(manager, "second", "${site.origin}/observe-page?tag=second-restored")
                 assertAccount(site.observe("second-restored"), "second")
+                navigate(manager, "first", "${site.origin}/observe-page?tag=first-after-second-restore")
+                assertAccount(site.observe("first-after-second-restore"), "first")
 
                 runBlocking { withContext(Dispatchers.Main) { manager.signOutNow(first) } }
                 navigate(manager, "second", "${site.origin}/observe-page?tag=second-after-first-signout")
                 assertAccount(site.observe("second-after-first-signout"), "second")
+                open(manager, first, "first", "${site.origin}/observe-page?tag=first-after-signout")
+                val signedOut = site.observe("first-after-signout")
+                assertEquals("none", signedOut.identity)
+                assertFalse(signedOut.cookie.contains("sid="))
             } finally {
                 instrumentation.runOnMainSync {
                     manager.closeTabSession("first")
