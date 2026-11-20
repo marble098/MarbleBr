@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
@@ -71,12 +70,9 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -114,13 +110,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
 import com.marble098.marblebr.core.designsystem.MarbleGlassIconButton
+import com.marble098.marblebr.core.designsystem.MarbleLayout
 import com.marble098.marblebr.core.designsystem.SiteBadgeLogo
 import com.marble098.marblebr.core.designsystem.liquidGlass
 import com.marble098.marblebr.core.model.BackNavigationResolver
@@ -221,23 +216,90 @@ fun BrowserScreen(
     }
     val isBookmarked = activeTab != null && bookmarks.any { it.url == activeTab.url }
 
-    // در حالت شیشه‌ای شناور، نوارها روی محتوا می‌نشینند؛ پس خودِ محتوا فقط به اندازهٔ
-    // ارتفاع نوارها فاصلهٔ داخلی می‌گیرد تا صفحه واقعاً از پشت شیشه دیده شود.
-    val floatingChrome = prefs.chromeBarStyle == ChromeBarStyle.FLOATING
+    // نوارهای بالا و پایین «ثابت» هستند و محتوای سایت دقیقاً بین آن دو جا می‌گیرد.
+    //
+    // چرا عوض شد؟ پیش‌تر GeckoView تمام صفحه را می‌گرفت و نوارها با zIndex روی آن شناور
+    // بودند؛ نتیجه این بود که هدر و فوترِ خیلی از سایت‌ها زیر نوار بالا/پایین پنهان می‌ماند
+    // و کاربر نمی‌توانست روی آن‌ها بزند (شکایت اصلی: «با سایت‌ها نمی‌شه کار کرد»). حالا نوار
+    // بالا و پایین هر کدام فضای خودشان را دارند و صفحهٔ سایت فقط در ناحیهٔ میانی رندر می‌شود،
+    // در حالی که هر دو نوار همیشه سرِ جای خودشان میخ‌شده‌اند.
+    val menuState = BrowserMenuState(
+        domain = if (showHome) "" else activeTab?.url?.let(::siteDomain).orEmpty(),
+        displayName = activeTab?.title.orEmpty(),
+        isPrivate = activeTab?.isPrivate == true,
+        isProtected = !showHome && activeTab?.isPrivate != true && prefs.globalNeverSignOutEnabled,
+        isDesktopMode = activeTab?.isDesktopMode == true,
+        hasPage = hasPage && !showHome,
+        downloadsCount = downloads.size,
+    )
+    val menuActions = BrowserMenuActions(
+        onCopyLink = {
+            val url = activeTab?.url
+            if (!url.isNullOrBlank()) {
+                copyTextToClipboard(context = clipboardContext, label = strings.copyLink, text = url)
+            }
+        },
+        onShareLink = {
+            val url = activeTab?.url
+            if (!url.isNullOrBlank()) {
+                val share = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, url)
+                clipboardContext.startActivity(Intent.createChooser(share, strings.shareLink))
+            }
+        },
+        onFindInPage = { viewModel.toggleFindInPage(true) },
+        onToggleDesktop = viewModel::toggleDesktopMode,
+        onSaveState = viewModel::captureManualSnapshotNow,
+        onOpenTimeMachine = { onOpenVaultDashboard(activeTab?.containerId) },
+        onInstallShortcut = viewModel::installCurrentSiteAsPwa,
+        onDuplicateTab = viewModel::duplicateTab,
+        onOpenDownloads = { showDownloadsSheet = true },
+        onFreeSpace = viewModel::clearCacheWithoutTouchingSessions,
+        onOpenSettings = onOpenSettings,
+    )
 
-    // چیدمان به‌صورت لایه‌ای: محتوا (خانه/نمای وب) تمام فضا را می‌گیرد و نوار شناورِ پایین
-    // روی آن می‌نشیند؛ بنابراین در حالت شیشه‌ای هیچ پس‌زمینه‌ای پشت نوار نیست.
-    BoxWithConstraints(
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
-        // نوارِ پایین شناور و بی‌پس‌زمینه است، پس محتوا تا لبهٔ پایین ادامه پیدا می‌کند و از
-        // پشت شیشه دیده می‌شود. فقط صفحهٔ خانه (که متن دارد) فضای امنِ پایین می‌گیرد.
-        val bottomBarAllowance = 84.dp +
-            WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        val topContentInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 62.dp
-        Box(modifier = Modifier.fillMaxSize()) {
+        BrowserTopBar(
+            style = prefs.chromeBarStyle,
+            showHome = showHome,
+            activeTab = activeTab,
+            url = if (showHome) "" else activeTab?.url.orEmpty(),
+            isBookmarked = isBookmarked,
+            canBookmark = hasPage && activeTab?.isPrivate != true,
+            addressMode = prefs.addressSelectionMode,
+            isLoading = activeTab?.isLoading == true,
+            progress = activeTab?.progress ?: 0,
+            isFindInPageVisible = uiState.isFindInPageVisible,
+            findQuery = uiState.findQuery,
+            findMatchIndex = activeTab?.findMatchIndex ?: 0,
+            findTotalMatches = activeTab?.findTotalMatches ?: 0,
+            bannerMessage = uiState.bannerMessage,
+            blockedAdsCount = blockedAdsCount.toInt(),
+            showAdChip = showHome && blockedAdsCount > 0,
+            menuExpanded = showOverflowMenu,
+            menuState = menuState,
+            menuActions = menuActions,
+            onSubmit = submit,
+            onBookmark = viewModel::toggleBookmarkCurrentPage,
+            onQuickActions = { showQuickActions = true },
+            onPreviewOverflow = { showOverflowMenu = true },
+            onDismissMenu = { showOverflowMenu = false },
+            onFindQueryChanged = { viewModel.updateFindQuery(it, backwards = false) },
+            onFindNext = { viewModel.updateFindQuery(uiState.findQuery, backwards = false) },
+            onFindPrevious = { viewModel.updateFindQuery(uiState.findQuery, backwards = true) },
+            onFindClose = { viewModel.toggleFindInPage(false) },
+            onDismissBanner = viewModel::dismissBanner,
+            onOpenVault = { onOpenVaultDashboard(activeTab?.containerId) },
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+        ) {
             LauncherContent(
                 uiState = uiState,
                 showHome = showHome,
@@ -249,6 +311,7 @@ fun BrowserScreen(
                 historyItems = historyItems,
                 downloadsCount = downloads.size,
                 blockedAdsCount = blockedAdsCount.toInt(),
+                tabsCount = uiState.tabs.size,
                 submit = submit,
                 viewModel = viewModel,
                 onOpenVaultDashboard = onOpenVaultDashboard,
@@ -256,84 +319,25 @@ fun BrowserScreen(
                 onShowBookmarks = { showBookmarksHistorySheet = true },
                 onShowDownloads = { showDownloadsSheet = true },
                 onShowQuickActions = { showQuickActions = true },
+                onShowTabs = { showTabsSheet = true },
                 onClearBackPrompt = { backPromptVisible = false },
-                topContentInset = topContentInset,
-                bottomContentInset = bottomBarAllowance,
             )
         }
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .zIndex(2f),
-            verticalArrangement = Arrangement.Top,
-        ) {
-            BrowserTopBar(
-                style = prefs.chromeBarStyle,
-                showHome = showHome,
-                activeTab = activeTab,
-                url = if (showHome) "" else activeTab?.url.orEmpty(),
-                isBookmarked = isBookmarked,
-                canBookmark = hasPage && activeTab?.isPrivate != true,
-                addressMode = prefs.addressSelectionMode,
-                isLoading = activeTab?.isLoading == true,
-                progress = activeTab?.progress ?: 0,
-                isFindInPageVisible = uiState.isFindInPageVisible,
-                findQuery = uiState.findQuery,
-                findMatchIndex = activeTab?.findMatchIndex ?: 0,
-                findTotalMatches = activeTab?.findTotalMatches ?: 0,
-                bannerMessage = uiState.bannerMessage,
-                blockedAdsCount = blockedAdsCount.toInt(),
-                showAdChip = showHome && blockedAdsCount > 0,
-                onSubmit = submit,
-                onBookmark = viewModel::toggleBookmarkCurrentPage,
-                onQuickActions = { showQuickActions = true },
-                onPreviewOverflow = { showOverflowMenu = true },
-                onFindQueryChanged = { viewModel.updateFindQuery(it, backwards = false) },
-                onFindNext = { viewModel.updateFindQuery(uiState.findQuery, backwards = false) },
-                onFindPrevious = { viewModel.updateFindQuery(uiState.findQuery, backwards = true) },
-                onFindClose = { viewModel.toggleFindInPage(false) },
-                onDismissBanner = viewModel::dismissBanner,
-                onOpenVault = { onOpenVaultDashboard(activeTab?.containerId) },
-            )
-            if (showOverflowMenu) {
-                BrowserOverflowMenu(
-                    expanded = showOverflowMenu,
-                    onDismiss = { showOverflowMenu = false },
-                    pageUrl = activeTab?.url?.ifBlank { null },
-                    isPrivate = activeTab?.isPrivate == true,
-                    canDuplicate = activeTab != null,
-                    onDuplicate = viewModel::duplicateTab,
-                    isDesktopMode = activeTab?.isDesktopMode == true,
-                    downloadsCount = downloads.size,
-                    onSaveState = viewModel::captureManualSnapshotNow,
-                    onOpenTimeMachine = { onOpenVaultDashboard(activeTab?.containerId) },
-                    onFindInPage = { viewModel.toggleFindInPage(true) },
-                    onToggleDesktop = viewModel::toggleDesktopMode,
-                    onInstallShortcut = viewModel::installCurrentSiteAsPwa,
-                    onFreeSpace = viewModel::clearCacheWithoutTouchingSessions,
-                    onOpenDownloads = { showDownloadsSheet = true },
-                    onOpenSettings = onOpenSettings,
-                )
-            }
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            BrowserBottomBar(
-                style = prefs.chromeBarStyle,
-                canGoBack = activeTab?.canGoBack == true,
-                canGoForward = activeTab?.canGoForward == true,
-                isLoading = activeTab?.isLoading == true,
-                reloadEnabled = !showHome && (hasPage || activeTab?.isLoading == true),
-                isHomeSelected = showHome,
-                tabCount = uiState.tabs.size,
-                onBack = viewModel::goBack,
-                onForward = viewModel::goForward,
-                onReloadOrStop = if (activeTab?.isLoading == true) viewModel::stopLoading else viewModel::reloadPage,
-                onHome = viewModel::showHome,
-                onTabs = { showTabsSheet = true },
-            )
-        }
+        BrowserBottomBar(
+            style = prefs.chromeBarStyle,
+            canGoBack = activeTab?.canGoBack == true,
+            canGoForward = activeTab?.canGoForward == true,
+            isLoading = activeTab?.isLoading == true,
+            reloadEnabled = !showHome && (hasPage || activeTab?.isLoading == true),
+            isHomeSelected = showHome,
+            tabCount = uiState.tabs.size,
+            onBack = viewModel::goBack,
+            onForward = viewModel::goForward,
+            onReloadOrStop = if (activeTab?.isLoading == true) viewModel::stopLoading else viewModel::reloadPage,
+            onHome = viewModel::showHome,
+            onTabs = { showTabsSheet = true },
+        )
     }
 
     if (showQuickActions) {
@@ -527,10 +531,14 @@ private fun BrowserTopBar(
     bannerMessage: String?,
     blockedAdsCount: Int,
     showAdChip: Boolean,
+    menuExpanded: Boolean,
+    menuState: BrowserMenuState,
+    menuActions: BrowserMenuActions,
     onSubmit: (String) -> Unit,
     onBookmark: () -> Unit,
     onQuickActions: () -> Unit,
     onPreviewOverflow: () -> Unit,
+    onDismissMenu: () -> Unit,
     onFindQueryChanged: (String) -> Unit,
     onFindNext: () -> Unit,
     onFindPrevious: () -> Unit,
@@ -604,15 +612,26 @@ private fun BrowserTopBar(
                 iconSize = 21.dp,
                 testTag = "quick_actions_btn",
             )
-            MarbleGlassIconButton(
-                icon = Icons.Default.MoreVert,
-                contentDescription = strings.browserMenu,
-                onClick = onPreviewOverflow,
-                style = style,
-                size = 42.dp,
-                iconSize = 21.dp,
-                testTag = "browser_overflow_menu_btn",
-            )
+            // منو داخل همین Box رندر می‌شود تا Popup دقیقاً زیرِ دکمهٔ سه‌نقطه باز شود
+            // (باگ قبلی: منو در ستونِ صفحه رندر می‌شد و جای دیگری باز می‌شد).
+            Box {
+                MarbleGlassIconButton(
+                    icon = Icons.Default.MoreVert,
+                    contentDescription = strings.browserMenu,
+                    onClick = onPreviewOverflow,
+                    style = style,
+                    selected = menuExpanded,
+                    size = 42.dp,
+                    iconSize = 21.dp,
+                    testTag = "browser_overflow_menu_btn",
+                )
+                BrowserOverflowMenu(
+                    expanded = menuExpanded,
+                    onDismiss = onDismissMenu,
+                    state = menuState,
+                    actions = menuActions,
+                )
+            }
         }
 
         Box(Modifier.fillMaxWidth().height(2.5.dp)) {
@@ -828,6 +847,7 @@ private fun LauncherContent(
     historyItems: List<HistoryItem>,
     downloadsCount: Int,
     blockedAdsCount: Int,
+    tabsCount: Int,
     submit: (String) -> Unit,
     viewModel: BrowserViewModel,
     onOpenVaultDashboard: (String?) -> Unit,
@@ -835,9 +855,8 @@ private fun LauncherContent(
     onShowBookmarks: () -> Unit,
     onShowDownloads: () -> Unit,
     onShowQuickActions: () -> Unit,
+    onShowTabs: () -> Unit,
     onClearBackPrompt: () -> Unit,
-    topContentInset: Dp,
-    bottomContentInset: Dp,
 ) {
     val activeTab = uiState.activeTab
     val isInspection = LocalInspectionMode.current
@@ -849,7 +868,7 @@ private fun LauncherContent(
     Box(modifier = Modifier.fillMaxSize()) {
         when {
             showHome -> HomeContent(
-                modifier = Modifier.padding(top = topContentInset),
+                modifier = Modifier,
                 bookmarks = bookmarks,
                 historyItems = historyItems,
                 shortcutPosition = prefs.homeShortcutPosition,
@@ -863,7 +882,8 @@ private fun LauncherContent(
                 onOpenDownloads = onShowDownloads,
                 onOpenSettings = onOpenSettings,
                 onOpenQuickActions = onShowQuickActions,
-                bottomContentInset = bottomContentInset,
+                onOpenTabs = onShowTabs,
+                tabsCount = tabsCount,
             )
 
             activeTab != null && hasPage && renderGeckoWebView && !isInspection && container != null && container.id == activeTab.containerId -> {
@@ -883,7 +903,7 @@ private fun LauncherContent(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = bottomContentInset + 6.dp),
+                    .padding(end = MarbleLayout.Screen, bottom = 12.dp),
             ) {
                 HomeShortcutButton(onClick = { viewModel.openNewTab() })
             }
@@ -914,152 +934,6 @@ private fun HomeShortcutButton(onClick: () -> Unit) {
 }
 
 /* ------------------------------- شیت‌های کمکی و اجزای بازمانده ------------------------------- */
-
-@Composable
-private fun BrowserOverflowMenu(
-    pageUrl: String?,
-    isPrivate: Boolean,
-    canDuplicate: Boolean,
-    onDuplicate: () -> Unit,
-    expanded: Boolean,
-    onDismiss: () -> Unit,
-    isDesktopMode: Boolean,
-    downloadsCount: Int,
-    onSaveState: () -> Unit,
-    onOpenTimeMachine: () -> Unit,
-    onFindInPage: () -> Unit,
-    onToggleDesktop: () -> Unit,
-    onInstallShortcut: () -> Unit,
-    onFreeSpace: () -> Unit,
-    onOpenDownloads: () -> Unit,
-    onOpenSettings: () -> Unit,
-) {
-    val strings = LocalMarbleStrings.current
-    val context = LocalContext.current
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        if (!pageUrl.isNullOrBlank()) {
-            DropdownMenuItem(
-                text = { Text(strings.copyLink) },
-                onClick = {
-                    onDismiss()
-                    context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText(strings.copyLink, pageUrl))
-                },
-            )
-            DropdownMenuItem(
-                text = { Text(strings.shareLink) },
-                onClick = {
-                    onDismiss()
-                    val share = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, pageUrl)
-                    context.startActivity(Intent.createChooser(share, strings.shareLink))
-                },
-            )
-        }
-        if (canDuplicate) {
-            DropdownMenuItem(
-                text = { Text(strings.duplicateTab) },
-                onClick = {
-                    onDismiss()
-                    onDuplicate()
-                },
-            )
-        }
-        if (pageUrl != null && !isPrivate) {
-            MenuEntry(
-                title = strings.menuSaveState,
-                subtitle = strings.menuSaveStateHint,
-                icon = Icons.Default.Security,
-                onClick = {
-                    onDismiss()
-                    onSaveState()
-                },
-            )
-            MenuEntry(
-                title = strings.menuTimeMachine,
-                subtitle = strings.menuTimeMachineHint,
-                icon = Icons.Default.History,
-                onClick = {
-                    onDismiss()
-                    onOpenTimeMachine()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text(strings.menuSaveShortcut) },
-                leadingIcon = { Icon(Icons.Default.InstallMobile, contentDescription = null) },
-                onClick = {
-                    onDismiss()
-                    onInstallShortcut()
-                },
-            )
-        }
-        if (pageUrl != null) {
-            DropdownMenuItem(
-                text = { Text(strings.menuFindInPage) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                onClick = {
-                    onDismiss()
-                    onFindInPage()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text(if (isDesktopMode) strings.menuDesktopModeOff else strings.menuDesktopModeOn) },
-                leadingIcon = { Icon(Icons.Default.DesktopWindows, contentDescription = null) },
-                onClick = {
-                    onDismiss()
-                    onToggleDesktop()
-                },
-            )
-        }
-        MenuEntry(
-            title = strings.menuFreeSpace,
-            subtitle = strings.menuFreeSpaceHint,
-            icon = Icons.Default.CleaningServices,
-            onClick = {
-                onDismiss()
-                onFreeSpace()
-            },
-        )
-        DropdownMenuItem(
-            text = { Text(strings.downloadsMenu(downloadsCount)) },
-            leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) },
-            onClick = {
-                onDismiss()
-                onOpenDownloads()
-            },
-        )
-        HorizontalDivider()
-        DropdownMenuItem(
-            text = { Text(strings.settingsTitle) },
-            leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
-            onClick = {
-                onDismiss()
-                onOpenSettings()
-            },
-        )
-    }
-}
-
-@Composable
-private fun MenuEntry(
-    title: String,
-    subtitle: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit,
-) {
-    DropdownMenuItem(
-        text = {
-            Column {
-                Text(title)
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
-        leadingIcon = { Icon(icon, contentDescription = null) },
-        onClick = onClick,
-    )
-}
 
 @Composable
 private fun GeckoSessionWebView(

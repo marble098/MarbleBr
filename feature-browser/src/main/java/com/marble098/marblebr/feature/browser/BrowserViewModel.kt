@@ -264,6 +264,15 @@ class BrowserViewModel @Inject constructor(
     }
 
     fun closeAllTabs() {
+        // «بیمهٔ نشست»: پیش از بستنِ همهٔ تب‌ها یک نسخهٔ تازه از صفحهٔ فعلی گرفته می‌شود تا
+        // بستنِ اشتباهی هیچ ورودی را از بین نبرد.
+        viewModelScope.launch {
+            insureActivePage()
+            closeAllTabsNow()
+        }
+    }
+
+    private fun closeAllTabsNow() {
         val state = _uiState.value
         val active = state.activeTab
         (state.tabs.filterNot { it == active } + listOfNotNull(active)).forEach { tab ->
@@ -428,8 +437,22 @@ class BrowserViewModel @Inject constructor(
     }
 
     fun clearCacheWithoutTouchingSessions() {
-        sessionManager.clearCachesOnly()
-        showLocalizedBanner { it.bannerCacheCleared }
+        viewModelScope.launch {
+            // «بیمهٔ نشست»: قبل از پاک‌کردنِ کش، نسخهٔ تازهٔ صفحه ذخیره می‌شود.
+            insureActivePage()
+            sessionManager.clearCachesOnly()
+            showLocalizedBanner { it.bannerCacheCleared }
+        }
+    }
+
+    /**
+     * «بیمهٔ نشست» (پیش از اقدام‌های پرخطر): یک نسخهٔ تازه از صفحهٔ فعلی می‌گیرد.
+     * خطاها بی‌صدا رد می‌شوند؛ این کار نباید هیچ‌وقت جلوی کار اصلیِ کاربر را بگیرد.
+     */
+    private suspend fun insureActivePage() {
+        val tab = _uiState.value.activeTab ?: return
+        if (tab.url.isBlank() || tab.isPrivate) return
+        runCatching { sessionManager.capturePageSnapshot(tab.id, tab.url) }
     }
 
     fun clearBrowsingHistory() {

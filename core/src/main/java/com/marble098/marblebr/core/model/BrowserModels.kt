@@ -142,6 +142,8 @@ data class SessionSnapshotMeta(
     val isHealthy: Boolean,
     val triggerReason: String,
     val label: String,
+    /** نسخهٔ «طلایی» (قفل‌شده توسط کاربر) که چرخشِ خودکار حذفش نمی‌کند. */
+    val isPinned: Boolean = false,
 )
 
 /**

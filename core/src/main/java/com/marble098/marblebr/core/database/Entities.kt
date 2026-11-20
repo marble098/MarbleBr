@@ -87,6 +87,11 @@ data class SnapshotEntity(
     val isHealthy: Boolean,
     val triggerReason: String,
     val label: String,
+    /**
+     * «نسخهٔ طلایی»: نسخه‌ای که کاربر دستی قفل کرده است و چرخشِ خودکار هرگز آن را حذف نمی‌کند.
+     * این ستون در نسخهٔ ۲ دیتابیس اضافه شده و پیش‌فرضش «قفل‌نشده» است.
+     */
+    val isPinned: Boolean = false,
 ) {
     fun toMeta(): SessionSnapshotMeta = SessionSnapshotMeta(
         id = id,
@@ -99,6 +104,7 @@ data class SnapshotEntity(
         isHealthy = isHealthy,
         triggerReason = triggerReason,
         label = label,
+        isPinned = isPinned,
     )
 }
 

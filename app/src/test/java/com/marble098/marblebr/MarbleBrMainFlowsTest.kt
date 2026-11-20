@@ -134,6 +134,12 @@ class MarbleBrMainFlowsTest {
         override suspend fun getLatestHealthySnapshot(containerId: String): SnapshotEntity? =
             list.filter { it.containerId == containerId && it.isHealthy }.maxByOrNull { it.capturedAtEpochMillis }
         override suspend fun getById(snapshotId: String): SnapshotEntity? = list.firstOrNull { it.id == snapshotId }
+        override suspend fun getPinnedForContainer(containerId: String): List<SnapshotEntity> =
+            list.filter { it.containerId == containerId && it.isPinned }.sortedByDescending { it.capturedAtEpochMillis }
+        override suspend fun setPinned(snapshotId: String, pinned: Boolean) {
+            val index = list.indexOfFirst { it.id == snapshotId }
+            if (index >= 0) list[index] = list[index].copy(isPinned = pinned)
+        }
         override suspend fun insert(snapshot: SnapshotEntity) {
             list.removeAll { it.id == snapshot.id }
             list.add(snapshot)

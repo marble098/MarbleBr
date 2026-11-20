@@ -16,7 +16,9 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -41,6 +43,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Tab
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -75,6 +78,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
 import com.marble098.marblebr.core.designsystem.MarbleGlassIconButton
+import com.marble098.marblebr.core.designsystem.MarbleLayout
 import com.marble098.marblebr.core.designsystem.SiteBadgeLogo
 import com.marble098.marblebr.core.designsystem.liquidGlass
 import com.marble098.marblebr.core.designsystem.siteBadgeAccent
@@ -116,7 +120,9 @@ internal fun HomeContent(
     onOpenDownloads: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenQuickActions: () -> Unit,
+    onOpenTabs: () -> Unit,
     modifier: Modifier = Modifier,
+    tabsCount: Int = 0,
     bottomContentInset: Dp = 0.dp,
 ) {
     val strings = LocalMarbleStrings.current
@@ -140,12 +146,12 @@ internal fun HomeContent(
                 .imePadding(),
             // فضای پایین = ارتفاع نوار شناور تا آخرین کارت پشت شیشه پنهان نشود.
             contentPadding = PaddingValues(
-                start = 18.dp,
-                end = 18.dp,
-                top = 14.dp,
-                bottom = 34.dp + bottomContentInset,
+                start = MarbleLayout.Screen,
+                end = MarbleLayout.Screen,
+                top = MarbleLayout.SectionGap,
+                bottom = MarbleLayout.Screen + MarbleLayout.SectionGap + bottomContentInset,
             ),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(MarbleLayout.SectionGap),
         ) {
             item(key = "hero") {
                 HomeHeader(
@@ -181,6 +187,8 @@ internal fun HomeContent(
                     onOpenDownloads = onOpenDownloads,
                     onOpenSettings = onOpenSettings,
                     onOpenQuickActions = onOpenQuickActions,
+                    onOpenTabs = onOpenTabs,
+                    tabsCount = tabsCount,
                 )
             }
 
@@ -206,12 +214,14 @@ internal fun HomeContent(
                     item(key = "shortcut_row_$index") {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(MarbleLayout.Gap),
                         ) {
                             row.forEach { bookmark ->
                                 ShortcutCard(
                                     bookmark = bookmark,
-                                    modifier = Modifier.weight(1f),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(MarbleLayout.ShortcutHeight),
                                     onClick = { submit(bookmark.url) },
                                 )
                             }
@@ -438,18 +448,20 @@ private fun HomeQuickActions(
     strings: MarbleStrings,
     chromeBarStyle: ChromeBarStyle,
     downloadsCount: Int,
+    tabsCount: Int,
     onNewTab: () -> Unit,
     onNewPrivateTab: () -> Unit,
     onOpenBookmarksHistory: () -> Unit,
     onOpenDownloads: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenQuickActions: () -> Unit,
+    onOpenTabs: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
 
-    // نسخهٔ قبل هفت کاشیِ هم‌وزن را در یک FlowRow می‌ریخت؛ ردیفِ آخر تک‌وتنها می‌ماند و
-    // کاشی‌ها با متن‌های فارسیِ بلند ناهم‌تراز می‌شدند. حالا هر ردیف دقیقاً چهار کاشیِ
-    // هم‌اندازه دارد و دو گروهِ معنادار («شروع سریع» و «کتابخانه») با فاصلهٔ بصری جدا شده‌اند.
+    // دو ردیفِ دقیقاً چهارستونی؛ هر هشت کاشی هم‌عرض و هم‌ارتفاع‌اند (ارتفاع ثابت در QuickTile)
+    // و فاصله‌ها همه از MarbleLayout می‌آیند تا هیچ ردیفی از ردیفِ دیگر جلو/عقب نزند.
+    // (قبلاً ردیف دوم یک جای خالی داشت و ردیف‌ها ناهم‌تراز می‌شدند.)
     QuickRow {
         QuickTile(
             modifier = Modifier.weight(1f),
@@ -488,8 +500,6 @@ private fun HomeQuickActions(
         )
     }
 
-    Spacer(Modifier.height(2.dp))
-
     QuickRow {
         QuickTile(
             modifier = Modifier.weight(1f),
@@ -510,14 +520,21 @@ private fun HomeQuickActions(
         )
         QuickTile(
             modifier = Modifier.weight(1f),
+            icon = Icons.Default.Tab,
+            label = strings.tabsLabel,
+            accent = colors.tertiary,
+            chromeBarStyle = chromeBarStyle,
+            badge = tabsCount,
+            onClick = onOpenTabs,
+        )
+        QuickTile(
+            modifier = Modifier.weight(1f),
             icon = Icons.Default.Settings,
             label = strings.settingsLabel,
             accent = colors.onSurfaceVariant,
             chromeBarStyle = chromeBarStyle,
             onClick = onOpenSettings,
         )
-        // کاشیِ «میان‌بر خالی» عمداً خالی می‌ماند تا شبکه‌ی چهارستونی نشکند.
-        Spacer(Modifier.weight(1f))
     }
 }
 
@@ -526,7 +543,7 @@ private fun HomeQuickActions(
 private fun QuickRow(content: @Composable RowScope.() -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
+        horizontalArrangement = Arrangement.spacedBy(MarbleLayout.Gap),
         verticalAlignment = Alignment.Top,
         content = content,
     )
@@ -556,9 +573,10 @@ private fun QuickTile(
         animationSpec = spring(dampingRatio = 0.6f, stiffness = 800f),
         label = "quick tile press",
     )
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(MarbleLayout.TileCorner)
     Column(
         modifier = modifier
+            .height(MarbleLayout.TileHeight)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -573,9 +591,9 @@ private fun QuickTile(
                 onClick = onClick,
             )
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
-            .padding(vertical = 10.dp, horizontal = 4.dp),
+            .padding(vertical = 8.dp, horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+        verticalArrangement = Arrangement.Center,
     ) {
         Box(contentAlignment = Alignment.TopEnd) {
             Box(
@@ -607,13 +625,15 @@ private fun QuickTile(
                 }
             }
         }
+        Spacer(Modifier.height(6.dp))
         Text(
             text = label,
-            style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.sp, lineHeight = 14.sp),
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.5.sp, lineHeight = 13.sp),
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.heightIn(min = 26.dp),
         )
     }
 }
@@ -662,7 +682,7 @@ private fun ShortcutCard(
     onClick: () -> Unit,
 ) {
     val accent = remember(bookmark.url) { siteBadgeAccent(siteDomain(bookmark.url)) }
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(MarbleLayout.CardCorner)
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -672,6 +692,7 @@ private fun ShortcutCard(
     )
     Column(
         modifier = modifier
+            .fillMaxHeight()
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -680,8 +701,8 @@ private fun ShortcutCard(
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.62f))
             .border(0.9.dp, accent.copy(alpha = 0.28f), shape)
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         SiteBadgeLogo(
             displayName = bookmark.title,
@@ -711,10 +732,11 @@ private fun RecentRow(item: HistoryItem, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .height(MarbleLayout.RecentRowHeight)
             .clip(shape)
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.45f))
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 9.dp),
+            .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {

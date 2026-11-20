@@ -196,6 +196,14 @@ class SessionVaultTest {
         override suspend fun getById(snapshotId: String): SnapshotEntity? =
             items.value.firstOrNull { it.id == snapshotId }
 
+        override suspend fun getPinnedForContainer(containerId: String): List<SnapshotEntity> =
+            items.value.filter { it.containerId == containerId && it.isPinned }
+                .sortedByDescending { it.capturedAtEpochMillis }
+
+        override suspend fun setPinned(snapshotId: String, pinned: Boolean) {
+            items.value = items.value.map { if (it.id == snapshotId) it.copy(isPinned = pinned) else it }
+        }
+
         override suspend fun insert(snapshot: SnapshotEntity) {
             items.value = items.value.filterNot { it.id == snapshot.id } + snapshot
         }
