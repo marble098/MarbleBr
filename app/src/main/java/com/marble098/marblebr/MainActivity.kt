@@ -69,6 +69,21 @@ class MainActivity : AppCompatActivity() {
 
             val rateLaunchThreshold = 3
 
+            fun openPlayStore() {
+                val packageName = this.packageName
+                val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName")).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                if (marketIntent.resolveActivity(packageManager) != null) {
+                    startActivity(marketIntent)
+                    return
+                }
+                val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName")).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(Intent.createChooser(webIntent, null))
+            }
+
             LaunchedEffect(prefs.rateDialogShown, prefs.rateLaunchCount) {
                 if (!prefs.rateDialogShown && prefs.rateLaunchCount >= rateLaunchThreshold) {
                     showRateDialog = true
@@ -118,20 +133,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-    fun openPlayStore() {
-        val packageName = this.packageName
-        val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName")).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        if (marketIntent.resolveActivity(packageManager) != null) {
-            startActivity(marketIntent)
-            return
-        }
-        val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName")).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        startActivity(Intent.createChooser(webIntent, null))
-    }
     }
 
     override fun onNewIntent(intent: Intent) {
