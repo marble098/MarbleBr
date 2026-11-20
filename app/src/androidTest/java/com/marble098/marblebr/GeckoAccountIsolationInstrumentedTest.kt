@@ -107,7 +107,8 @@ class GeckoAccountIsolationInstrumentedTest {
                 val outcome = runBlocking {
                     withContext(Dispatchers.Main) { manager.restoreSnapshotOnOpenTab(secondSnapshot.toMeta()) }
                 }
-                assertTrue("Cookie restore failed: $outcome", outcome.cookiesRestored > 0)
+                val cookieMetadata = secondPayload.cookies.map { it.copy(value = "[redacted]") }
+                assertTrue("Cookie restore failed: $outcome; cookies: $cookieMetadata", outcome.cookiesRestored > 0)
                 assertTrue("Storage restore failed: $outcome", outcome.storageKeysRestored > 0)
                 navigate(manager, "second", "${site.origin}/observe-page?tag=second-restored")
                 assertAccount(site.observe("second-restored"), "second")

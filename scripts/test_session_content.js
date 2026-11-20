@@ -7,6 +7,9 @@ const listeners = {};
 const sent = [];
 const runtimeMessages = [];
 let persistCalls = 0;
+let prepared = { nonce: null };
+let restoredCount = 0;
+let fetchFails = false;
 const event = name => ({ addListener: fn => { listeners[name] = fn; } });
 const makeStorage = initial => {
   const items = new Map(Object.entries(initial));
@@ -22,7 +25,13 @@ const sessionStorage = makeStorage({ session: "two" });
 const port = { onMessage: event("port"), postMessage: msg => sent.push(msg) };
 const browser = { runtime: {
   connectNative: () => port,
-  sendMessage: async msg => { runtimeMessages.push(msg); return msg.type === "GET_CAPTURED_COOKIES" ? { cookies: [] } : { ok: true }; },
+  sendMessage: async msg => {
+    runtimeMessages.push(msg);
+    if (msg.type === "GET_CAPTURED_COOKIES") return { cookies: [] };
+    if (msg.type === "PREPARE_RESTORE") return prepared;
+    if (msg.type === "RESTORE_STATUS") return { count: restoredCount };
+    return { ok: true };
+  },
   onMessage: event("runtime")
 } };
 const window = {
@@ -37,7 +46,7 @@ const code = fs.readFileSync("engine/src/main/assets/extensions/never_signout/co
 vm.runInNewContext(code, {
   browser, window, document, navigator, location: { origin: "https://my.mci.ir", href: "https://my.mci.ir/panel" },
   URL, AbortController, setInterval: fn => { listeners.interval = fn; }, setTimeout: fn => { timers.push(fn); return 1; },
-  clearTimeout: () => {}
+  clearTimeout: () => {}, fetch: async () => { if (fetchFails) throw new Error("network"); return {}; }
 });
 
 (async () => {
@@ -72,6 +81,21 @@ vm.runInNewContext(code, {
   } });
   assert.equal(localStorage.getItem("restored"), "yes");
   assert.equal(sent.at(-1).storageKeyCount, 1);
+
+  const cookiePayload = { origin: "https://my.mci.ir", cookies: [{ name: "session", value: "private" }] };
+  await listeners.port({ type: "APPLY_VAULT_SNAPSHOT", requestId: "no-eligible", payload: cookiePayload });
+  assert.equal(sent.at(-1).cookieStatus, "NO_ELIGIBLE_COOKIES");
+  prepared = { nonce: "nonce" };
+  fetchFails = true;
+  await listeners.port({ type: "APPLY_VAULT_SNAPSHOT", requestId: "network-failure", payload: cookiePayload });
+  assert.equal(sent.at(-1).cookieStatus, "FETCH_FAILED");
+  fetchFails = false;
+  await listeners.port({ type: "APPLY_VAULT_SNAPSHOT", requestId: "unmatched", payload: cookiePayload });
+  assert.equal(sent.at(-1).cookieStatus, "RESPONSE_NOT_MATCHED");
+  restoredCount = 1;
+  await listeners.port({ type: "APPLY_VAULT_SNAPSHOT", requestId: "proposed", payload: cookiePayload });
+  assert.equal(sent.at(-1).cookieStatus, "HEADERS_PROPOSED");
+  assert.equal(sent.at(-1).cookieCount, 1);
 
   await listeners.port({ type: "SET_COOKIE_POLICY", enabled: false, persistStorage: true });
   const count = sent.length;

@@ -51,17 +51,32 @@ import javax.inject.Singleton
 
 data class PageContextTarget(val linkUrl: String?, val imageUrl: String?)
 
+/** Restore stage only; never include cookie contents in diagnostic state. */
+enum class CookieRestoreStatus {
+    UNKNOWN,
+    ORIGIN_MISMATCH,
+    NO_COOKIES,
+    INVALID_COOKIES,
+    NO_ELIGIBLE_COOKIES,
+    FETCH_FAILED,
+    RESPONSE_NOT_MATCHED,
+    HEADERS_PROPOSED,
+    BRIDGE_FAILED,
+}
+
 /**
  * @param cookiesRestored تعداد هدرهای پیشنهادی به Gecko، نه تأیید پذیرش نهایی کوکی‌ها.
  * @param storageKeysRestored تعداد کلیدهای localStorage/sessionStorage که نوشته شد.
  * @param openTabMissing تبی با همان حساب و origin باز نبود؛ هیچ داده‌ای در حساب دیگری نوشته نشد.
  * @param payloadUnavailable نسخه رمزگشایی نشد (خراب یا حذف‌شده).
+ * @param cookieStatus مرحلهٔ تلاش برای بازگردانی، بدون ذخیرهٔ محتوای کوکی.
  */
 data class VaultRestoreOutcome(
     val cookiesRestored: Int = 0,
     val storageKeysRestored: Int = 0,
     val openTabMissing: Boolean = false,
     val payloadUnavailable: Boolean = false,
+    val cookieStatus: CookieRestoreStatus = CookieRestoreStatus.UNKNOWN,
 )
 
 /**
@@ -701,6 +716,9 @@ class ContainerSessionManager @Inject constructor(
                                             VaultRestoreOutcome(
                                                 cookiesRestored = json.optInt("cookieCount").coerceAtLeast(0),
                                                 storageKeysRestored = json.optInt("storageKeyCount").coerceAtLeast(0),
+                                                cookieStatus = runCatching {
+                                                    CookieRestoreStatus.valueOf(json.optString("cookieStatus"))
+                                                }.getOrDefault(CookieRestoreStatus.UNKNOWN),
                                             ),
                                         )
                                     }

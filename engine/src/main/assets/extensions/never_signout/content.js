@@ -52,7 +52,9 @@
   }
 
   async function restoreSnapshot(payload) {
-    if (!payload || payload.origin !== location.origin) return { cookieCount: 0, storageKeyCount: 0 };
+    if (!payload || payload.origin !== location.origin) {
+      return { cookieCount: 0, storageKeyCount: 0, cookieStatus: "ORIGIN_MISMATCH" };
+    }
     let storageKeyCount = 0;
     for (const [storage, values] of [[window.localStorage, payload.localStorage], [window.sessionStorage, payload.sessionStorage]]) {
       if (!values || typeof values !== "object") continue;
@@ -61,23 +63,30 @@
       }
     }
     let cookieCount = 0;
-    if (Array.isArray(payload.cookies) && payload.cookies.length) {
+    let cookieStatus = "NO_COOKIES";
+    if (!Array.isArray(payload.cookies)) {
+      cookieStatus = "INVALID_COOKIES";
+    } else if (payload.cookies.length) {
       try {
         const prepared = await browser.runtime.sendMessage({ type: "PREPARE_RESTORE", cookies: payload.cookies });
+        cookieStatus = "NO_ELIGIBLE_COOKIES";
         if (prepared?.nonce) {
           const restoreUrl = new URL("/", location.origin);
           restoreUrl.searchParams.set("__marble_vault_restore", prepared.nonce);
           const controller = new AbortController();
           const timeout = setTimeout(() => controller.abort(), 4000);
+          let requestSucceeded = false;
           try {
             await fetch(restoreUrl.href, { credentials: "include", cache: "no-store", redirect: "manual", signal: controller.signal });
+            requestSucceeded = true;
           } catch (_) {} finally { clearTimeout(timeout); }
           const status = await browser.runtime.sendMessage({ type: "RESTORE_STATUS", nonce: prepared.nonce });
           cookieCount = Number(status?.count) || 0;
+          cookieStatus = cookieCount > 0 ? "HEADERS_PROPOSED" : requestSucceeded ? "RESPONSE_NOT_MATCHED" : "FETCH_FAILED";
         }
-      } catch (_) {}
+      } catch (_) { cookieStatus = "BRIDGE_FAILED"; }
     }
-    return { cookieCount, storageKeyCount };
+    return { cookieCount, storageKeyCount, cookieStatus };
   }
 
   function sendSnapshot() {
@@ -94,7 +103,7 @@
         try { await browser.runtime.sendMessage({ type: "SET_POLICY", enabled: autoCaptureEnabled, days: message.days }); } catch (_) {}
         if (autoCaptureEnabled && message.persistStorage === true) ensurePersistentStorage();
       } else if (message.type === "APPLY_VAULT_SNAPSHOT") {
-        let result = { cookieCount: 0, storageKeyCount: 0 };
+        let result = { cookieCount: 0, storageKeyCount: 0, cookieStatus: "BRIDGE_FAILED" };
         try { result = await restoreSnapshot(message.payload); } catch (_) {}
         port.postMessage({ event: "RESTORE_RESULT", requestId: message.requestId, ...result });
       } else if (message.type === "EVAL_JS") {
