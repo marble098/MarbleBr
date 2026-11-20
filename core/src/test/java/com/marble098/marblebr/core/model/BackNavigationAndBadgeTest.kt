@@ -1,6 +1,7 @@
 package com.marble098.marblebr.core.model
 
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -134,8 +135,8 @@ class PaletteEngineTest {
         }.forEach { palette ->
             val light = com.marble098.marblebr.core.designsystem.paletteColorScheme(palette, dark = false)
             val dark = com.marble098.marblebr.core.designsystem.paletteColorScheme(palette, dark = true)
-            assertNotEquals("$palette light scheme must have a primary", 0, light.primary.value.toInt())
-            assertNotEquals("$palette dark scheme must have a primary", 0, dark.primary.value.toInt())
+            assertNotEquals("$palette light scheme must have a primary", 0, light.primary.toArgb())
+            assertNotEquals("$palette dark scheme must have a primary", 0, dark.primary.toArgb())
             assertTrue("$palette light bg should be bright", light.background.luminance() > 0.5f)
             assertTrue("$palette dark bg should be dark", dark.background.luminance() < 0.3f)
             assertTrue(

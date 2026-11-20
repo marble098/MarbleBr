@@ -16,7 +16,13 @@ object TabTitleEngine {
         "ارسال رایگان", "free shipping", "blog", "وبلاگ", "login", "ورود",
     )
 
-    private val separators = charArrayOf('|', '—', '–', '·', '•', '_', '/')
+    /**
+     * جداکننده‌های عنوان. نکتهٔ مهم: فاصلهٔ ساده جداکننده **نیست**، وگرنه عنوان‌های چندکلمه‌ای
+     * به کلمه‌های تک‌تک شکسته می‌شدند و «بلندترین بخش» بی‌معنی می‌شد. خطِ تیره فقط وقتی
+     * جداکننده است که با فاصله احاطه شده باشد (` — ` یا ` - `)، نه در واژه‌هایی مثل `state-of-art`.
+     */
+    private val separatorRegex = Regex("""\s*[|—–·•_/]\s*|\s+-\s+""")
+
     private const val MAX_TITLE_LENGTH = 60
 
     /**
@@ -43,7 +49,7 @@ object TabTitleEngine {
     /** از میان بخش‌های جدا‌شده، معنی‌دارترین (بلندترین بخشِ غیرنویزی) را برمی‌گرداند. */
     private fun pickMeaningfulSegment(title: String): String {
         if (title.isBlank()) return ""
-        val parts = title.split(*separators, ' ', '-')
+        val parts = title.split(separatorRegex)
             .map { it.trim() }
             .filter { it.length >= 3 }
         if (parts.isEmpty()) return title

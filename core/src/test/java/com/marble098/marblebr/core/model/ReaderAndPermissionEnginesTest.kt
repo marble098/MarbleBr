@@ -29,7 +29,7 @@ class ReaderAndPermissionEnginesTest {
         assertFalse(ReaderTextEngine.hasEnoughText("کوتاه"))
         assertTrue(
             ReaderTextEngine.hasEnoughText(
-                "این یک پاراگراف کامل است. جمله دومی هم دارد که نشان می‌دهد متن کافی است.",
+                "این یک پاراگراف کامل است. جملهٔ دومی هم دارد که نشان می‌دهد متن برای خواندن کافی است. و جملهٔ سوم هم دارد.",
             ),
         )
         assertTrue(ReaderTextEngine.hasEnoughText("x".repeat(40) + "." + "x".repeat(200)))
