@@ -312,11 +312,11 @@ fun BrowserScreen(
                 if (activeTab?.isLoading == true) {
                     val progress = (activeTab.progress / 100f).coerceIn(0f, 1f)
                     LinearProgressIndicator(
-                        progress = progress,
+                        progress = { progress },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(3.dp),
-                        trackColor = { MaterialTheme.colorScheme.outlineVariant },
+                        trackColor = MaterialTheme.colorScheme.outlineVariant,
                     )
                 }
 
