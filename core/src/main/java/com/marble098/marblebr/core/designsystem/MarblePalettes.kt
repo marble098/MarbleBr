@@ -108,7 +108,7 @@ val SelectablePalettes: List<ColorPalette> = ColorPalette.entries
     .sortedBy { if (it == ColorPalette.DYNAMIC) 0 else 1 }
 
 /** پالت جایگزین وقتی «رنگ‌های گوشی» روی دستگاهِ قدیمی در دسترس نیست. */
-internal const val FALLBACK_PALETTE = ColorPalette.OCEAN
+internal val FALLBACK_PALETTE: ColorPalette = ColorPalette.OCEAN
 
 /**
  * ColorScheme کامل و هماهنگِ یک پالت.
