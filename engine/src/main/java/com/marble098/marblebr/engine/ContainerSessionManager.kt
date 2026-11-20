@@ -309,10 +309,10 @@ class ContainerSessionManager @Inject constructor(
     private fun sameOrigin(first: String, second: String): Boolean = runCatching {
         val one = URI(first)
         val two = URI(second)
-        val onePort = if (one.port >= 0) one.port else if (one.scheme.equals("https", true)) 443 else 80
-        val twoPort = if (two.port >= 0) two.port else if (two.scheme.equals("https", true)) 443 else 80
-        one.host != null && one.host.equals(two.host, true) && one.scheme.equals(two.scheme, true) && onePort == twoPort
+        one.host != null && one.host.equals(two.host, true) && one.scheme.equals(two.scheme, true) && effectivePort(one) == effectivePort(two)
     }.getOrDefault(false)
+
+    private fun effectivePort(uri: URI): Int = uri.port.takeIf { it >= 0 } ?: if (uri.scheme.equals("https", true)) 443 else 80
 
     private data class SnapshotRequest(val id: String, val response: CompletableDeferred<Boolean>)
 
