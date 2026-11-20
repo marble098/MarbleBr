@@ -9,6 +9,13 @@ class SmartAddressUrlResolverTest {
     private val resolver = SmartAddressUrlResolver()
 
     @Test
+    fun `handles blank input port and query without loading an unintended site`() {
+        assertEquals("about:blank", resolver.resolveInputToUrl("  "))
+        assertEquals("https://example.org:8080?test=1", resolver.resolveInputToUrl("example.org:8080?test=1"))
+        assertEquals("https://www.google.com/search?q=two+words", resolver.resolveInputToUrl("two words", "https://example.org"))
+    }
+
+    @Test
     fun `normalizes bare domains to https`() {
         assertEquals("https://github.com", resolver.resolveInputToUrl("github.com"))
         assertEquals("https://web.telegram.org/k/", resolver.resolveInputToUrl("web.telegram.org/k/"))

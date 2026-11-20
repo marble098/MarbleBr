@@ -16,7 +16,7 @@ class SmartAddressUrlResolver @Inject constructor() {
         searchTemplate: String = DEFAULT_SEARCH_TEMPLATE,
     ): String {
         val trimmed = rawInput.trim()
-        if (trimmed.isEmpty()) return "https://www.google.com"
+        if (trimmed.isEmpty()) return "about:blank"
 
         if (trimmed.startsWith("https://", ignoreCase = true) ||
             trimmed.startsWith("http://", ignoreCase = true) ||
@@ -25,8 +25,7 @@ class SmartAddressUrlResolver @Inject constructor() {
             return trimmed
         }
 
-        val looksLikeDomainOrIp = !trimmed.contains(" ") &&
-            (DOMAIN_REGEX.matches(trimmed) || IPV4_REGEX.matches(trimmed) || trimmed.startsWith("localhost"))
+        val looksLikeDomainOrIp = trimmed.none(Char::isWhitespace) && BARE_ADDRESS.matches(trimmed)
 
         return if (looksLikeDomainOrIp) {
             "https://$trimmed"
@@ -35,14 +34,16 @@ class SmartAddressUrlResolver @Inject constructor() {
             if (searchTemplate.contains("%s")) {
                 searchTemplate.replace("%s", encoded)
             } else {
-                "$DEFAULT_SEARCH_TEMPLATE$encoded"
+                DEFAULT_SEARCH_TEMPLATE.replace("%s", encoded)
             }
         }
     }
 
     companion object {
         const val DEFAULT_SEARCH_TEMPLATE = "https://www.google.com/search?q=%s"
-        private val DOMAIN_REGEX = Regex("""^([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(/.*)?$""")
-        private val IPV4_REGEX = Regex("""^(\d{1,3}\.){3}\d{1,3}(:\d+)?(/.*)?$""")
+        private val BARE_ADDRESS = Regex(
+            """^(?:([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}|(\d{1,3}\.){3}\d{1,3}|localhost)(:\d+)?([/?#].*)?$""",
+            RegexOption.IGNORE_CASE,
+        )
     }
 }

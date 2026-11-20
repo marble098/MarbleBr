@@ -7,6 +7,14 @@ import android.os.Bundle
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -27,6 +35,7 @@ import com.marble098.marblebr.core.preferences.BrowserPreferencesRepository
 import com.marble098.marblebr.engine.CredentialFallbackAuthenticator
 import com.marble098.marblebr.feature.browser.BrowserScreen
 import com.marble098.marblebr.feature.browser.BrowserViewModel
+import com.marble098.marblebr.feature.browser.PwaShortcutInstaller
 import com.marble098.marblebr.feature.browser.RateAppDialog
 import com.marble098.marblebr.feature.settings.SettingsScreen
 import com.marble098.marblebr.feature.settings.SettingsViewModel
@@ -51,6 +60,8 @@ class MainActivity : AppCompatActivity() {
     @Inject
     lateinit var credentialFallbackAuthenticator: CredentialFallbackAuthenticator
 
+    private var incomingNavigation by mutableStateOf<IncomingNavigation?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -60,7 +71,7 @@ class MainActivity : AppCompatActivity() {
             navigationBarStyle = SystemBarStyle.auto(LIGHT_SCRIM, DARK_SCRIM),
         )
 
-        val initialUrlFromIntent = intent?.dataString
+        if (savedInstanceState == null) incomingNavigation = resolveIncomingNavigation(intent)
 
         setContent {
             val prefs by preferencesRepository.preferencesFlow.collectAsState(initial = BrowserPreferences())
@@ -126,7 +137,9 @@ class MainActivity : AppCompatActivity() {
             ) {
                 MarbleBrAppNavHost(
                     activity = this@MainActivity,
-                    initialUrl = initialUrlFromIntent,
+                    initialUrl = incomingNavigation?.url,
+                    pinnedContainerId = incomingNavigation?.pinnedContainerId,
+                    onUrlConsumed = { incomingNavigation = null },
                     biometricVaultLock = biometricVaultLock,
                     credentialFallbackAuthenticator = credentialFallbackAuthenticator,
                 )
@@ -137,7 +150,23 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        incomingNavigation = resolveIncomingNavigation(intent) ?: incomingNavigation
     }
+
+    private fun resolveIncomingNavigation(intent: Intent?): IncomingNavigation? {
+        val text = when (intent?.action) {
+            Intent.ACTION_VIEW -> intent.dataString
+            Intent.ACTION_SEND -> if (intent.type == "text/plain") intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString() else null
+            else -> null
+        } ?: return null
+        val url = Regex("https?://[^\\s<>]+", RegexOption.IGNORE_CASE).find(text)?.value
+            ?.takeIf { !Uri.parse(it).host.isNullOrBlank() } ?: return null
+        val pinned = intent?.takeIf { it.action == Intent.ACTION_VIEW }
+            ?.getStringExtra(PwaShortcutInstaller.EXTRA_CONTAINER_ID)
+        return IncomingNavigation(url, pinned)
+    }
+
+    private data class IncomingNavigation(val url: String, val pinnedContainerId: String?)
 
     private companion object {
         val LIGHT_SCRIM: Int = Color.argb(0xE6, 0xFF, 0xFF, 0xFF)
@@ -152,22 +181,37 @@ fun MarbleBrAppNavHost(
     biometricVaultLock: BiometricVaultLock,
     credentialFallbackAuthenticator: CredentialFallbackAuthenticator,
     renderGeckoWebView: Boolean = true,
+    onUrlConsumed: () -> Unit = {},
+    pinnedContainerId: String? = null,
 ) {
     val navController = rememberNavController()
     val coroutineScope = rememberCoroutineScope()
     val strings = LocalMarbleStrings.current
     var isVaultBiometricUnlocked by remember { mutableStateOf(false) }
 
+    LaunchedEffect(initialUrl) {
+        if (initialUrl != null) navController.popBackStack("browser", inclusive = false)
+    }
+
     NavHost(
         navController = navController,
         startDestination = "browser",
+        enterTransition = {
+            fadeIn(tween(190)) + scaleIn(tween(270, easing = FastOutSlowInEasing), initialScale = 0.94f) +
+                slideInVertically(tween(270, easing = FastOutSlowInEasing)) { it / 22 }
+        },
+        exitTransition = { fadeOut(tween(120)) },
+        popEnterTransition = { fadeIn(tween(190)) },
+        popExitTransition = {
+            fadeOut(tween(160)) + scaleOut(tween(220), targetScale = 0.96f) + slideOutVertically(tween(220)) { it / 28 }
+        },
     ) {
         composable("browser") {
             val browserViewModel: BrowserViewModel = hiltViewModel()
-            if (!initialUrl.isNullOrBlank()) {
-                remember(initialUrl) {
-                    browserViewModel.navigateToInput(initialUrl)
-                    true
+            LaunchedEffect(initialUrl, pinnedContainerId) {
+                if (!initialUrl.isNullOrBlank()) {
+                    browserViewModel.openNewTab(initialUrl, pinnedContainerId = pinnedContainerId)
+                    onUrlConsumed()
                 }
             }
             BrowserScreen(
@@ -183,7 +227,6 @@ fun MarbleBrAppNavHost(
                     }
                 },
                 renderGeckoWebView = renderGeckoWebView,
-                initialShowHome = initialUrl.isNullOrBlank(),
             )
         }
 

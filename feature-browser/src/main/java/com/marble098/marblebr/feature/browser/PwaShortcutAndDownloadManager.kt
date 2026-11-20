@@ -8,13 +8,16 @@ import android.content.pm.ShortcutManager
 import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Environment
+import android.webkit.URLUtil
 import com.marble098.marblebr.core.database.DownloadDao
 import com.marble098.marblebr.core.database.DownloadEntity
 import com.marble098.marblebr.core.i18n.LocalizationManager
 import com.marble098.marblebr.core.model.DownloadState
 import com.marble098.marblebr.core.model.WebAppContainer
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -60,7 +63,7 @@ class PwaShortcutInstaller @Inject constructor(
 }
 
 /**
- * مدیریت دانلود فایل‌ها در مرورگر با ارسال کوکی‌های کانتینر.
+ * مدیریت دانلود فایل‌ها از طریق DownloadManager اندروید، بدون انتقال کوکی‌های کانتینر.
  */
 @Singleton
 class BrowserDownloadLauncher @Inject constructor(
@@ -68,43 +71,61 @@ class BrowserDownloadLauncher @Inject constructor(
     private val downloadDao: DownloadDao,
     private val localizationManager: LocalizationManager,
 ) {
-    suspend fun enqueueDownload(
-        url: String,
-        suggestedFileName: String? = null,
-        mimeType: String = "application/octet-stream",
-        cookieHeader: String? = null,
-    ) {
-        val fileName = suggestedFileName?.takeIf { it.isNotBlank() }
-            ?: Uri.parse(url).lastPathSegment?.takeIf { it.isNotBlank() }
-            ?: "marblebr_download_${System.currentTimeMillis()}"
-
+    suspend fun enqueueDownload(url: String, mimeType: String = "application/octet-stream"): Boolean {
+        val uri = Uri.parse(url)
+        if (uri.scheme != "https" && uri.scheme != "http") return false
+        val fileName = URLUtil.guessFileName(url, null, mimeType).replace(Regex("[^\\p{L}\\p{N}._ -]"), "_")
         val strings = localizationManager.current()
-        runCatching {
-            val dm = context.getSystemService(DownloadManager::class.java)
-            val request = DownloadManager.Request(Uri.parse(url))
-                .setTitle(fileName)
-                .setDescription(strings.downloadNotificationText)
-                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
-
-            if (!cookieHeader.isNullOrBlank()) {
-                request.addRequestHeader("Cookie", cookieHeader)
-            }
-            dm?.enqueue(request)
-        }
-
+        val dm = context.getSystemService(DownloadManager::class.java) ?: return false
+        val downloadId = withContext(Dispatchers.IO) {
+            runCatching {
+                val request = DownloadManager.Request(uri)
+                    .setTitle(fileName)
+                    .setDescription(strings.downloadNotificationText)
+                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                    .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+                dm.enqueue(request)
+            }.getOrNull()
+        } ?: return false
         downloadDao.upsert(
             DownloadEntity(
-                id = UUID.randomUUID().toString(),
+                id = downloadId.toString(),
                 fileName = fileName,
                 url = url,
                 mimeType = mimeType,
                 totalBytes = -1L,
                 downloadedBytes = 0L,
-                stateName = DownloadState.COMPLETED.name,
+                stateName = DownloadState.IN_PROGRESS.name,
                 destinationPath = "${Environment.DIRECTORY_DOWNLOADS}/$fileName",
                 createdAtEpochMillis = System.currentTimeMillis(),
             ),
         )
+        return true
+    }
+
+    suspend fun refreshDownloads() = withContext(Dispatchers.IO) {
+        val dm = context.getSystemService(DownloadManager::class.java) ?: return@withContext
+        for (download in downloadDao.observeAll().first()) {
+            val id = download.id.toLongOrNull() ?: continue
+            if (download.stateName != DownloadState.IN_PROGRESS.name) continue
+            val updated = dm.query(DownloadManager.Query().setFilterById(id))?.use { cursor ->
+                if (!cursor.moveToFirst()) {
+                    download.copy(stateName = DownloadState.FAILED.name)
+                } else {
+                    val status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                    val state = when (status) {
+                        DownloadManager.STATUS_SUCCESSFUL -> DownloadState.COMPLETED
+                        DownloadManager.STATUS_FAILED -> DownloadState.FAILED
+                        else -> DownloadState.IN_PROGRESS
+                    }
+                    download.copy(
+                        stateName = state.name,
+                        downloadedBytes = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)),
+                        totalBytes = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)),
+                    )
+                }
+            }
+            if (updated != null && updated != download) downloadDao.upsert(updated)
+        }
     }
 }

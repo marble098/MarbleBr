@@ -14,10 +14,12 @@ import com.marble098.marblebr.core.model.SessionSnapshotPayload
 import com.marble098.marblebr.core.model.WebAppContainer
 import com.marble098.marblebr.vault.SessionVaultManager
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import org.mozilla.geckoview.AllowOrDeny
@@ -55,6 +57,8 @@ class ContainerSessionManager @Inject constructor(
 ) {
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val activeSessions = ConcurrentHashMap<String, GeckoSession>()
+    private val capturePorts = mutableMapOf<GeckoSession, WebExtension.Port>()
+    private val snapshotRequests = mutableMapOf<GeckoSession, SnapshotRequest>()
     private var installedExtension: WebExtension? = null
 
     @Volatile
@@ -132,6 +136,7 @@ class ContainerSessionManager @Inject constructor(
     fun getOrCreateGeckoSession(
         tabId: String,
         container: WebAppContainer,
+        initialUrl: String,
         isPrivate: Boolean = false,
         isDesktopMode: Boolean = false,
         adBlockEnabled: Boolean = true,
@@ -160,12 +165,11 @@ class ContainerSessionManager @Inject constructor(
 
         val session = GeckoSession(sessionSettings)
         val runtime = getOrCreateRuntime()
-        session.open(runtime)
-
         attachSessionDelegates(
             session = session,
             container = container,
             adBlockEnabled = adBlockEnabled,
+            isPrivate = isPrivate,
             onLocationChanged = onLocationChanged,
             onTitleChanged = onTitleChanged,
             onProgressChanged = onProgressChanged,
@@ -175,12 +179,32 @@ class ContainerSessionManager @Inject constructor(
             onDownloadRequested = onDownloadRequested,
         )
 
-        installedExtension?.let { ext ->
-            attachSessionExtensionBridge(session, ext, container, onHealthRestored, onServerRevokedFallbackRequired)
+        if (!isPrivate) {
+            val attachBridge: (WebExtension) -> Unit = { extension ->
+                attachSessionExtensionBridge(session, extension, container, onHealthRestored, onServerRevokedFallbackRequired)
+            }
+            val extension = installedExtension
+            if (extension != null) {
+                attachBridge(extension)
+            } else {
+                runtime.webExtensionController.ensureBuiltIn(EXTENSION_ASSET_URI, EXTENSION_ID).accept { available ->
+                    if (available != null && activeSessions[tabId] === session) attachBridge(available)
+                }
+            }
         }
 
         activeSessions[tabId] = session
+        session.open(runtime)
+        session.loadUri(initialUrl)
         return session
+    }
+
+    fun loadInOpenSession(tabId: String, url: String) {
+        activeSessions[tabId]?.loadUri(url)
+    }
+
+    fun stopLoading(tabId: String) {
+        activeSessions[tabId]?.stop()
     }
 
     fun setDesktopMode(tabId: String, enabled: Boolean) {
@@ -262,8 +286,35 @@ class ContainerSessionManager @Inject constructor(
     }
 
     fun closeTabSession(tabId: String) {
-        activeSessions.remove(tabId)?.close()
+        val session = activeSessions.remove(tabId) ?: return
+        capturePorts.remove(session)?.disconnect()
+        snapshotRequests.remove(session)?.response?.complete(false)
+        session.close()
     }
+
+    suspend fun capturePageSnapshot(tabId: String, pageUrl: String): Boolean {
+        val session = activeSessions[tabId] ?: return false
+        val port = capturePorts[session] ?: return false
+        if (!sameOrigin(port.sender.url, pageUrl) || session in snapshotRequests) return false
+        val request = SnapshotRequest(UUID.randomUUID().toString(), CompletableDeferred())
+        snapshotRequests[session] = request
+        return try {
+            port.postMessage(JSONObject().put("type", "CAPTURE_PAGE").put("requestId", request.id))
+            withTimeoutOrNull(4_000) { request.response.await() } ?: false
+        } finally {
+            snapshotRequests.remove(session)
+        }
+    }
+
+    private fun sameOrigin(first: String, second: String): Boolean = runCatching {
+        val one = URI(first)
+        val two = URI(second)
+        one.host != null && one.host.equals(two.host, true) && one.scheme.equals(two.scheme, true) && effectivePort(one) == effectivePort(two)
+    }.getOrDefault(false)
+
+    private fun effectivePort(uri: URI): Int = uri.port.takeIf { it >= 0 } ?: if (uri.scheme.equals("https", true)) 443 else 80
+
+    private data class SnapshotRequest(val id: String, val response: CompletableDeferred<Boolean>)
 
     private fun installNeverSignOutExtension(runtime: GeckoRuntime) {
         runtime.webExtensionController
@@ -285,6 +336,30 @@ class ContainerSessionManager @Inject constructor(
         session.webExtensionController.setMessageDelegate(
             extension,
             object : WebExtension.MessageDelegate {
+                override fun onConnect(port: WebExtension.Port) {
+                    if (!port.sender.isTopLevel || extractDomain(port.sender.url) != container.domain) return
+                    capturePorts[session] = port
+                    port.setDelegate(object : WebExtension.PortDelegate {
+                        override fun onPortMessage(message: Any, port: WebExtension.Port) {
+                            if (capturePorts[session] !== port) return
+                            val json = message as? JSONObject ?: return
+                            val request = snapshotRequests[session] ?: return
+                            if (request.id != json.optString("requestId") || !sameOrigin(port.sender.url, json.optString("origin"))) return
+                            engineScope.launch {
+                                val saved = runCatching { savePageSnapshot(json, container, manual = true) }.getOrDefault(false)
+                                request.response.complete(saved)
+                            }
+                        }
+
+                        override fun onDisconnect(port: WebExtension.Port) {
+                            if (capturePorts[session] === port) {
+                                capturePorts.remove(session)
+                                snapshotRequests[session]?.response?.complete(false)
+                            }
+                        }
+                    })
+                }
+
                 override fun onMessage(
                     nativeApp: String,
                     message: Any,
@@ -292,6 +367,7 @@ class ContainerSessionManager @Inject constructor(
                 ): GeckoResult<Any>? {
                     val json = message as? JSONObject ?: return null
                     val eventType = json.optString("event")
+                    if (eventType == "STORAGE_SNAPSHOT" && (!sender.isTopLevel || !sameOrigin(sender.url, json.optString("origin")))) return null
                     engineScope.launch {
                         handleExtensionEvent(
                             json = json,
@@ -321,34 +397,7 @@ class ContainerSessionManager @Inject constructor(
         if (!freshContainer.neverSignOutEnabled) return
 
         when (eventType) {
-            "STORAGE_SNAPSHOT" -> {
-                val origin = json.optString("origin", "https://${freshContainer.domain}")
-                val cookieString = json.optString("cookieString", "")
-                val cookies = parseDocumentCookieString(cookieString, freshContainer.domain)
-                val localMap = jsonObjectToMap(json.optJSONObject("localStorage"))
-                val sessionMap = jsonObjectToMap(json.optJSONObject("sessionStorage"))
-                val idbMap = jsonObjectToMap(json.optJSONObject("indexedDbDump"))
-
-                val payload = SessionSnapshotPayload(
-                    origin = origin,
-                    containerId = freshContainer.id,
-                    capturedAtEpochMillis = System.currentTimeMillis(),
-                    cookies = cookies,
-                    localStorage = localMap,
-                    sessionStorage = sessionMap,
-                    indexedDbDump = idbMap,
-                    storagePersisted = true,
-                )
-
-                if (vaultManager.evaluatePayloadHealth(payload)) {
-                    vaultManager.captureSnapshot(
-                        payload = payload,
-                        targetCookieExpirationDays = freshContainer.cookieExpirationDays,
-                        triggerReason = "PAGE_LOAD_SYNC",
-                        label = localizationManager.current().autoSnapshotLabel(freshContainer.domain),
-                    )
-                }
-            }
+            "STORAGE_SNAPSHOT" -> savePageSnapshot(json, freshContainer, manual = false)
 
             "HTTP_UNAUTHORIZED" -> {
                 val url = json.optString("url")
@@ -397,10 +446,35 @@ class ContainerSessionManager @Inject constructor(
         }
     }
 
+    private suspend fun savePageSnapshot(json: JSONObject, container: WebAppContainer, manual: Boolean): Boolean {
+        val origin = json.optString("origin")
+        if (extractDomain(origin) != container.domain) return false
+        val payload = SessionSnapshotPayload(
+            origin = origin,
+            containerId = container.id,
+            capturedAtEpochMillis = System.currentTimeMillis(),
+            cookies = parseDocumentCookieString(json.optString("cookieString"), container.domain),
+            localStorage = jsonObjectToMap(json.optJSONObject("localStorage")),
+            sessionStorage = jsonObjectToMap(json.optJSONObject("sessionStorage")),
+            indexedDbDump = jsonObjectToMap(json.optJSONObject("indexedDbDump")),
+            storagePersisted = json.optBoolean("storagePersisted"),
+        )
+        if (!vaultManager.evaluatePayloadHealth(payload)) return false
+        val strings = localizationManager.current()
+        vaultManager.captureSnapshot(
+            payload = payload,
+            targetCookieExpirationDays = container.cookieExpirationDays,
+            triggerReason = if (manual) "MANUAL_USER_CAPTURE" else "PAGE_LOAD_SYNC",
+            label = if (manual) strings.manualSnapshotLabel(container.domain) else strings.autoSnapshotLabel(container.domain),
+        )
+        return true
+    }
+
     private fun attachSessionDelegates(
         session: GeckoSession,
         container: WebAppContainer,
         adBlockEnabled: Boolean,
+        isPrivate: Boolean,
         onLocationChanged: (url: String, isSecure: Boolean) -> Unit,
         onTitleChanged: (title: String) -> Unit,
         onProgressChanged: (progress: Int, isLoading: Boolean) -> Unit,
@@ -418,11 +492,12 @@ class ContainerSessionManager @Inject constructor(
                 session: GeckoSession,
                 request: GeckoSession.NavigationDelegate.LoadRequest,
             ): GeckoResult<AllowOrDeny>? {
-                if (adBlocker.shouldBlockRequest(request.uri, previousUrl, adBlockEnabled)) {
+                if (!request.isDirectNavigation && !request.hasUserGesture && adBlocker.shouldBlockRequest(request.uri, previousUrl, adBlockEnabled)) {
+                    onProgressChanged(0, false)
                     return GeckoResult.fromValue(AllowOrDeny.DENY)
                 }
 
-                if (healthGuard.isSuspiciousLoginRedirect(previousUrl, request.uri)) {
+                if (!isPrivate && healthGuard.isSuspiciousLoginRedirect(previousUrl, request.uri)) {
                     engineScope.launch {
                         val freshContainer = containerDao.getById(container.id)?.toDomain() ?: container
                         val assessment = healthGuard.evaluateSignal(
@@ -483,7 +558,7 @@ class ContainerSessionManager @Inject constructor(
 
         session.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onPageStart(session: GeckoSession, url: String) {
-                onProgressChanged(10, true)
+                onProgressChanged(0, true)
             }
 
             override fun onProgressChange(session: GeckoSession, progress: Int) {
