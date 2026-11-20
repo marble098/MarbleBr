@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 from pathlib import Path
+import struct
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
@@ -22,13 +23,19 @@ class ApkGateTest(unittest.TestCase):
         for abi, apk in self.apks.items():
             self.write_apk(apk, gate.ABIS if abi == "universal" else (abi,))
 
-    def write_apk(self, apk, abis, libraries=gate.GECKO_LIBS, machine_override=None):
+    def write_apk(self, apk, abis, libraries=gate.GECKO_LIBS, machine_override=None, alignment=16384):
         with ZipFile(apk, "w") as archive:
             for abi in abis:
                 elf_class, machine = gate.ABIS[abi]
                 for lib in libraries:
                     elf = (b"\x7fELF" + bytes([elf_class, 1]) + bytes(12)
                            + (machine_override or machine).to_bytes(2, "little"))
+                    if elf_class == 2:
+                        header = bytearray(64)
+                        header[:20] = elf
+                        struct.pack_into("<Q", header, 32, 64)
+                        struct.pack_into("<HH", header, 54, 56, 1)
+                        elf = header + struct.pack("<II6Q", 1, 5, 0, 0, 0, 0, 0, alignment)
                     archive.writestr(f"lib/{abi}/{lib}", elf)
 
     def test_exact_output_set(self):
@@ -50,6 +57,12 @@ class ApkGateTest(unittest.TestCase):
             gate.native_inventory(apk, ("arm64-v8a",))
         self.write_apk(apk, ("arm64-v8a",), libraries=("libxul.so",))
         with self.assertRaisesRegex(ValueError, "missing GeckoView"):
+            gate.native_inventory(apk, ("arm64-v8a",))
+
+    def test_reject_4k_only_64bit_native_payload(self):
+        apk = self.apks["arm64-v8a"]
+        self.write_apk(apk, ("arm64-v8a",), alignment=4096)
+        with self.assertRaisesRegex(ValueError, "support 16 KB"):
             gate.native_inventory(apk, ("arm64-v8a",))
 
     def test_upgrade_and_universal_payload_checks(self):

@@ -8,6 +8,7 @@ import os
 from shutil import copyfile
 from pathlib import Path
 import re
+import struct
 import subprocess
 import sys
 from zipfile import BadZipFile, ZipFile
@@ -52,6 +53,23 @@ def inspect_identity(apk, tools):
     return fields["versionName"], int(fields["versionCode"]), certs[0], badging, tool
 
 
+def verify_16k_segments(lib, header, label):
+    phoff = struct.unpack_from("<Q", header, 32)[0]
+    phentsize, phnum = struct.unpack_from("<HH", header, 54)
+    require(phoff >= 64 and phentsize == 56 and 0 < phnum < 4096, f"{label}: invalid ELF program table")
+    lib.seek(phoff)
+    loadable = False
+    for _ in range(phnum):
+        data = lib.read(phentsize)
+        require(len(data) == phentsize, f"{label}: truncated ELF program table")
+        p_type, _, offset, vaddr, _, _, _, alignment = struct.unpack("<II6Q", data)
+        if p_type == 1:  # PT_LOAD
+            loadable = True
+            require(alignment >= 16384 and (vaddr - offset) % 16384 == 0,
+                    f"{label}: ELF load segments must support 16 KB Android memory pages")
+    require(loadable, f"{label}: missing ELF load segments")
+
+
 def native_inventory(apk, expected_abis):
     libs = {abi: {} for abi in expected_abis}
     with ZipFile(apk) as archive:
@@ -64,12 +82,16 @@ def native_inventory(apk, expected_abis):
             require(len(path) == 3 and path[1] in libs and path[2].endswith(".so"),
                     f"{apk.name}: unexpected native entry {entry.filename}")
             _, abi, name = path
-            with archive.open(entry) as lib:
-                header = lib.read(20)
             elf_class, machine = ABIS[abi]
-            require(len(header) == 20 and header[:6] == b"\x7fELF" + bytes([elf_class, 1])
-                    and int.from_bytes(header[18:20], "little") == machine,
-                    f"{apk.name}: {entry.filename} is not a {abi} ELF library")
+            label = f"{apk.name}: {entry.filename}"
+            with archive.open(entry) as lib:
+                header = lib.read(64 if elf_class == 2 else 52)
+                require(len(header) >= 20 and header[:6] == b"\x7fELF" + bytes([elf_class, 1])
+                        and int.from_bytes(header[18:20], "little") == machine,
+                        f"{label} is not a {abi} ELF library")
+                if elf_class == 2:
+                    require(len(header) == 64, f"{label}: truncated ELF header")
+                    verify_16k_segments(lib, header, label)
             libs[abi][name] = (entry.file_size, entry.CRC)
         for abi, inventory in libs.items():
             require(GECKO_LIBS <= inventory.keys(),
