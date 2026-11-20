@@ -132,7 +132,6 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
-
     }
 
     override fun onNewIntent(intent: Intent) {
