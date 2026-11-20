@@ -425,8 +425,7 @@ fun BrowserScreen(
                 )
             }
         }
-    )
-{ innerPadding ->
+    ) { innerPadding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
