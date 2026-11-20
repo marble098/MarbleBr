@@ -1,6 +1,6 @@
 # راهنمای تنظیم GitHub Secrets برای امضای خودکار APKها
 
-برای اینکه خط لوله CI/CD در GitHub Actions بتواند در هر Merge به شاخه `main` تمام ۵ خروجی APK (`arm64-v8a`، `armeabi-v7a`، `x86`، `x86_64` و `universal`) را با کلید اختصاصی شما امضا و در **GitHub Releases** منتشر کند، مراحل زیر را انجام دهید:
+برای اینکه خط لوله CI/CD در GitHub Actions بتواند در هر Merge به شاخه `main` تمام ۴ خروجی APK (`arm64-v8a`، `armeabi-v7a`، `x86_64` و `universal`) را با کلید اختصاصی شما امضا و در **GitHub Releases** منتشر کند، مراحل زیر را انجام دهید:
 
 ---
 
