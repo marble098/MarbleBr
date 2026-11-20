@@ -347,15 +347,6 @@ class BrowserViewModel @Inject constructor(
 
     fun onPageTitleChanged(tabId: String, title: String) {
         updateTab(tabId) { it.copy(title = title) }
-        viewModelScope.launch {
-            val tab = _uiState.value.tabs.firstOrNull { it.id == tabId } ?: return@launch
-            if (!tab.isPrivate) {
-                val existing = historyDao.getLatestByUrl(tab.url)
-                if (existing != null) {
-                    historyDao.updateVisit(existing.id, title, System.currentTimeMillis())
-                }
-            }
-        }
     }
 
     fun onPageProgressChanged(tabId: String, progress: Int, isLoading: Boolean) {

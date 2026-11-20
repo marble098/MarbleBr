@@ -2,12 +2,13 @@ package com.marble098.marblebr.feature.browser
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Modifier
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.marble098.marblebr.core.i18n.AppLanguage
 import com.marble098.marblebr.core.i18n.MarbleStrings
 import java.util.Locale
@@ -29,7 +30,7 @@ fun RateAppDialog(
         onDismissRequest = onLater,
         title = { Text(text = strings.rateTitle) },
         text = { Text(text = strings.rateMessage) },
-        buttons = {
+        confirmButton = {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -45,5 +46,6 @@ fun RateAppDialog(
                 }
             }
         },
+        dismissButton = null,
     )
 }

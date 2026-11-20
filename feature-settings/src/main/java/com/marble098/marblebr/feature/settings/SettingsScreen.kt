@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -297,7 +298,7 @@ fun SettingsScreen(
             // 4.5) موتور جستجو
             item {
                 SettingsSection(
-                    icon = Icons.Default.Search,
+                    icon = Search,
                     title = strings.searchEngineTitle,
                     description = strings.searchEngineDescription,
                 ) {
