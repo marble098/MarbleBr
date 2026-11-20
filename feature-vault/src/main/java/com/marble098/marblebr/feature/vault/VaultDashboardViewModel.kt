@@ -352,25 +352,16 @@ class VaultDashboardViewModel @Inject constructor(
         }
     }
 
-    /** «نگهبان انقضا»: تمدیدِ یک‌لمسیِ ورودِ یک سایت (بدون نیاز به باز بودنِ تب). */
+    /** Re-capture an open account after the user has refreshed or signed into the site. */
     fun renewSiteLogin(container: WebAppContainer) {
         runBusy("renew-${container.id}") {
-            val renewed = runCatching {
-                vaultManager.renewSnapshotExpiry(
-                    containerId = container.id,
-                    targetExpirationDays = container.cookieExpirationDays,
-                )
-            }.getOrNull()
+            val saved = runCatching { sessionManager.captureSiteSnapshotNow(container) }.getOrDefault(false)
             _expiryRefreshTick.update { it + 1 }
-            if (renewed == null) {
-                notify { it.snapshotUnavailable }
-            } else {
-                notify { it.vaultExpiryRenewed(container.domain) }
-            }
+            notify { if (saved) it.vaultExpiryRenewed(container.domain) else it.snapshotUnavailable }
         }
     }
 
-    /** تمدیدِ گروهیِ همهٔ سایت‌هایی که در کارتِ «نگهبان انقضا» دیده می‌شوند. */
+    /** Re-capture only accounts with an open page; never manufacture a server expiry. */
     fun renewAllExpiringLogins() {
         runBusy("renew-all") {
             val byId = containers.value.associateBy { it.id }
@@ -379,19 +370,13 @@ class VaultDashboardViewModel @Inject constructor(
                 notify { it.vaultExpiryAllFresh }
                 return@runBusy
             }
-            var renewed = 0
+            var saved = 0
             targets.forEach { site ->
                 val container = byId[site.containerId] ?: return@forEach
-                val meta = runCatching {
-                    vaultManager.renewSnapshotExpiry(
-                        containerId = container.id,
-                        targetExpirationDays = container.cookieExpirationDays,
-                    )
-                }.getOrNull()
-                if (meta != null) renewed++
+                if (runCatching { sessionManager.captureSiteSnapshotNow(container) }.getOrDefault(false)) saved++
             }
             _expiryRefreshTick.update { it + 1 }
-            notify { it.vaultExpiryRenewedCount(renewed) }
+            notify { it.vaultExpiryRenewedCount(saved) }
         }
     }
 

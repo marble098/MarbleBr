@@ -91,6 +91,16 @@ class SessionVaultTest {
     }
 
     @Test
+    fun `cookie promotion never changes an explicit server expiry`() {
+        val cookie = CookieRecord(
+            name = "session", value = "secret", domain = "example.test",
+            expiresEpochMillis = 2_000L, isSessionOnly = true,
+        )
+        assertEquals(cookie, converter.promoteToPersistent(cookie, targetExpirationDays = 30, nowEpochMillis = 1_000L))
+        assertEquals(cookie, converter.promoteToPersistent(cookie, targetExpirationDays = 30, nowEpochMillis = 3_000L))
+    }
+
+    @Test
     fun `sessionVaultManager captures encrypted snapshots and recovers latest healthy snapshot`() = runTest {
         val containerId = "ctx_telegram_web"
         val healthyPayload = SessionSnapshotPayload(

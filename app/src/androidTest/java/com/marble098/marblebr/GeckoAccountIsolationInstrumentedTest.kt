@@ -28,6 +28,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.Closeable
+import java.io.IOException
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -35,6 +36,7 @@ import java.net.URLDecoder
 import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import javax.crypto.KeyGenerator
 import kotlin.concurrent.thread
@@ -154,7 +156,17 @@ private class LocalTestSite : Closeable {
         thread(name = "marble-test-site", isDaemon = true) {
             while (!server.isClosed) {
                 val socket = try { server.accept() } catch (_: Exception) { break }
-                executor.execute { handle(socket) }
+                try {
+                    executor.execute {
+                        try {
+                            handle(socket)
+                        } catch (_: IOException) {
+                            // Gecko may open speculative connections or abort requests on navigation.
+                        }
+                    }
+                } catch (_: RejectedExecutionException) {
+                    socket.close()
+                }
             }
         }
     }

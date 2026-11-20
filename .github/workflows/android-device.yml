@@ -57,9 +57,9 @@ jobs:
           for path in Path('.').glob('**/build/outputs/androidTest-results/connected/**/*.xml'):
               for test in ET.parse(path).iter('testcase'):
                   for failure in test.findall('failure') + test.findall('error'):
-                      message = failure.get('message', '') + ' ' + (failure.text or '').split('\n', 1)[0]
+                      message = failure.get('message', '') + '\n' + (failure.text or '')[:8000]
                       message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-                      print(f"::error title={test.get('classname', '')}.{test.get('name', '')}::{message[:4000]}")
+                      print(f"::error title={test.get('classname', '')}.{test.get('name', '')}::{message}")
           PYDETAILS
       - name: Upload device test report
         if: always()

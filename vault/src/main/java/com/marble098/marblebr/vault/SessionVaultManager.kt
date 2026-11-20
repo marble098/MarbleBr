@@ -19,13 +19,12 @@ import javax.inject.Singleton
 
 /**
  * ویژگی‌های ۲، ۳، ۹، ۱۰ و ۱۱ Never Sign-out Engine:
- * - Session Vault: اسنپ‌شات دوره‌ای و رمزنگاری‌شده (AES-256-GCM) از کوکی‌ها، localStorage و IndexedDB هر سایت،
- *   همراه با بازیابی خودکار از آخرین اسنپ‌شات سالم.
+ * - Session Vault: اسنپ‌شات رمزنگاری‌شده از کوکی‌های مشاهده‌شده و حافظهٔ صفحه؛
+ *   نام و نسخهٔ IndexedDB فقط اطلاعات توصیفی است و داده‌های آن بازیابی نمی‌شوند.
  * - Session Time Machine: نگه‌داشتن تاریخچه چند اسنپ‌شات قبلی و امکان برگشت با یک لمس به هر نسخه دلخواه.
  * - «نسخهٔ طلایی» (نسخهٔ ۱.۳): قفل‌کردنِ یک نسخهٔ سالم تا چرخشِ خودکار هرگز حذفش نکند و همیشه
  *   اولین گزینه برای بازگردانی خودکار باشد.
- * - «نگهبان انقضا»: سنجشِ نزدیک‌ترین انقضای کوکی‌های ورود و تمدیدِ یک‌لمسیِ خودِ نسخه (بدون
- *   نیاز به باز بودنِ تب) تا ورود پیش از موعد از بین نرود.
+ * - «نگهبان انقضا»: سنجش نزدیک‌ترین انقضای کوکی‌های ورود، بدون ساختن انقضای سرور.
  */
 @Singleton
 class SessionVaultManager @Inject constructor(
@@ -59,7 +58,7 @@ class SessionVaultManager @Inject constructor(
         label: String = "",
     ): SessionSnapshotMeta {
         // Automatic snapshots must not silently extend or resurrect an explicit server expiry.
-        // Only session cookies (with no expiry) are promoted. Manual renewal is a separate action.
+        // Only session cookies (with no expiry) are promoted.
         val promotedCookies = payload.cookies.mapNotNull { cookie ->
             val expiry = cookie.expiresEpochMillis
             when {
@@ -181,38 +180,6 @@ class SessionVaultManager @Inject constructor(
     ): SessionExpiryAssessment {
         val payload = restoreLatestHealthySnapshot(containerId) ?: return SessionExpiryAssessment()
         return SessionExpiryGuard.assess(payload.cookies, nowEpochMillis)
-    }
-
-    /**
-     * تمدیدِ یک‌لمسیِ ورود: همان نسخهٔ سالم با عمرِ تازه دوباره ذخیره می‌شود.
-     *
-     * چرا لازم است؟ بعضی سایت‌ها کوکیِ ورود را با عمر کوتاه می‌سازند؛ پیش از این تنها راهِ
-     * تمدید، بازکردنِ دستی سایت و انتظار برای زنده‌سازیِ پس‌زمینه بود. حالا خودِ نسخه (که
-     * مبنای بازگردانی است) با تاریخ انقضای تازه بازنویسی می‌شود.
-     */
-    suspend fun renewSnapshotExpiry(
-        containerId: String,
-        targetExpirationDays: Int,
-        triggerReason: String = "EXPIRY_GUARDIAN",
-        label: String = "",
-        nowEpochMillis: Long = System.currentTimeMillis(),
-    ): SessionSnapshotMeta? {
-        val payload = restoreLatestHealthySnapshot(containerId) ?: return null
-        if (payload.cookies.isEmpty() && payload.localStorage.isEmpty()) return null
-        val renewedPayload = payload.copy(
-            capturedAtEpochMillis = nowEpochMillis,
-            cookies = cookieConverter.promoteAll(
-                cookies = payload.cookies,
-                targetExpirationDays = targetExpirationDays,
-                nowEpochMillis = nowEpochMillis,
-            ),
-        )
-        return captureSnapshot(
-            payload = renewedPayload,
-            targetCookieExpirationDays = targetExpirationDays,
-            triggerReason = triggerReason,
-            label = label,
-        )
     }
 
     /**
