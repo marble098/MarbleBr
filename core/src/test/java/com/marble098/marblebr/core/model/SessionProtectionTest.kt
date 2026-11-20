@@ -71,19 +71,19 @@ class SessionProtectionTest {
 
     /* ---------------------------- نگهبان انقضا ---------------------------- */
 
-    private fun authCookie(expiresInDays: Long, name: String = "session_id") = CookieRecord(
+    private fun authCookie(expiresInDays: Long, now: Long, name: String = "session_id") = CookieRecord(
         name = name,
         value = "token-value",
         domain = "example.com",
-        expiresEpochMillis = System.currentTimeMillis() + TimeUnit.DAYS.toMillis(expiresInDays),
+        expiresEpochMillis = now + TimeUnit.DAYS.toMillis(expiresInDays),
     )
 
     @Test
     fun `expiry guardian finds the nearest expiring auth cookie`() {
         val now = System.currentTimeMillis()
         val cookies = listOf(
-            authCookie(expiresInDays = 30),
-            authCookie(expiresInDays = 10, name = "user_session"),
+            authCookie(expiresInDays = 30, now = now),
+            authCookie(expiresInDays = 10, now = now, name = "user_session"),
             CookieRecord(name = "theme", value = "dark", domain = "example.com", expiresEpochMillis = now + dayMillis),
         )
 
@@ -109,6 +109,24 @@ class SessionProtectionTest {
         assertFalse(assessment.hasExpiringAuthCookie)
         assertNull(assessment.daysUntilExpiry)
         assertFalse(assessment.needsRenewal())
+    }
+
+    @Test
+    fun `partial future days are not marked as expired`() {
+        val now = 1_800_000_000_000L
+        fun assessment(offset: Long): SessionExpiryAssessment = SessionExpiryGuard.assess(
+            cookies = listOf(
+                CookieRecord(name = "session_id", value = "v", domain = "example.com", expiresEpochMillis = now + offset),
+            ),
+            nowEpochMillis = now,
+        )
+
+        assertEquals(1, assessment(1).daysUntilExpiry)
+        assertFalse(assessment(1).isExpired)
+        assertEquals(1, assessment(dayMillis).daysUntilExpiry)
+        assertEquals(2, assessment(dayMillis + 1).daysUntilExpiry)
+        assertTrue(assessment(0).isExpired)
+        assertTrue(assessment(-1).isExpired)
     }
 
     @Test

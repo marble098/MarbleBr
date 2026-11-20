@@ -101,11 +101,14 @@ class GeckoAccountIsolationInstrumentedTest {
                 val cleared = site.observe("cleared")
                 assertEquals("none", cleared.identity)
                 assertFalse(cleared.cookie.contains("sid="))
+                // The page can make requests before its new native extension port is ready.
+                // Confirm that the bridge responds before asking it to restore the snapshot.
+                awaitCapture(manager, "second", "${site.origin}/panel")
                 val outcome = runBlocking {
                     withContext(Dispatchers.Main) { manager.restoreSnapshotOnOpenTab(secondSnapshot.toMeta()) }
                 }
-                assertTrue(outcome.cookiesRestored > 0)
-                assertTrue(outcome.storageKeysRestored > 0)
+                assertTrue("Cookie restore failed: $outcome", outcome.cookiesRestored > 0)
+                assertTrue("Storage restore failed: $outcome", outcome.storageKeysRestored > 0)
                 navigate(manager, "second", "${site.origin}/observe-page?tag=second-restored")
                 assertAccount(site.observe("second-restored"), "second")
 
@@ -135,6 +138,15 @@ class GeckoAccountIsolationInstrumentedTest {
 
     private fun capture(manager: ContainerSessionManager, tab: String, url: String): Boolean = runBlocking {
         withContext(Dispatchers.Main) { manager.capturePageSnapshot(tab, url) }
+    }
+
+    private fun awaitCapture(manager: ContainerSessionManager, tab: String, url: String) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20)
+        while (System.nanoTime() < deadline) {
+            if (capture(manager, tab, url)) return
+            Thread.sleep(200)
+        }
+        error("The extension bridge did not become ready for $tab")
     }
 
     private fun assertAccount(observation: Observation, expected: String) {
@@ -241,6 +253,7 @@ private class LocalTestSite : Closeable {
         (async () => {
           await fetch('/clear');
           localStorage.removeItem('identity');
+          localStorage.setItem('marble_test_bridge_marker', 'ready');
           history.replaceState(null, '', '/panel');
           await fetch('/observe?tag=cleared&identity=none');
         })();

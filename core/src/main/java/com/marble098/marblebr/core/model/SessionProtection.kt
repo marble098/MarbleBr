@@ -90,7 +90,13 @@ object SessionExpiryGuard {
             .mapNotNull { it.expiresEpochMillis }
             .filter { it > 0L }
             .minOrNull()
-        val days = earliest?.let { expiry -> ((expiry - nowEpochMillis) / DAY_MILLIS).toInt() }
+        val days = earliest?.let { expiry ->
+            val remaining = expiry - nowEpochMillis
+            // A cookie expiring later today is not already expired. Round positive partial
+            // days up, while zero and negative durations remain expired.
+            val wholeDays = if (remaining > 0) (remaining - 1) / DAY_MILLIS + 1 else remaining / DAY_MILLIS
+            wholeDays.coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong()).toInt()
+        }
         return SessionExpiryAssessment(
             authCookieCount = authCookies.size,
             earliestExpiryEpochMillis = earliest,
