@@ -9,7 +9,8 @@ const runtimeMessages = [];
 let persistCalls = 0;
 let prepared = { nonce: null };
 let restoredCount = 0;
-let fetchFails = false;
+let frameFails = false;
+let lastFrame = null;
 const event = name => ({ addListener: fn => { listeners[name] = fn; } });
 const makeStorage = initial => {
   const items = new Map(Object.entries(initial));
@@ -39,14 +40,23 @@ const window = {
   indexedDB: { databases: async () => [] },
   addEventListener: (name, fn) => { listeners[name] = fn; }
 };
-const document = { visibilityState: "visible", addEventListener: (name, fn) => { listeners[name] = fn; } };
+const document = {
+  visibilityState: "visible",
+  addEventListener: (name, fn) => { listeners[name] = fn; },
+  createElement: name => {
+    assert.equal(name, "iframe");
+    lastFrame = { attributes: {}, setAttribute(key, value) { this.attributes[key] = value; }, remove() { this.removed = true; } };
+    return lastFrame;
+  },
+  documentElement: { appendChild: frame => { if (frameFails) frame.onerror(); else frame.onload(); } }
+};
 const navigator = { storage: { persisted: async () => false, persist: async () => { persistCalls++; return true; } } };
 const timers = [];
 const code = fs.readFileSync("engine/src/main/assets/extensions/never_signout/content.js", "utf8");
 vm.runInNewContext(code, {
   browser, window, document, navigator, location: { origin: "https://my.mci.ir", href: "https://my.mci.ir/panel" },
   URL, AbortController, setInterval: fn => { listeners.interval = fn; }, setTimeout: fn => { timers.push(fn); return 1; },
-  clearTimeout: () => {}, fetch: async () => { if (fetchFails) throw new Error("network"); return {}; }
+  clearTimeout: () => {}
 });
 
 (async () => {
@@ -86,12 +96,17 @@ vm.runInNewContext(code, {
   await listeners.port({ type: "APPLY_VAULT_SNAPSHOT", requestId: "no-eligible", payload: cookiePayload });
   assert.equal(sent.at(-1).cookieStatus, "NO_ELIGIBLE_COOKIES");
   prepared = { nonce: "nonce" };
-  fetchFails = true;
-  await listeners.port({ type: "APPLY_VAULT_SNAPSHOT", requestId: "network-failure", payload: cookiePayload });
-  assert.equal(sent.at(-1).cookieStatus, "FETCH_FAILED");
-  fetchFails = false;
+  frameFails = true;
+  await listeners.port({ type: "APPLY_VAULT_SNAPSHOT", requestId: "frame-failure", payload: cookiePayload });
+  assert.equal(sent.at(-1).cookieStatus, "FRAME_FAILED");
+  frameFails = false;
   await listeners.port({ type: "APPLY_VAULT_SNAPSHOT", requestId: "unmatched", payload: cookiePayload });
   assert.equal(sent.at(-1).cookieStatus, "RESPONSE_NOT_MATCHED");
+  assert.equal(lastFrame.attributes.sandbox, "");
+  assert.equal(lastFrame.hidden, true);
+  assert.equal(lastFrame.referrerPolicy, "no-referrer");
+  assert.equal(lastFrame.src, "https://my.mci.ir/?__marble_vault_restore=nonce");
+  assert.equal(lastFrame.removed, true);
   restoredCount = 1;
   await listeners.port({ type: "APPLY_VAULT_SNAPSHOT", requestId: "proposed", payload: cookiePayload });
   assert.equal(sent.at(-1).cookieStatus, "HEADERS_PROPOSED");

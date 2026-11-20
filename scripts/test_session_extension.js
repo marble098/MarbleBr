@@ -55,12 +55,19 @@ const headers = (id, values, url = "https://my.mci.ir/login") => listeners.heade
   const prepared = await send(1, { type: "PREPARE_RESTORE", cookies: one });
   assert.ok(prepared.nonce);
   // The same nonce in another tab or origin must never receive these cookies.
-  assert.equal(headers(2, [], `https://my.mci.ir/?__marble_vault_restore=${prepared.nonce}`).responseHeaders.length, 0);
+  const restoreUrl = `https://my.mci.ir/?__marble_vault_restore=${prepared.nonce}`;
+  listeners.before({ tabId: -1, type: "xmlhttprequest", url: restoreUrl });
+  assert.equal(headers(-1, [], restoreUrl).responseHeaders?.length || 0, 0);
+  listeners.before({ tabId: 2, type: "sub_frame", url: restoreUrl });
+  assert.equal(headers(2, [], restoreUrl).responseHeaders.length, 0);
   assert.equal(headers(1, [], `https://evil.test/?__marble_vault_restore=${prepared.nonce}`).responseHeaders?.length || 0, 0);
-  const restored = headers(1, [], `https://my.mci.ir/?__marble_vault_restore=${prepared.nonce}`);
+  listeners.before({ tabId: 1, type: "sub_frame", url: restoreUrl });
+  const restored = headers(1, [], restoreUrl);
   assert.match(restored.responseHeaders[0].value, /^session=one;.*HttpOnly/);
   assert.doesNotMatch(restored.responseHeaders[0].value, /Domain=/);
-  assert.equal((await send(1, { type: "RESTORE_STATUS", nonce: prepared.nonce })).count, 1);
+  const restoreStatus = await send(1, { type: "RESTORE_STATUS", nonce: prepared.nonce });
+  assert.equal(restoreStatus.count, 1);
+  assert.equal(restoreStatus.requestTab, "EXPECTED_TAB");
   assert.equal((await send(1, { type: "PREPARE_RESTORE", cookies: [{ ...one[0], domain: "evil.test" }] })).nonce, null);
   assert.equal((await send(1, { type: "PREPARE_RESTORE", cookies: [{ ...one[0], value: "x\r\nSet-Cookie: bad" }] })).nonce, null);
   listeners.removed(2);

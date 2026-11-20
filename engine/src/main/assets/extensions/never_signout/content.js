@@ -51,6 +51,35 @@
     };
   }
 
+  // A content-script fetch can be attributed to the extension rather than this tab in
+  // GeckoView. Load a sandboxed, same-origin frame instead so webRequest sees the tab
+  // and Set-Cookie is applied to that tab's actual session context. Never run page code.
+  function requestRestoreInTab(url) {
+    return new Promise(resolve => {
+      const frame = document.createElement("iframe");
+      frame.setAttribute("sandbox", "");
+      frame.setAttribute("aria-hidden", "true");
+      frame.hidden = true;
+      frame.tabIndex = -1;
+      frame.referrerPolicy = "no-referrer";
+      let finished = false;
+      const finish = loaded => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timeout);
+        frame.remove();
+        resolve(loaded);
+      };
+      const timeout = setTimeout(() => finish(false), 4000);
+      frame.onload = () => finish(true);
+      frame.onerror = () => finish(false);
+      const root = document.documentElement;
+      if (!root) return finish(false);
+      frame.src = url;
+      root.appendChild(frame);
+    });
+  }
+
   async function restoreSnapshot(payload) {
     if (!payload || payload.origin !== location.origin) {
       return { cookieCount: 0, storageKeyCount: 0, cookieStatus: "ORIGIN_MISMATCH" };
@@ -73,16 +102,14 @@
         if (prepared?.nonce) {
           const restoreUrl = new URL("/", location.origin);
           restoreUrl.searchParams.set("__marble_vault_restore", prepared.nonce);
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 4000);
-          let requestSucceeded = false;
-          try {
-            await fetch(restoreUrl.href, { credentials: "include", cache: "no-store", redirect: "manual", signal: controller.signal });
-            requestSucceeded = true;
-          } catch (_) {} finally { clearTimeout(timeout); }
+          const requestSucceeded = await requestRestoreInTab(restoreUrl.href);
           const status = await browser.runtime.sendMessage({ type: "RESTORE_STATUS", nonce: prepared.nonce });
           cookieCount = Number(status?.count) || 0;
-          cookieStatus = cookieCount > 0 ? "HEADERS_PROPOSED" : requestSucceeded ? "RESPONSE_NOT_MATCHED" : "FETCH_FAILED";
+          if (cookieCount > 0) cookieStatus = "HEADERS_PROPOSED";
+          else if (status?.requestTab === "NO_TAB") cookieStatus = "REQUEST_NO_TAB";
+          else if (status?.requestTab === "OTHER_TAB") cookieStatus = "REQUEST_OTHER_TAB";
+          else if (status?.requestTab === "NOT_SEEN") cookieStatus = "REQUEST_NOT_SEEN";
+          else cookieStatus = requestSucceeded ? "RESPONSE_NOT_MATCHED" : "FRAME_FAILED";
         }
       } catch (_) { cookieStatus = "BRIDGE_FAILED"; }
     }

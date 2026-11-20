@@ -122,14 +122,14 @@
       const bytes = new Uint8Array(16);
       crypto.getRandomValues(bytes);
       const nonce = Array.from(bytes, n => n.toString(16).padStart(2, "0")).join("");
-      restores.set(tabId, { nonce, origin, headers, applied: 0, expires: Date.now() + 10000 });
+      restores.set(tabId, { nonce, origin, headers, applied: 0, requestTab: "NOT_SEEN", expires: Date.now() + 10000 });
       return Promise.resolve({ nonce });
     }
     if (message.type === "RESTORE_STATUS") {
       const pending = restores.get(tabId);
       if (!pending || pending.nonce !== message.nonce || pending.origin !== origin) return Promise.resolve({ count: 0 });
       restores.delete(tabId);
-      return Promise.resolve({ count: pending.applied });
+      return Promise.resolve({ count: pending.applied, requestTab: pending.requestTab });
     }
     return undefined;
   });
@@ -137,6 +137,21 @@
   // Revoke the previous document's policy as soon as a top-level navigation leaves its origin.
   // Otherwise a new page could cause that policy to act on embedded requests to the old site.
   browser.webRequest.onBeforeRequest.addListener(details => {
+    // Keep only a coarse, secret-free diagnostic for this one-time request. A nonce
+    // never authorizes writing to a different tab, even if a request is unattributed.
+    if (details.url.includes("__marble_vault_restore=")) {
+      try {
+        const request = new URL(details.url);
+        const nonce = request.searchParams.get("__marble_vault_restore");
+        if (nonce) {
+          for (const [tabId, pending] of restores) {
+            if (pending.nonce === nonce && pending.origin === request.origin) {
+              pending.requestTab = details.tabId < 0 ? "NO_TAB" : details.tabId === tabId ? "EXPECTED_TAB" : "OTHER_TAB";
+            }
+          }
+        }
+      } catch (_) {}
+    }
     if (details.type !== "main_frame" || details.tabId < 0) return;
     const policy = policies.get(details.tabId);
     if (policy && policy.origin !== originOf(details.url)) {
