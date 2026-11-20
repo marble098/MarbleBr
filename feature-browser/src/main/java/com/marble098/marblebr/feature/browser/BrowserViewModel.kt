@@ -400,6 +400,23 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
+    /** خروجِ کامل از سایتِ تبِ فعلی (Sign out now) با همان مسیر امنِ داشبورد. */
+    fun signOutCurrentSite() {
+        viewModelScope.launch {
+            val tab = _uiState.value.activeTab ?: return@launch
+            if (tab.url.isBlank() || tab.isPrivate) return@launch
+            val container = containers[tab.id]
+                ?: containerDao.getById(tab.containerId)?.toDomain()
+                ?: return@launch
+            sessionManager.signOutNow(container)
+            containers.remove(tab.id)
+            updateTab(tab.id) {
+                it.copy(healthStatus = SessionHealthStatus.DISABLED, canGoBack = false, canGoForward = false)
+            }
+            showLocalizedBanner { it.feedbackSignedOut(container.domain) }
+        }
+    }
+
     fun captureManualSnapshotNow() {
         viewModelScope.launch {
             val tab = _uiState.value.activeTab ?: return@launch

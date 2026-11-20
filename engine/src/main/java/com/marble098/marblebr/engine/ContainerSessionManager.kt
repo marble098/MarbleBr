@@ -10,14 +10,17 @@ import com.marble098.marblebr.core.model.HealthReason
 import com.marble098.marblebr.core.model.ProxyDnsConfig
 import com.marble098.marblebr.core.model.ProxyType
 import com.marble098.marblebr.core.model.SessionHealthSignal
+import com.marble098.marblebr.core.model.SessionSnapshotMeta
 import com.marble098.marblebr.core.model.SessionSnapshotPayload
 import com.marble098.marblebr.core.model.WebAppContainer
 import com.marble098.marblebr.vault.SessionVaultManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
@@ -39,6 +42,21 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
+ * نتیجهٔ بازگردانیِ یک نسخه روی مرورگر.
+ *
+ * @param cookiesRestored تعداد کوکی‌هایی که واقعاً نوشته شد.
+ * @param storageKeysRestored تعداد کلیدهای localStorage/sessionStorage که نوشته شد.
+ * @param openTabMissing تبی از این دامنه باز نبود؛ کوکی‌ها نوشته شدند ولی حافظهٔ صفحه نه.
+ * @param payloadUnavailable نسخه رمزگشایی نشد (خراب یا حذف‌شده).
+ */
+data class VaultRestoreOutcome(
+    val cookiesRestored: Int = 0,
+    val storageKeysRestored: Int = 0,
+    val openTabMissing: Boolean = false,
+    val payloadUnavailable: Boolean = false,
+)
+
+/**
  * مدیریت مرکزی GeckoRuntime و کانتینرهای ایزوله GeckoSession.
  *
  * هر وب‌اپ یا PWA یک کانتینر مستقل با `contextId` اختصاصی دریافت می‌کند:
@@ -54,11 +72,19 @@ class ContainerSessionManager @Inject constructor(
     private val healthGuard: SessionHealthGuard,
     private val adBlocker: LightweightAdBlocker,
     private val localizationManager: LocalizationManager,
+    private val preferencesRepository: com.marble098.marblebr.core.preferences.BrowserPreferencesRepository,
 ) {
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val activeSessions = ConcurrentHashMap<String, GeckoSession>()
-    private val capturePorts = mutableMapOf<GeckoSession, WebExtension.Port>()
-    private val snapshotRequests = mutableMapOf<GeckoSession, SnapshotRequest>()
+
+    // پورت‌ها از تردِ Gecko هم لمس می‌شوند؛ نگه‌داشتن آن‌ها در ConcurrentHashMap از
+    // ConcurrentModificationException و نشتِ پورتِ بسته‌شده جلوگیری می‌کند.
+    private val capturePorts = ConcurrentHashMap<GeckoSession, WebExtension.Port>()
+    private val snapshotRequests = ConcurrentHashMap<GeckoSession, SnapshotRequest>()
+
+    /** پورتِ اسکریپت پس‌زمینهٔ افزونه؛ برای نوشتن کوکی‌های HttpOnly از سمت بومی لازم است. */
+    @Volatile
+    private var backgroundPort: WebExtension.Port? = null
     private var installedExtension: WebExtension? = null
 
     @Volatile
@@ -295,10 +321,124 @@ class ContainerSessionManager @Inject constructor(
         session.close()
     }
 
+    /**
+     * گرفتنِ اسنپ‌شات از یک سایت به‌درخواستِ داشبورد (بدون نیاز به باز بودنِ تب).
+     *
+     * اگر نشستِ فعالی برای همان دامنه باز باشد، از مسیر دقیقِ صفحه استفاده می‌کند؛ در غیر این
+     * صورت مقدار «موفق» را برنمی‌گرداند چون داده‌ای برای ذخیره وجود ندارد.
+     */
+    suspend fun captureSiteSnapshotNow(container: WebAppContainer): Boolean {
+        val match = capturePorts.entries.firstOrNull { (session, port) ->
+            session.isOpen && extractDomain(port.sender.url) == container.domain
+        } ?: return false
+        val tabId = activeSessions.entries.firstOrNull { it.value === match.key }?.key ?: return false
+        return capturePageSnapshot(tabId, match.value.sender.url)
+    }
+
+    /**
+     * بازگردانیِ یک نسخهٔ مشخص از «ماشین زمان» روی مرورگرِ در حال اجرا.
+     *
+     * پیش از این، دکمهٔ «برگردان» فقط رکورد را رمزگشایی می‌کرد و هیچ داده‌ای به GeckoView
+     * نمی‌رسید (باگ عملکردی اصلی داشبورد). مسیر درست دو بخش دارد:
+     * ۱. کوکی‌ها (از جمله HttpOnly) از طریق اسکریپت پس‌زمینهٔ افزونه نوشته می‌شوند؛ این کار
+     *    حتی وقتی هیچ تبی باز نیست هم انجام می‌شود.
+     * ۲. localStorage/sessionStorage از طریق پورتِ همان صفحه در content script نوشته و سپس
+     *    صفحه بازخوانی می‌شود تا سایت با نشستِ تازه بالا بیاید.
+     */
+    suspend fun restoreSnapshotOnOpenTab(snapshot: SessionSnapshotMeta): VaultRestoreOutcome {
+        val payload = vaultManager.restoreSnapshotById(snapshot.id)
+            ?: return VaultRestoreOutcome(payloadUnavailable = true)
+        val match = capturePorts.entries.firstOrNull { (session, port) ->
+            session.isOpen && extractDomain(port.sender.url.orEmpty()) == snapshot.domain
+        }
+        val session = match?.key
+        val applied = applyPayloadToSession(session, payload)
+        if (session != null && (applied.cookiesRestored > 0 || applied.storageKeysRestored > 0)) {
+            // پیامِ نوشتنِ حافظه به‌صورت async به content script می‌رسد؛ بدون این مهلتِ کوتاه،
+            // reload قبل از نوشتن اجرا می‌شد و بازیابی بی‌اثر می‌ماند.
+            delay(280)
+            session.reload()
+        }
+        return applied
+    }
+
+    /**
+     * نوشتنِ یک payload روی نشست: کوکی‌ها به افزونه، حافظه به صفحه.
+     * هر دو بخش مستقل و خطاناپذیر (fail-soft) اجرا می‌شوند تا نبودِ یکی، دیگری را خراب نکند.
+     */
+    private fun applyPayloadToSession(session: GeckoSession?, payload: SessionSnapshotPayload): VaultRestoreOutcome {
+        val cookiesPushed = pushCookiesToExtension(payload)
+        val storagePushed = pushStorageToPage(session, payload)
+        return VaultRestoreOutcome(
+            cookiesRestored = cookiesPushed,
+            storageKeysRestored = storagePushed,
+            openTabMissing = session == null,
+        )
+    }
+
+    /** کوکی‌ها را با API کوکیِ افزونه می‌نویسد (تنها راه نوشتن کوکی HttpOnly). */
+    private fun pushCookiesToExtension(payload: SessionSnapshotPayload): Int {
+        if (payload.cookies.isEmpty()) return 0
+        val port = backgroundPort ?: return 0
+        val cookies = JSONArray()
+        payload.cookies.forEach { cookie ->
+            if (cookie.name.isBlank()) return@forEach
+            cookies.put(
+                JSONObject().apply {
+                    put("name", cookie.name)
+                    put("value", cookie.value)
+                    put("domain", cookie.domain.ifBlank { extractDomain(payload.origin) })
+                    put("path", cookie.path.ifBlank { "/" })
+                    put("isSecure", cookie.isSecure)
+                    put("isHttpOnly", cookie.isHttpOnly)
+                    put("sameSite", cookie.sameSite)
+                    cookie.expiresEpochMillis?.let { put("expiresEpochMillis", it) }
+                },
+            )
+        }
+        return runCatching {
+            port.postMessage(JSONObject().put("type", "RESTORE_COOKIES").put("cookies", cookies))
+            payload.cookies.size
+        }.getOrDefault(0)
+    }
+
+    /** حافظهٔ محلی و sessionStorage را روی همان صفحه می‌نویسد. */
+    private fun pushStorageToPage(session: GeckoSession?, payload: SessionSnapshotPayload): Int {
+        if (session == null) return 0
+        val port = capturePorts[session] ?: return 0
+        if (payload.localStorage.isEmpty() && payload.sessionStorage.isEmpty()) return 0
+        val body = JSONObject().apply {
+            put("localStorage", mapToJson(payload.localStorage))
+            put("sessionStorage", mapToJson(payload.sessionStorage))
+            put("origin", payload.origin)
+        }
+        return runCatching {
+            port.postMessage(JSONObject().put("type", "APPLY_VAULT_SNAPSHOT").put("payload", body))
+            payload.localStorage.size + payload.sessionStorage.size
+        }.getOrDefault(0)
+    }
+
+    private fun mapToJson(map: Map<String, String>): JSONObject {
+        val json = JSONObject()
+        map.forEach { (key, value) -> json.put(key, value) }
+        return json
+    }
+
+    /** مقدارِ سراسریِ «محافظت از سایت‌های جدید» از تنظیمات؛ داشبورد برای هشدارِ درست لازم دارد. */
+    suspend fun neverSignOutGlobalEnabled(): Boolean =
+        preferencesRepository.preferencesFlow.first().globalNeverSignOutEnabled
+
+    /**
+     * بازچینشِ سیاستِ زنده‌سازیِ پس‌زمینه پس از هر تغییر در داشبورد.
+     *
+     * قبلاً `KeepAliveScheduler.schedulePeriodicKeepAlive()` فقط یک‌بار در `Application.onCreate`
+     * با بازهٔ ثابت ۳۰ دقیقه اجرا می‌شد؛ پس تغییر بازه یا خاموش‌کردنِ محافظت در داشبورد هیچ اثری
+     * روی کارِ زمان‌بندی‌شده نداشت (باگ عملکردی). حالا بازه از تنظیماتِ سایت‌ها محاسبه می‌شود.
+     */
     suspend fun capturePageSnapshot(tabId: String, pageUrl: String): Boolean {
         val session = activeSessions[tabId] ?: return false
         val port = capturePorts[session] ?: return false
-        if (!sameOrigin(port.sender.url, pageUrl) || session in snapshotRequests) return false
+        if (!sameOrigin(port.sender.url, pageUrl) || snapshotRequests.containsKey(session)) return false
         val request = SnapshotRequest(UUID.randomUUID().toString(), CompletableDeferred())
         snapshotRequests[session] = request
         return try {
@@ -340,7 +480,19 @@ class ContainerSessionManager @Inject constructor(
             extension,
             object : WebExtension.MessageDelegate {
                 override fun onConnect(port: WebExtension.Port) {
-                    if (!port.sender.isTopLevel || extractDomain(port.sender.url) != container.domain) return
+                    // اسکریپت پس‌زمینهٔ افزونه از origin داخلی وصل می‌شود (نه از دامنهٔ سایت)؛
+                    // فقط با همین پورت می‌توان کوکی HttpOnly را روی GeckoView نوشت.
+                    val senderUrl = port.sender.url.orEmpty()
+                    if (senderUrl.startsWith(EXTENSION_ORIGIN_PREFIX)) {
+                        backgroundPort = port
+                        port.setDelegate(object : WebExtension.PortDelegate {
+                            override fun onDisconnect(port: WebExtension.Port) {
+                                if (backgroundPort === port) backgroundPort = null
+                            }
+                        })
+                        return
+                    }
+                    if (!port.sender.isTopLevel || extractDomain(senderUrl) != container.domain) return
                     capturePorts[session] = port
                     port.setDelegate(object : WebExtension.PortDelegate {
                         override fun onPortMessage(message: Any, port: WebExtension.Port) {
@@ -596,10 +748,17 @@ class ContainerSessionManager @Inject constructor(
     ) {
         when (assessmentAction) {
             HealthGuardAction.RESTORE_LATEST_SNAPSHOT -> {
+                // باگ ریشه‌ای: نسخهٔ سالم خوانده می‌شد ولی هیچ‌وقت روی مرورگر نوشته نمی‌شد و
+                // فقط صفحه reload می‌شد؛ یعنی بازیابی عملاً هیچ کاری نمی‌کرد. حالا کوکی‌ها و
+                // حافظهٔ محلی پیش از reload واقعاً روی نشست اعمال می‌شوند.
                 val restored = vaultManager.restoreLatestHealthySnapshot(container.id)
                 if (restored != null) {
-                    session.reload()
-                    onHealthRestored(reason)
+                    val applied = applyPayloadToSession(session, restored)
+                    if (applied.cookiesRestored > 0 || applied.storageKeysRestored > 0) {
+                        delay(280)
+                        session.reload()
+                        onHealthRestored(reason)
+                    }
                 }
             }
             HealthGuardAction.ESCALATE_TO_CREDENTIAL_FALLBACK -> {
@@ -670,6 +829,9 @@ class ContainerSessionManager @Inject constructor(
         const val EXTENSION_ASSET_URI = "resource://android/assets/extensions/never_signout/"
         const val EXTENSION_ID = "never_signout@marblebr.marble098.com"
         const val NATIVE_BRIDGE_APP_ID = "marble_never_signout"
+
+        /** پیشوندِ origin اسکریپت پس‌زمینهٔ افزونه (پورتِ نوشتن کوکی). */
+        const val EXTENSION_ORIGIN_PREFIX = "moz-extension://"
 
         /**
          * پرچم‌های امن برای دکمه «پاک کردن کش»:

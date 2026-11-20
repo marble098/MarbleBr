@@ -180,6 +180,59 @@ abstract class MarbleStrings {
     abstract val feedbackRestoreFailed: String
     abstract val gotIt: String
 
+    // ------------------------------------------- داشبورد بازطراحی‌شده
+    abstract val vaultHeroTitle: String
+    abstract val vaultHeroBody: String
+    abstract val vaultStatSites: String
+    abstract val vaultStatProtected: String
+    abstract val vaultStatSnapshots: String
+    abstract val vaultLastSaved: String
+    abstract val vaultNever: String
+    abstract val vaultSearchHint: String
+    abstract val vaultFilterAll: String
+    abstract val vaultFilterProtected: String
+    abstract val vaultFilterUnprotected: String
+    abstract val vaultFilterPinned: String
+    abstract val vaultNoMatch: String
+    abstract val vaultProtectionOffBanner: String
+    abstract val vaultSectionSites: String
+    abstract val vaultSectionTimeline: String
+    abstract val vaultSectionActivity: String
+    abstract val vaultSiteProtected: String
+    abstract val vaultSiteUnprotected: String
+    abstract val vaultSitePinned: String
+    abstract val vaultSiteDetailsTitle: String
+    abstract val vaultProtectSwitchTitle: String
+    abstract val vaultProtectSwitchBody: String
+    abstract val vaultKeepAliveSwitchTitle: String
+    abstract val vaultKeepAliveSwitchBody: String
+    abstract val vaultCookieDaysTitle: String
+    abstract val vaultCookieDaysBody: String
+    abstract val vaultSnapshotsOfSite: String
+    abstract val vaultSaveNow: String
+    abstract val vaultDelete: String
+    abstract val vaultDeleteConfirmTitle: String
+    abstract val vaultDeleteConfirmBody: String
+    abstract val vaultClose: String
+    abstract val vaultEmptyActivity: String
+    abstract val vaultFilterEmpty: String
+    abstract val vaultHealthHealthy: String
+    abstract val vaultProtectAll: String
+    abstract val vaultUnprotectAll: String
+    abstract val vaultProtectAllOnDone: String
+    abstract val vaultProtectAllOffDone: String
+    abstract val vaultRestoreNeedsOpenTab: String
+    abstract val vaultQuickActionsTitle: String
+    abstract val vaultJumpToSite: String
+    abstract val feedbackRestoreEmpty: String
+    abstract val quickPageSection: String
+    abstract val quickLibrarySection: String
+    abstract val quickToolsSection: String
+    abstract fun vaultSnapshotCount(count: Int): String
+    abstract fun vaultLastSavedAgo(label: String): String
+    abstract fun vaultKeepAliveEveryMinutes(minutes: Int): String
+    abstract fun vaultDeleteSnapshotDone(domain: String): String
+
     // ----------------------------------------------------- فرمت ها
     abstract fun tabsCount(count: Int): String
     abstract fun adsBlocked(count: Int): String
@@ -560,6 +613,58 @@ private object PersianStrings : MarbleStrings() {
     override val feedbackRestoreFailed = "نتوانستیم این نسخه را بخوانیم"
     override val gotIt = "باشه"
 
+    override val vaultHeroTitle = "همه حساب‌هایت، یک‌جا و در امان"
+    override val vaultHeroBody = "هر سایت فضای جدا و قفل‌شدهٔ خودش را دارد؛ نسخه‌های ورود فقط روی همین گوشی رمز می‌شوند."
+    override val vaultStatSites = "سایت"
+    override val vaultStatProtected = "مراقبت فعال"
+    override val vaultStatSnapshots = "نسخه ذخیره‌شده"
+    override val vaultLastSaved = "آخرین ذخیره"
+    override val vaultNever = "هنوز چیزی ذخیره نشده"
+    override val vaultSearchHint = "جستجوی سایت…"
+    override val vaultFilterAll = "همه"
+    override val vaultFilterProtected = "مراقبت‌شده"
+    override val vaultFilterUnprotected = "بدون مراقبت"
+    override val vaultFilterPinned = "میانبری"
+    override val vaultNoMatch = "سایتی با این جستجو پیدا نشد."
+    override val vaultProtectionOffBanner = "مراقبت از سایت‌های جدید در تنظیمات خاموش است؛ سایت‌های تازه محافظت نمی‌شوند."
+    override val vaultSectionSites = "سایت‌های تو"
+    override val vaultSectionTimeline = "تاریخچهٔ نسخه‌ها"
+    override val vaultSectionActivity = "گزارش محافظت"
+    override val vaultSiteProtected = "مراقبت روشن"
+    override val vaultSiteUnprotected = "مراقبت خاموش"
+    override val vaultSitePinned = "میانبر صفحهٔ خانه"
+    override val vaultSiteDetailsTitle = "تنظیمات این سایت"
+    override val vaultProtectSwitchTitle = "مراقبت از ورود"
+    override val vaultProtectSwitchBody = "اگر سایت بیرونت کرد، خودکار برمی‌گردانیم."
+    override val vaultKeepAliveSwitchTitle = "زنده نگه‌داشتن در پس‌زمینه"
+    override val vaultKeepAliveSwitchBody = "بی‌صدا و کم‌مصرف، نشست را تازه نگه می‌دارد."
+    override val vaultCookieDaysTitle = "مدت ماندن ورود"
+    override val vaultCookieDaysBody = "کوکی‌های ورود این سایت تا این مدت ماندگار می‌شوند."
+    override val vaultSnapshotsOfSite = "نسخه‌های همین سایت"
+    override val vaultSaveNow = "همین حالا ذخیره کن"
+    override val vaultDelete = "حذف"
+    override val vaultDeleteConfirmTitle = "این نسخه حذف شود؟"
+    override val vaultDeleteConfirmBody = "این نسخهٔ ذخیره‌شده برای همیشه پاک می‌شود و برگشت‌پذیر نیست."
+    override val vaultClose = "بستن"
+    override val vaultEmptyActivity = "هنوز اتفاق خاصی برای حساب‌هایت نیفتاده."
+    override val vaultFilterEmpty = "بعد از تغییر وضعیت، سایت‌ها همین‌جا دسته‌بندی می‌شوند."
+    override val vaultHealthHealthy = "همه چیز سالم است"
+    override val vaultProtectAll = "مراقبت از همه"
+    override val vaultUnprotectAll = "خاموش‌کردن مراقبت همه"
+    override val vaultProtectAllOnDone = "مراقبت از همهٔ سایت‌ها روشن شد"
+    override val vaultProtectAllOffDone = "مراقبت از همهٔ سایت‌ها خاموش شد"
+    override val vaultRestoreNeedsOpenTab = "کوکی‌ها برگشتند؛ برای بازگرداندن حافظهٔ صفحه، سایت را باز کن."
+    override val vaultQuickActionsTitle = "کارهای سریع"
+    override val vaultJumpToSite = "رفتن به سایت"
+    override val feedbackRestoreEmpty = "این نسخه داده‌ای برای بازگردانی نداشت."
+    override val quickPageSection = "این صفحه"
+    override val quickLibrarySection = "کتابخانه"
+    override val quickToolsSection = "محافظت و ابزار"
+    override fun vaultSnapshotCount(count: Int) = "$count نسخه"
+    override fun vaultLastSavedAgo(label: String) = "آخرین ذخیره: $label"
+    override fun vaultKeepAliveEveryMinutes(minutes: Int) = "هر $minutes دقیقه"
+    override fun vaultDeleteSnapshotDone(domain: String) = "نسخهٔ $domain حذف شد"
+
     override fun tabsCount(count: Int) = "$count تب باز"
     override fun adsBlocked(count: Int) = "$count تبلیغ و ردیاب بسته شد"
     override fun downloadsMenu(count: Int) = "دانلودها ($count)"
@@ -861,6 +966,58 @@ private object EnglishStrings : MarbleStrings() {
     override val healthLogBody = "Anything that affects your logins is listed here in plain words."
     override val feedbackRestoreFailed = "We couldn’t read that copy"
     override val gotIt = "Got it"
+
+    override val vaultHeroTitle = "All your accounts, safe in one place"
+    override val vaultHeroBody = "Each site gets its own locked space; login copies are encrypted on this phone only."
+    override val vaultStatSites = "Sites"
+    override val vaultStatProtected = "Protected"
+    override val vaultStatSnapshots = "Saved copies"
+    override val vaultLastSaved = "Last saved"
+    override val vaultNever = "Nothing saved yet"
+    override val vaultSearchHint = "Search sites…"
+    override val vaultFilterAll = "All"
+    override val vaultFilterProtected = "Protected"
+    override val vaultFilterUnprotected = "Unprotected"
+    override val vaultFilterPinned = "Shortcut"
+    override val vaultNoMatch = "No site matches this search."
+    override val vaultProtectionOffBanner = "Protection for new sites is off in Settings, so new sites won’t be guarded."
+    override val vaultSectionSites = "Your sites"
+    override val vaultSectionTimeline = "Copy history"
+    override val vaultSectionActivity = "Protection log"
+    override val vaultSiteProtected = "Protection on"
+    override val vaultSiteUnprotected = "Protection off"
+    override val vaultSitePinned = "Home screen shortcut"
+    override val vaultSiteDetailsTitle = "Settings for this site"
+    override val vaultProtectSwitchTitle = "Guard my login"
+    override val vaultProtectSwitchBody = "If the site signs you out, we bring you back automatically."
+    override val vaultKeepAliveSwitchTitle = "Keep alive in background"
+    override val vaultKeepAliveSwitchBody = "Quietly keeps the session fresh with minimal battery use."
+    override val vaultCookieDaysTitle = "How long the login lasts"
+    override val vaultCookieDaysBody = "This site’s login cookies stay for this many days."
+    override val vaultSnapshotsOfSite = "Copies of this site"
+    override val vaultSaveNow = "Save right now"
+    override val vaultDelete = "Delete"
+    override val vaultDeleteConfirmTitle = "Delete this copy?"
+    override val vaultDeleteConfirmBody = "This saved copy is removed for good and cannot be undone."
+    override val vaultClose = "Close"
+    override val vaultEmptyActivity = "Nothing noteworthy has happened to your accounts yet."
+    override val vaultFilterEmpty = "Sites appear here once their protection changes."
+    override val vaultHealthHealthy = "Everything is healthy"
+    override val vaultProtectAll = "Protect all"
+    override val vaultUnprotectAll = "Unprotect all"
+    override val vaultProtectAllOnDone = "Protection turned on for all sites"
+    override val vaultProtectAllOffDone = "Protection turned off for all sites"
+    override val vaultRestoreNeedsOpenTab = "Cookies restored; open the site to restore page storage."
+    override val vaultQuickActionsTitle = "Quick actions"
+    override val vaultJumpToSite = "Jump to site"
+    override val feedbackRestoreEmpty = "This snapshot had nothing to restore."
+    override val quickPageSection = "This page"
+    override val quickLibrarySection = "Library"
+    override val quickToolsSection = "Protection & tools"
+    override fun vaultSnapshotCount(count: Int) = "$count copies"
+    override fun vaultLastSavedAgo(label: String) = "Last saved: $label"
+    override fun vaultKeepAliveEveryMinutes(minutes: Int) = "Every $minutes min"
+    override fun vaultDeleteSnapshotDone(domain: String) = "Removed a copy of $domain"
 
     override fun tabsCount(count: Int) = "$count open tabs"
     override fun adsBlocked(count: Int) = "$count ads and trackers blocked"

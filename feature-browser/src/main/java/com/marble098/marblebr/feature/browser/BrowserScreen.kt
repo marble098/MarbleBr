@@ -2,7 +2,10 @@ package com.marble098.marblebr.feature.browser
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -11,57 +14,52 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowRightAlt
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CleaningServices
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.InstallMobile
-import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
@@ -70,8 +68,6 @@ import androidx.compose.material.icons.filled.Tab
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -79,7 +75,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -87,63 +82,82 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import android.content.Context
-import android.content.ContextWrapper
-import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.key
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
-import com.marble098.marblebr.core.preferences.AddressSelectionMode
+import com.marble098.marblebr.core.designsystem.MarbleGlassIconButton
+import com.marble098.marblebr.core.designsystem.SiteBadgeLogo
+import com.marble098.marblebr.core.designsystem.liquidGlass
 import com.marble098.marblebr.core.model.BackNavigationResolver
 import com.marble098.marblebr.core.model.BackTarget
 import com.marble098.marblebr.core.model.BookmarkItem
 import com.marble098.marblebr.core.model.BrowserTab
+import com.marble098.marblebr.core.model.ChromeBarStyle
 import com.marble098.marblebr.core.model.DownloadItem
 import com.marble098.marblebr.core.model.DownloadState
 import com.marble098.marblebr.core.model.HistoryItem
-import com.marble098.marblebr.core.model.ChromeBarStyle
 import com.marble098.marblebr.core.model.MarbleLinks
-import com.marble098.marblebr.core.preferences.BrowserPreferences
-import com.marble098.marblebr.core.model.HomeShortcutPosition
 import com.marble098.marblebr.core.model.SessionHealthStatus
 import com.marble098.marblebr.core.model.WebAppContainer
+import com.marble098.marblebr.core.preferences.AddressSelectionMode
+import com.marble098.marblebr.core.preferences.BrowserPreferences
+import com.marble098.marblebr.core.model.HomeShortcutPosition
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import org.mozilla.geckoview.GeckoView
 
+/**
+ * صفحهٔ مرورگر: نوار بالا، نوار تب پایین، صفحهٔ خانه و شیت‌های کمکی.
+ *
+ * ### چرا باز شدن کیبورد قبلاً لگ داشت؟
+ * کل صفحه در یک `Scaffold` با `Modifier.imePadding()` قرار داشت. با باز شدن کیبورد،
+ * ارتفاعِ دسترس‌پذیر تغییر می‌کرد، این تغییر به **همهٔ** فرزندان (از جمله شیت‌های سنگین و
+ * `GeckoView`) منتقل می‌شد و هر فریم یک بازچیدمان (relayout) کامل اتفاق می‌افتاد. علاوه بر
+ * این، در هر بازترکیب یک `FocusRequester`/`onFocusChanged` تازه ساخته می‌شد.
+ *
+ * اصلاح ریشه‌ای:
+ * ۱. `imePadding` فقط روی محتوای صفحهٔ خانه/شیت‌هایی که ورودی متنی دارند اعمال می‌شود،
+ *    نه روی کل Scaffold و نه روی سطح `GeckoView`.
+ * ۲. وضعیت «فوکوس» در یک `remember` پایدار نگه داشته می‌شود و مقدارش با `rememberUpdatedState`
+ *    به لایه‌های پایین می‌رسد تا بازترکیب نوار ناشی از تایپ، نمای وب را دوباره نسازد.
+ * ۳. نوار بالا با `key(activeTab?.id)` ایزوله است و `AndroidView` صفحهٔ وب از بازترکیب‌های
+ *    نوار آدرس مصون می‌ماند.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BrowserScreen(
@@ -176,13 +190,17 @@ fun BrowserScreen(
     val hasPage = !activeTab?.url.isNullOrBlank()
     val focusManager = LocalFocusManager.current
     val clipboardContext = LocalContext.current
-    val submit: (String) -> Unit = { query ->
+
+    // پایدار نگه‌داشتن مسیر ارسال: از ساختِ لامبدای تازه در هر بازترکیب جلوگیری می‌کند.
+    val submitState = rememberUpdatedState<(String) -> Unit> { query ->
         if (query.isNotBlank()) {
             focusManager.clearFocus()
             keyboardController?.hide()
             viewModel.navigateToInput(query)
         }
     }
+    val submit: (String) -> Unit = { query -> submitState.value(query) }
+
     // دکمهٔ بازگشت: رفتارش را کاربر در تنظیمات انتخاب می‌کند.
     val backTarget = BackNavigationResolver.resolve(
         behavior = prefs.backButtonBehavior,
@@ -206,190 +224,101 @@ fun BrowserScreen(
     // در حالت شیشه‌ای شناور، نوارها روی محتوا می‌نشینند؛ پس خودِ محتوا فقط به اندازهٔ
     // ارتفاع نوارها فاصلهٔ داخلی می‌گیرد تا صفحه واقعاً از پشت شیشه دیده شود.
     val floatingChrome = prefs.chromeBarStyle == ChromeBarStyle.FLOATING
-    val floatingTopSpacer = if (floatingChrome) 104.dp else 0.dp
-    val floatingBottomSpacer = if (floatingChrome) 84.dp else 0.dp
 
-    Scaffold(
-        modifier = Modifier.imePadding(),
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(horizontal = 8.dp, vertical = 5.dp)
-                    .liquidGlass(prefs.chromeBarStyle)
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    FilledTonalIconButton(
-                        onClick = { onOpenVaultDashboard(activeTab?.containerId) },
-                        modifier = Modifier
-                            .size(40.dp)
-                            .floatingGlassPill(prefs.chromeBarStyle, radius = 20)
-                            .testTag("never_signout_shield_btn"),
-                    ) {
-                        Icon(
-                            imageVector = if (activeTab?.isPrivate == true) {
-                                Icons.Default.VisibilityOff
-                            } else {
-                                Icons.Default.Shield
-                            },
-                            contentDescription = strings.protectionLabel,
-                            tint = when (activeTab?.healthStatus) {
-                                SessionHealthStatus.PROTECTED_ACTIVE,
-                                SessionHealthStatus.HEALTHY,
-                                SessionHealthStatus.RECOVERED_FROM_VAULT,
-                                -> MaterialTheme.colorScheme.primary
-                                SessionHealthStatus.SERVER_REVOKED_FALLBACK -> MaterialTheme.colorScheme.error
-                                else -> MaterialTheme.colorScheme.outline
-                            },
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
+    // چیدمان به‌صورت لایه‌ای: محتوا (خانه/نمای وب) تمام فضا را می‌گیرد و نوار شناورِ پایین
+    // روی آن می‌نشیند؛ بنابراین در حالت شیشه‌ای هیچ پس‌زمینه‌ای پشت نوار نیست.
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
+        // نوارِ پایین شناور و بی‌پس‌زمینه است، پس محتوا تا لبهٔ پایین ادامه پیدا می‌کند و از
+        // پشت شیشه دیده می‌شود. فقط صفحهٔ خانه (که متن دارد) فضای امنِ پایین می‌گیرد.
+        val bottomBarAllowance = 84.dp +
+            WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        val topContentInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 62.dp
+        Box(modifier = Modifier.fillMaxSize()) {
+            LauncherContent(
+                uiState = uiState,
+                showHome = showHome,
+                hasPage = hasPage,
+                hasHomeShortcut = hasHomeShortcut,
+                renderGeckoWebView = renderGeckoWebView,
+                prefs = prefs,
+                bookmarks = bookmarks,
+                historyItems = historyItems,
+                downloadsCount = downloads.size,
+                blockedAdsCount = blockedAdsCount.toInt(),
+                submit = submit,
+                viewModel = viewModel,
+                onOpenVaultDashboard = onOpenVaultDashboard,
+                onOpenSettings = onOpenSettings,
+                onShowBookmarks = { showBookmarksHistorySheet = true },
+                onShowDownloads = { showDownloadsSheet = true },
+                onShowQuickActions = { showQuickActions = true },
+                onClearBackPrompt = { backPromptVisible = false },
+                topContentInset = topContentInset,
+                bottomContentInset = bottomBarAllowance,
+            )
+        }
 
-                    key(activeTab?.id) {
-                        BrowserAddressField(
-                            url = if (showHome) "" else activeTab?.url.orEmpty(),
-                            secure = activeTab?.isSecure == true,
-                            isBookmarked = isBookmarked,
-                            canBookmark = hasPage && activeTab?.isPrivate != true,
-                            mode = prefs.addressSelectionMode,
-                            onSubmit = submit,
-                            onBookmark = viewModel::toggleBookmarkCurrentPage,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-
-                    IconButton(
-                        onClick = { showQuickActions = true },
-                        modifier = Modifier.testTag("quick_actions_btn"),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Bolt,
-                            contentDescription = strings.quickActionsTitle,
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                    Box {
-                        IconButton(
-                            onClick = { showOverflowMenu = true },
-                            modifier = Modifier.testTag("browser_overflow_menu_btn"),
-                        ) {
-                            Icon(Icons.Default.MoreVert, contentDescription = strings.browserMenu)
-                        }
-                        BrowserOverflowMenu(
-                            expanded = showOverflowMenu,
-                            pageUrl = activeTab?.url?.ifBlank { null },
-                            isPrivate = activeTab?.isPrivate == true,
-                            canDuplicate = activeTab != null,
-                            onDuplicate = viewModel::duplicateTab,
-                            onDismiss = { showOverflowMenu = false },
-                            isDesktopMode = activeTab?.isDesktopMode == true,
-                            downloadsCount = downloads.size,
-                            onSaveState = viewModel::captureManualSnapshotNow,
-                            onOpenTimeMachine = { onOpenVaultDashboard(activeTab?.containerId) },
-                            onFindInPage = { viewModel.toggleFindInPage(true) },
-                            onToggleDesktop = viewModel::toggleDesktopMode,
-                            onInstallShortcut = viewModel::installCurrentSiteAsPwa,
-                            onFreeSpace = viewModel::clearCacheWithoutTouchingSessions,
-                            onOpenDownloads = { showDownloadsSheet = true },
-                            onOpenSettings = onOpenSettings,
-                        )
-                    }
-                }
-
-                AnimatedVisibility(
-                    visible = showHome && blockedAdsCount > 0,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically(),
-                ) {
-                    AssistChip(
-                        onClick = onOpenSettings,
-                        label = {
-                            Text(
-                                text = strings.adsBlocked(blockedAdsCount.toInt()),
-                                style = MaterialTheme.typography.labelLarge,
-                            )
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Security,
-                                contentDescription = strings.adBlockChip(blockedAdsCount.toInt()),
-                                modifier = Modifier.size(16.dp),
-                            )
-                        },
-                    )
-                }
-
-                Box(Modifier.fillMaxWidth().height(3.dp)) {
-                    if (!showHome && activeTab?.isLoading == true) {
-                        val progress = (activeTab.progress / 100f).coerceIn(0f, 1f)
-                        if (progress == 0f) {
-                            LinearProgressIndicator(modifier = Modifier.fillMaxSize())
-                        } else {
-                            val visibleProgress by animateFloatAsState(progress, label = "page load")
-                            LinearProgressIndicator(progress = { visibleProgress }, modifier = Modifier.fillMaxSize())
-                        }
-                    }
-                }
-
-                AnimatedVisibility(
-                    visible = uiState.isFindInPageVisible,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically(),
-                ) {
-                    FindInPageBar(
-                        query = uiState.findQuery,
-                        matchIndex = activeTab?.findMatchIndex ?: 0,
-                        totalMatches = activeTab?.findTotalMatches ?: 0,
-                        onQueryChanged = { viewModel.updateFindQuery(it, backwards = false) },
-                        onNext = { viewModel.updateFindQuery(uiState.findQuery, backwards = false) },
-                        onPrevious = { viewModel.updateFindQuery(uiState.findQuery, backwards = true) },
-                        onClose = { viewModel.toggleFindInPage(false) },
-                    )
-                }
-
-                if (uiState.bannerMessage != null) {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 2.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text(
-                                text = uiState.bannerMessage.orEmpty(),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.weight(1f),
-                            )
-                            IconButton(onClick = viewModel::dismissBanner) {
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = strings.dismiss,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                        }
-                    }
-                }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(2f),
+            verticalArrangement = Arrangement.Top,
+        ) {
+            BrowserTopBar(
+                style = prefs.chromeBarStyle,
+                showHome = showHome,
+                activeTab = activeTab,
+                url = if (showHome) "" else activeTab?.url.orEmpty(),
+                isBookmarked = isBookmarked,
+                canBookmark = hasPage && activeTab?.isPrivate != true,
+                addressMode = prefs.addressSelectionMode,
+                isLoading = activeTab?.isLoading == true,
+                progress = activeTab?.progress ?: 0,
+                isFindInPageVisible = uiState.isFindInPageVisible,
+                findQuery = uiState.findQuery,
+                findMatchIndex = activeTab?.findMatchIndex ?: 0,
+                findTotalMatches = activeTab?.findTotalMatches ?: 0,
+                bannerMessage = uiState.bannerMessage,
+                blockedAdsCount = blockedAdsCount.toInt(),
+                showAdChip = showHome && blockedAdsCount > 0,
+                onSubmit = submit,
+                onBookmark = viewModel::toggleBookmarkCurrentPage,
+                onQuickActions = { showQuickActions = true },
+                onPreviewOverflow = { showOverflowMenu = true },
+                onFindQueryChanged = { viewModel.updateFindQuery(it, backwards = false) },
+                onFindNext = { viewModel.updateFindQuery(uiState.findQuery, backwards = false) },
+                onFindPrevious = { viewModel.updateFindQuery(uiState.findQuery, backwards = true) },
+                onFindClose = { viewModel.toggleFindInPage(false) },
+                onDismissBanner = viewModel::dismissBanner,
+                onOpenVault = { onOpenVaultDashboard(activeTab?.containerId) },
+            )
+            if (showOverflowMenu) {
+                BrowserOverflowMenu(
+                    expanded = showOverflowMenu,
+                    onDismiss = { showOverflowMenu = false },
+                    pageUrl = activeTab?.url?.ifBlank { null },
+                    isPrivate = activeTab?.isPrivate == true,
+                    canDuplicate = activeTab != null,
+                    onDuplicate = viewModel::duplicateTab,
+                    isDesktopMode = activeTab?.isDesktopMode == true,
+                    downloadsCount = downloads.size,
+                    onSaveState = viewModel::captureManualSnapshotNow,
+                    onOpenTimeMachine = { onOpenVaultDashboard(activeTab?.containerId) },
+                    onFindInPage = { viewModel.toggleFindInPage(true) },
+                    onToggleDesktop = viewModel::toggleDesktopMode,
+                    onInstallShortcut = viewModel::installCurrentSiteAsPwa,
+                    onFreeSpace = viewModel::clearCacheWithoutTouchingSessions,
+                    onOpenDownloads = { showDownloadsSheet = true },
+                    onOpenSettings = onOpenSettings,
+                )
             }
-        },
-        bottomBar = {
+
+            Spacer(modifier = Modifier.weight(1f))
+
             BrowserBottomBar(
                 style = prefs.chromeBarStyle,
                 canGoBack = activeTab?.canGoBack == true,
@@ -404,74 +333,22 @@ fun BrowserScreen(
                 onHome = viewModel::showHome,
                 onTabs = { showTabsSheet = true },
             )
-        },
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(
-                    top = if (floatingChrome) floatingTopSpacer else innerPadding.calculateTopPadding(),
-                    bottom = if (floatingChrome) floatingBottomSpacer else innerPadding.calculateBottomPadding(),
-                )
-                .padding(bottom = if (hasHomeShortcut) 58.dp else 0.dp),
-        ) {
-            // با عوض شدن صفحه یا تب، پرسشِ بازگشتِ بی‌ربط بسته می‌شود.
-            LaunchedEffect(uiState.activeTabId, showHome) {
-                backPromptVisible = false
-            }
-            val isInspection = LocalInspectionMode.current
-            val container = uiState.activeContainer
-
-            if (showHome) {
-                HomeContent(
-                    strings = strings,
-                    bookmarks = bookmarks,
-                    historyItems = historyItems,
-                    shortcutPosition = prefs.homeShortcutPosition,
-                    onSearch = submit,
-                    onNewTab = { viewModel.openNewTab() },
-                    onNewPrivateTab = { viewModel.openNewTab(isPrivate = true) },
-                    onOpenBookmarksHistory = { showBookmarksHistorySheet = true },
-                    onOpenSettings = onOpenSettings,
-                )
-            } else if (activeTab != null && hasPage && renderGeckoWebView && !isInspection && container != null && container.id == activeTab.containerId) {
-                key(activeTab.id, activeTab.contextId) {
-                    GeckoSessionWebView(tab = activeTab, container = container, viewModel = viewModel)
-                }
-            } else if (!renderGeckoWebView || isInspection) {
-                ReadyCard(
-                    tab = activeTab,
-                    onCaptureSnapshot = viewModel::captureManualSnapshotNow,
-                    onOpenVault = { onOpenVaultDashboard(activeTab?.containerId) },
-                )
-            }
-
-            if (hasHomeShortcut) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().align(Alignment.BottomEnd),
-                    contentAlignment = Alignment.BottomEnd,
-                ) {
-                    HomeShortcutButton(
-                        onClick = { viewModel.openNewTab() },
-                    )
-                }
-            }
         }
     }
 
     if (showQuickActions) {
         ModalBottomSheet(onDismissRequest = { showQuickActions = false }) {
             QuickActionsSheet(
-                strings = strings,
                 hasPage = hasPage,
                 activeTab = activeTab,
                 prefs = prefs,
                 blockedAdsCount = blockedAdsCount.toInt(),
                 downloadsCount = downloads.size,
-                onDismiss = { showQuickActions = false },
+                tabsCount = uiState.tabs.size,
                 viewModel = viewModel,
                 onSubmit = submit,
                 onOpenVault = { onOpenVaultDashboard(activeTab?.containerId) },
+                onOpenTabs = { showTabsSheet = true },
                 onOpenBookmarks = { showBookmarksHistorySheet = true },
                 onOpenDownloads = { showDownloadsSheet = true },
                 onOpenSettings = onOpenSettings,
@@ -480,6 +357,7 @@ fun BrowserScreen(
                     val share = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, url)
                     clipboardContext.startActivity(Intent.createChooser(share, strings.quickShare))
                 },
+                onDismiss = { showQuickActions = false },
             )
         }
     }
@@ -629,6 +507,209 @@ fun BrowserScreen(
     }
 }
 
+/* ---------------------------------------- نوار بالا ---------------------------------------- */
+
+@Composable
+private fun BrowserTopBar(
+    style: ChromeBarStyle,
+    showHome: Boolean,
+    activeTab: BrowserTab?,
+    url: String,
+    isBookmarked: Boolean,
+    canBookmark: Boolean,
+    addressMode: AddressSelectionMode,
+    isLoading: Boolean,
+    progress: Int,
+    isFindInPageVisible: Boolean,
+    findQuery: String,
+    findMatchIndex: Int,
+    findTotalMatches: Int,
+    bannerMessage: String?,
+    blockedAdsCount: Int,
+    showAdChip: Boolean,
+    onSubmit: (String) -> Unit,
+    onBookmark: () -> Unit,
+    onQuickActions: () -> Unit,
+    onPreviewOverflow: () -> Unit,
+    onFindQueryChanged: (String) -> Unit,
+    onFindNext: () -> Unit,
+    onFindPrevious: () -> Unit,
+    onFindClose: () -> Unit,
+    onDismissBanner: () -> Unit,
+    onOpenVault: () -> Unit,
+) {
+    val strings = LocalMarbleStrings.current
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(30.dp)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .padding(horizontal = 10.dp, vertical = 5.dp)
+            .then(
+                if (style == ChromeBarStyle.FLOATING) {
+                    Modifier.padding(horizontal = 2.dp)
+                } else {
+                    Modifier
+                        .liquidGlass(style = style, shape = shape, elevation = if (style == ChromeBarStyle.GLASS) 10.dp else 3.dp)
+                        .padding(horizontal = 8.dp, vertical = 8.dp)
+                },
+            ),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            MarbleGlassIconButton(
+                icon = if (activeTab?.isPrivate == true) Icons.Default.VisibilityOff else Icons.Default.Shield,
+                contentDescription = strings.protectionLabel,
+                onClick = onOpenVault,
+                style = style,
+                tint = when (activeTab?.healthStatus) {
+                    SessionHealthStatus.PROTECTED_ACTIVE,
+                    SessionHealthStatus.HEALTHY,
+                    SessionHealthStatus.RECOVERED_FROM_VAULT,
+                    -> colors.primary
+                    SessionHealthStatus.SERVER_REVOKED_FALLBACK -> colors.error
+                    else -> colors.outline
+                },
+                size = 42.dp,
+                iconSize = 19.dp,
+                testTag = "never_signout_shield_btn",
+            )
+
+            key(activeTab?.id) {
+                BrowserAddressField(
+                    url = url,
+                    secure = activeTab?.isSecure == true,
+                    isBookmarked = isBookmarked,
+                    canBookmark = canBookmark,
+                    mode = addressMode,
+                    onSubmit = onSubmit,
+                    onBookmark = onBookmark,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            MarbleGlassIconButton(
+                icon = Icons.Default.Bolt,
+                contentDescription = strings.quickActionsTitle,
+                onClick = onQuickActions,
+                style = style,
+                tint = colors.primary,
+                size = 42.dp,
+                iconSize = 21.dp,
+                testTag = "quick_actions_btn",
+            )
+            MarbleGlassIconButton(
+                icon = Icons.Default.MoreVert,
+                contentDescription = strings.browserMenu,
+                onClick = onPreviewOverflow,
+                style = style,
+                size = 42.dp,
+                iconSize = 21.dp,
+                testTag = "browser_overflow_menu_btn",
+            )
+        }
+
+        Box(Modifier.fillMaxWidth().height(2.5.dp)) {
+            if (!showHome && isLoading) {
+                val fraction = (progress / 100f).coerceIn(0f, 1f)
+                val visibleProgress by animateFloatAsState(fraction, label = "page load")
+                LinearProgressIndicator(
+                    progress = { if (fraction == 0f) 0.04f else visibleProgress },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(50)),
+                    color = colors.primary,
+                    trackColor = colors.primary.copy(alpha = 0.12f),
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = isFindInPageVisible,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
+        ) {
+            FindInPageBar(
+                query = findQuery,
+                matchIndex = findMatchIndex,
+                totalMatches = findTotalMatches,
+                onQueryChanged = onFindQueryChanged,
+                onNext = onFindNext,
+                onPrevious = onFindPrevious,
+                onClose = onFindClose,
+            )
+        }
+
+        AnimatedVisibility(
+            visible = showAdChip,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
+        ) {
+            AssistChip(
+                onClick = onOpenVault,
+                label = {
+                    Text(
+                        text = strings.adsBlocked(blockedAdsCount),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = strings.adBlockChip(blockedAdsCount),
+                        modifier = Modifier.size(16.dp),
+                    )
+                },
+            )
+        }
+
+        AnimatedVisibility(
+            visible = bannerMessage != null,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
+        ) {
+            BannerCard(message = bannerMessage.orEmpty(), onDismiss = onDismissBanner)
+        }
+    }
+}
+
+@Composable
+private fun BannerCard(message: String, onDismiss: () -> Unit) {
+    val strings = LocalMarbleStrings.current
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(colors.secondaryContainer.copy(alpha = 0.92f))
+            .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.onSecondaryContainer,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.Default.Close, contentDescription = strings.dismiss, modifier = Modifier.size(16.dp))
+        }
+    }
+}
+
+/**
+ * نوار آدرس سبک و بدون بازترکیبِ سنگین.
+ *
+ * از [BasicTextField] استفاده می‌کند (نه [OutlinedTextField]) تا هر تایپ فقط یک لایهٔ متن
+ * را دوباره بکشد؛ رنگ و شکل در Composable جدا کش می‌شوند.
+ */
 @Composable
 private fun BrowserAddressField(
     url: String,
@@ -641,270 +722,198 @@ private fun BrowserAddressField(
     modifier: Modifier = Modifier,
 ) {
     val strings = LocalMarbleStrings.current
+    val colors = MaterialTheme.colorScheme
     var focused by remember { mutableStateOf(false) }
     var input by remember { mutableStateOf(TextFieldValue(url)) }
+    val style = ChromeBarStyle.FLOATING
+    val shape = RoundedCornerShape(24.dp)
+    val submitNow = rememberUpdatedState(onSubmit)
+
     LaunchedEffect(url, focused) {
-        if (!focused) input = TextFieldValue(url)
+        if (!focused && input.text != url) input = TextFieldValue(url)
     }
     LaunchedEffect(focused) {
         if (focused && mode != AddressSelectionMode.CURSOR) {
             input = input.copy(selection = addressSelection(input.text, input.selection.end, mode))
         }
     }
-    OutlinedTextField(
-        value = input,
-        onValueChange = { input = it },
-        modifier = modifier.testTag("smart_address_bar")
-            .onFocusChanged { focused = it.isFocused }
-            .onPreviewKeyEvent { event ->
-                if (event.key != Key.Enter && event.key != Key.NumPadEnter) {
-                    false
-                } else {
-                    if (event.type == KeyEventType.KeyUp) onSubmit(input.text)
-                    true
-                }
-            },
-        singleLine = true,
-        shape = RoundedCornerShape(24.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
-            unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        ),
-        textStyle = MaterialTheme.typography.bodyMedium,
-        leadingIcon = {
-            Icon(
-                imageVector = if (secure) Icons.Default.Lock else Icons.Default.Search,
-                contentDescription = null,
-                tint = if (secure) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp),
-            )
-        },
-        trailingIcon = {
-            if (focused) {
-                IconButton(onClick = { onSubmit(input.text) }, enabled = input.text.isNotBlank()) {
-                    Icon(Icons.Default.ArrowRightAlt, contentDescription = strings.goToAddress)
-                }
-            } else if (canBookmark) {
-                IconButton(onClick = onBookmark) {
-                    Icon(
-                        if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                        contentDescription = strings.bookmarkToggle,
-                    )
-                }
-            }
-        },
-        placeholder = { Text(strings.addressPlaceholder, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-        keyboardActions = KeyboardActions(onGo = { onSubmit(input.text) }),
-    )
-}
 
-@Composable
-private fun HomeShortcutButton(onClick: () -> Unit) {
-    val strings = LocalMarbleStrings.current
-    FilledTonalIconButton(
-        onClick = onClick,
-        modifier = Modifier.size(52.dp).testTag("home_shortcut_btn"),
+    Row(
+        modifier = modifier
+            .height(44.dp)
+            .floatingGlassPill(style = style, emphasized = focused)
+            .onFocusChanged { focused = it.isFocused }
+            .padding(start = 12.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Icon(
-            imageVector = Icons.Default.Add,
-            contentDescription = strings.newTab,
-            modifier = Modifier.size(22.dp),
+            imageVector = if (secure) Icons.Default.Lock else Icons.Default.Search,
+            contentDescription = null,
+            tint = if (secure) colors.primary else colors.onSurfaceVariant,
+            modifier = Modifier.size(16.dp),
         )
-    }
-}
-
-@Composable
-private fun HomeContent(
-    strings: com.marble098.marblebr.core.i18n.MarbleStrings,
-    bookmarks: List<BookmarkItem>,
-    historyItems: List<HistoryItem>,
-    shortcutPosition: HomeShortcutPosition,
-    onSearch: (String) -> Unit,
-    onNewTab: () -> Unit,
-    onNewPrivateTab: () -> Unit,
-    onOpenBookmarksHistory: () -> Unit,
-    onOpenSettings: () -> Unit,
-) {
-    val showTopShortcut = shortcutPosition == HomeShortcutPosition.TOP
-    var homeSearch by remember { mutableStateOf("") }
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Text(
-            text = strings.homeTitle,
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            text = strings.homeIntro,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        OutlinedTextField(
-            value = homeSearch,
-            onValueChange = { homeSearch = it },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            shape = MaterialTheme.shapes.large,
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary) },
-            trailingIcon = {
-                if (homeSearch.isNotBlank()) {
-                    IconButton(onClick = { homeSearch = "" }) {
-                        Icon(Icons.Default.Close, contentDescription = strings.dismiss, modifier = Modifier.size(18.dp))
-                    }
-                }
-            },
-            placeholder = { Text(text = strings.homeSearchHint) },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-            keyboardActions = KeyboardActions(onGo = {
-                if (homeSearch.isNotBlank()) {
-                    onSearch(homeSearch)
-                    homeSearch = ""
-                }
-            }),
-        )
-
-        if (showTopShortcut) {
-            HomeShortcutActionRow(onNewTab = onNewTab)
-        }
-
-        SectionHeader(strings = strings, title = strings.homeShortcutsTitle, action = onOpenBookmarksHistory)
-        if (bookmarks.isEmpty()) {
-            EmptyState(icon = Icons.Default.BookmarkBorder, text = strings.homeEmptyShortcuts)
-        } else {
-            bookmarks.take(6).forEach { bookmark ->
-                LinkCard(bookmark.title.ifBlank { bookmark.url }, bookmark.url, Icons.Default.Bookmark) { onSearch(bookmark.url) }
-            }
-        }
-
-        SectionHeader(strings = strings, title = strings.homeRecentTitle, action = onOpenBookmarksHistory)
-        if (historyItems.isEmpty()) {
-            EmptyState(icon = Icons.Default.History, text = strings.homeEmptyRecent)
-        } else {
-            historyItems.take(8).forEach { item ->
-                LinkCard(item.title.ifBlank { item.url }, item.url, Icons.Default.History) { onSearch(item.url) }
-            }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            QuickActionButton(icon = Icons.Default.Add, label = strings.newTab, onClick = onNewTab)
-            QuickActionButton(icon = Icons.Default.VisibilityOff, label = strings.newPrivateTab, onClick = onNewPrivateTab)
-            QuickActionButton(icon = Icons.Default.Bookmark, label = strings.bookmarksLabel, onClick = onOpenBookmarksHistory)
-            QuickActionButton(icon = Icons.Default.Settings, label = strings.settingsLabel, onClick = onOpenSettings)
-        }
-
-        Spacer(Modifier.height(16.dp))
-    }
-}
-
-@Composable
-private fun SectionHeader(
-    strings: com.marble098.marblebr.core.i18n.MarbleStrings,
-    title: String,
-    action: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        TextButton(onClick = action) { Text(text = strings.homeSeeAll) }
-    }
-}
-
-@Composable
-private fun HomeShortcutActionRow(onNewTab: () -> Unit) {
-    val strings = LocalMarbleStrings.current
-    FilledTonalButton(
-        onClick = onNewTab,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(20.dp))
-            Text(text = strings.newTab, style = MaterialTheme.typography.labelLarge)
-        }
-    }
-}
-
-@Composable
-private fun EmptyState(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.size(40.dp))
-        Text(text = text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun LinkCard(
-    title: String,
-    subtitle: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp).fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            if (input.text.isEmpty()) {
                 Text(
-                    text = subtitle,
+                    text = strings.addressPlaceholder,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                )
+            }
+            BasicTextField(
+                value = input,
+                onValueChange = { input = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("smart_address_bar")
+                    .onPreviewKeyEvent { event ->
+                        if (event.key != Key.Enter && event.key != Key.NumPadEnter) {
+                            false
+                        } else {
+                            if (event.type == KeyEventType.KeyUp) submitNow.value(input.text)
+                            true
+                        }
+                    },
+                singleLine = true,
+                textStyle = TextStyle(
+                    color = colors.onSurface,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                ),
+                cursorBrush = Brush.verticalGradient(listOf(colors.primary, colors.primary)),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                keyboardActions = KeyboardActions(onGo = { submitNow.value(input.text) }),
+            )
+        }
+        if (focused) {
+            IconButton(
+                onClick = { submitNow.value(input.text) },
+                enabled = input.text.isNotBlank(),
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    Icons.Default.ArrowRightAlt,
+                    contentDescription = strings.goToAddress,
+                    tint = if (input.text.isNotBlank()) colors.primary else colors.outline,
+                    modifier = Modifier.size(19.dp),
+                )
+            }
+        } else if (canBookmark) {
+            IconButton(onClick = onBookmark, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                    contentDescription = strings.bookmarkToggle,
+                    tint = if (isBookmarked) colors.primary else colors.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
                 )
             }
         }
     }
 }
 
+/* --------------------------------------- محتوای صفحه --------------------------------------- */
+
 @Composable
-private fun QuickActionButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    onClick: () -> Unit,
+private fun LauncherContent(
+    uiState: BrowserUiState,
+    showHome: Boolean,
+    hasPage: Boolean,
+    hasHomeShortcut: Boolean,
+    renderGeckoWebView: Boolean,
+    prefs: BrowserPreferences,
+    bookmarks: List<BookmarkItem>,
+    historyItems: List<HistoryItem>,
+    downloadsCount: Int,
+    blockedAdsCount: Int,
+    submit: (String) -> Unit,
+    viewModel: BrowserViewModel,
+    onOpenVaultDashboard: (String?) -> Unit,
+    onOpenSettings: () -> Unit,
+    onShowBookmarks: () -> Unit,
+    onShowDownloads: () -> Unit,
+    onShowQuickActions: () -> Unit,
+    onClearBackPrompt: () -> Unit,
+    topContentInset: Dp,
+    bottomContentInset: Dp,
 ) {
-    FilledTonalIconButton(onClick = onClick, modifier = Modifier.size(52.dp)) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(22.dp))
-            Text(text = label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+    val activeTab = uiState.activeTab
+    val isInspection = LocalInspectionMode.current
+    val container = uiState.activeContainer
+
+    // با عوض شدن صفحه یا تب، پرسشِ بازگشتِ بی‌ربط بسته می‌شود.
+    LaunchedEffect(uiState.activeTabId, showHome) { onClearBackPrompt() }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        when {
+            showHome -> HomeContent(
+                modifier = Modifier.padding(top = topContentInset),
+                bookmarks = bookmarks,
+                historyItems = historyItems,
+                shortcutPosition = prefs.homeShortcutPosition,
+                chromeBarStyle = prefs.chromeBarStyle,
+                blockedAdsCount = blockedAdsCount,
+                downloadsCount = downloadsCount,
+                onSearch = submit,
+                onNewTab = { viewModel.openNewTab() },
+                onNewPrivateTab = { viewModel.openNewTab(isPrivate = true) },
+                onOpenBookmarksHistory = onShowBookmarks,
+                onOpenDownloads = onShowDownloads,
+                onOpenSettings = onOpenSettings,
+                onOpenQuickActions = onShowQuickActions,
+                bottomContentInset = bottomContentInset,
+            )
+
+            activeTab != null && hasPage && renderGeckoWebView && !isInspection && container != null && container.id == activeTab.containerId -> {
+                key(activeTab.id, activeTab.contextId) {
+                    GeckoSessionWebView(tab = activeTab, container = container, viewModel = viewModel)
+                }
+            }
+
+            !renderGeckoWebView || isInspection -> ReadyCard(
+                tab = activeTab,
+                onCaptureSnapshot = viewModel::captureManualSnapshotNow,
+                onOpenVault = { onOpenVaultDashboard(activeTab?.containerId) },
+            )
+        }
+
+        if (hasHomeShortcut) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 16.dp, bottom = bottomContentInset + 6.dp),
+            ) {
+                HomeShortcutButton(onClick = { viewModel.openNewTab() })
+            }
         }
     }
 }
 
-/* ---------------- existing browser sub-components (kept) ---------------- */
+@Composable
+private fun HomeShortcutButton(onClick: () -> Unit) {
+    val strings = LocalMarbleStrings.current
+    val colors = MaterialTheme.colorScheme
+    Box(
+        modifier = Modifier
+            .size(54.dp)
+            .clip(CircleShape)
+            .background(Brush.linearGradient(listOf(colors.primary, colors.tertiary)))
+            .clickable(onClick = onClick)
+            .testTag("home_shortcut_btn"),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Default.Add,
+            contentDescription = strings.newTab,
+            tint = Color.White,
+            modifier = Modifier.size(24.dp),
+        )
+    }
+}
+
+/* ------------------------------- شیت‌های کمکی و اجزای بازمانده ------------------------------- */
 
 @Composable
 private fun BrowserOverflowMenu(
@@ -1100,34 +1109,53 @@ private fun FindInPageBar(
     onClose: () -> Unit,
 ) {
     val strings = LocalMarbleStrings.current
+    val colors = MaterialTheme.colorScheme
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp)
+            .floatingGlassPill(style = ChromeBarStyle.FLOATING)
+            .padding(start = 12.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        OutlinedTextField(
+        Icon(Icons.Default.Search, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(16.dp))
+        BasicTextField(
             value = query,
             onValueChange = onQueryChanged,
-            modifier = Modifier.weight(1f).testTag("find_in_page_input"),
+            modifier = Modifier
+                .weight(1f)
+                .testTag("find_in_page_input"),
             singleLine = true,
-            shape = MaterialTheme.shapes.large,
-            placeholder = { Text(strings.findInPagePlaceholder) },
-            trailingIcon = {
-                Text(
-                    text = "$matchIndex/$totalMatches",
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(end = 8.dp),
-                )
+            textStyle = TextStyle(color = colors.onSurface, fontSize = 14.sp),
+            cursorBrush = Brush.verticalGradient(listOf(colors.primary, colors.primary)),
+            decorationBox = { inner ->
+                Box(contentAlignment = Alignment.CenterStart) {
+                    if (query.isEmpty()) {
+                        Text(
+                            text = strings.findInPagePlaceholder,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.onSurfaceVariant,
+                        )
+                    }
+                    inner()
+                }
             },
         )
-        IconButton(onClick = onPrevious) {
-            Icon(Icons.Default.KeyboardArrowUp, contentDescription = strings.findPrevious)
+        Text(
+            text = "$matchIndex/$totalMatches",
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.sp),
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 2.dp),
+        )
+        IconButton(onClick = onPrevious, modifier = Modifier.size(30.dp)) {
+            Icon(Icons.Default.KeyboardArrowUp, contentDescription = strings.findPrevious, modifier = Modifier.size(18.dp))
         }
-        IconButton(onClick = onNext) {
-            Icon(Icons.Default.KeyboardArrowDown, contentDescription = strings.findNext)
+        IconButton(onClick = onNext, modifier = Modifier.size(30.dp)) {
+            Icon(Icons.Default.KeyboardArrowDown, contentDescription = strings.findNext, modifier = Modifier.size(18.dp))
         }
-        IconButton(onClick = onClose) {
-            Icon(Icons.Default.Close, contentDescription = strings.findClose)
+        IconButton(onClick = onClose, modifier = Modifier.size(30.dp)) {
+            Icon(Icons.Default.Close, contentDescription = strings.findClose, modifier = Modifier.size(16.dp))
         }
     }
 }
@@ -1139,15 +1167,13 @@ private fun ReadyCard(
     onOpenVault: () -> Unit,
 ) {
     val strings = LocalMarbleStrings.current
+    val colors = MaterialTheme.colorScheme
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
-                        MaterialTheme.colorScheme.background,
-                    ),
+                    listOf(colors.primaryContainer.copy(alpha = 0.28f), colors.background),
                 ),
             )
             .padding(24.dp),
@@ -1155,7 +1181,7 @@ private fun ReadyCard(
     ) {
         Card(
             shape = MaterialTheme.shapes.extraLarge,
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            colors = CardDefaults.cardColors(containerColor = colors.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
@@ -1166,7 +1192,7 @@ private fun ReadyCard(
                 Icon(
                     imageVector = Icons.Default.Shield,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = colors.primary,
                     modifier = Modifier.size(36.dp),
                 )
                 Text(
@@ -1177,28 +1203,30 @@ private fun ReadyCard(
                 Text(
                     text = strings.readyBody,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.onSurfaceVariant,
                 )
                 Text(
-                    text = tab?.url ?: "https://github.com",
+                    text = tab?.url ?: MarbleLinks.GITHUB_URL,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = colors.primary,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = onCaptureSnapshot) {
-                        Text(strings.quickSaveState)
-                    }
-                    FilledTonalButton(onClick = onOpenVault) {
-                        Text(strings.quickEarlierCopies)
-                    }
+                    Button(onClick = onCaptureSnapshot) { Text(strings.quickSaveState) }
+                    FilledTonalButton(onClick = onOpenVault) { Text(strings.quickEarlierCopies) }
                 }
             }
         }
     }
 }
 
+/**
+ * شیتِ تب‌ها — بازطراحی برای خوانایی و استفادهٔ آسان‌تر.
+ *
+ * هر تب یک کارتِ افقی با لوگوی سایت، عنوان، دامنه و دکمهٔ بستن است؛ تبِ فعال با حاشیه و
+ * پس‌زمینهٔ رنگی برجسته می‌شود و نوار ابزار بالای شیت همیشه در دسترس است.
+ */
 @Composable
 private fun TabsSwitcherSheet(
     tabs: List<BrowserTab>,
@@ -1212,10 +1240,17 @@ private fun TabsSwitcherSheet(
     onNewPrivateTab: () -> Unit,
 ) {
     val strings = LocalMarbleStrings.current
+    val colors = MaterialTheme.colorScheme
     var filter by remember { mutableStateOf("") }
     var confirmCloseAll by remember { mutableStateOf(false) }
-    val visibleTabs = tabs.filter {
-        it.url.contains(filter, ignoreCase = true) || it.title.contains(filter, ignoreCase = true)
+    val visibleTabs = remember(tabs, filter) {
+        if (filter.isBlank()) {
+            tabs
+        } else {
+            tabs.filter {
+                it.url.contains(filter, ignoreCase = true) || it.title.contains(filter, ignoreCase = true)
+            }
+        }
     }
     if (confirmCloseAll) {
         AlertDialog(
@@ -1234,82 +1269,205 @@ private fun TabsSwitcherSheet(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
+            .padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(strings.openTabsTitle(tabs.size), style = MaterialTheme.typography.titleLarge)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilledTonalButton(onClick = onNewPrivateTab) {
-                Icon(Icons.Default.VisibilityOff, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(strings.newPrivateTab)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = strings.openTabsTitle(tabs.size),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+                Text(
+                    text = strings.tabsBehaviorTitle,
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.sp),
+                    color = colors.onSurfaceVariant,
+                )
             }
-            Button(onClick = onNewNormalTab) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(strings.newTab)
+            MarbleGlassIconButton(
+                icon = Icons.Default.VisibilityOff,
+                contentDescription = strings.newPrivateTab,
+                onClick = onNewPrivateTab,
+                style = ChromeBarStyle.FLOATING,
+                size = 40.dp,
+            )
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Brush.linearGradient(listOf(colors.primary, colors.tertiary)))
+                    .clickable(onClick = onNewNormalTab),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Default.Add, contentDescription = strings.newTab, tint = Color.White, modifier = Modifier.size(20.dp))
             }
+        }
+
+        if (tabs.size > 3) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(42.dp)
+                    .floatingGlassPill(style = ChromeBarStyle.FLOATING)
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(Icons.Default.Search, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                BasicTextField(
+                    value = filter,
+                    onValueChange = { filter = it },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    textStyle = TextStyle(color = colors.onSurface, fontSize = 14.sp),
+                    cursorBrush = Brush.verticalGradient(listOf(colors.primary, colors.primary)),
+                    decorationBox = { inner ->
+                        Box(contentAlignment = Alignment.CenterStart) {
+                            if (filter.isEmpty()) {
+                                Text(
+                                    text = strings.searchTabs,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = colors.onSurfaceVariant,
+                                )
+                            }
+                            inner()
+                        }
+                    },
+                )
+            }
+        }
+
+        if (visibleTabs.isEmpty()) {
+            Text(
+                text = if (tabs.isEmpty()) strings.noTabs else strings.noMatchingTabs,
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 20.dp),
+            )
+        }
+
+        LazyColumn(
+            modifier = Modifier.weight(1f, fill = false),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 12.dp),
+        ) {
+            items(visibleTabs, key = { it.id }) { tab ->
+                TabCard(
+                    tab = tab,
+                    isSelected = tab.id == activeTabId,
+                    onSelect = { onSelectTab(tab.id) },
+                    onClose = { onCloseTab(tab.id) },
+                )
+            }
+        }
+
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             TextButton(onClick = onReopenTab, enabled = canReopenTab) { Text(strings.reopenTab) }
             if (tabs.isNotEmpty()) {
                 TextButton(onClick = { confirmCloseAll = true }) { Text(strings.closeAllTabs) }
             }
         }
-        if (tabs.isNotEmpty()) {
-            OutlinedTextField(
-                value = filter,
-                onValueChange = { filter = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                label = { Text(strings.searchTabs) },
+    }
+}
+
+@Composable
+private fun TabCard(
+    tab: BrowserTab,
+    isSelected: Boolean,
+    onSelect: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val strings = LocalMarbleStrings.current
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(18.dp)
+    val domain = remember(tab.url) { siteDomain(tab.url) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            // کارتِ تب، سبک و شیشه‌ای است: تبِ فعال با هالهٔ نازکِ رنگی و نوار کناری مشخص
+            // می‌شود (نه با پنلِ توپُرِ سنگین که در نسخهٔ قبل کل ردیف را می‌پوشاند).
+            .background(
+                when {
+                    isSelected -> colors.surface.copy(alpha = 0.78f)
+                    tab.isPrivate -> colors.tertiary.copy(alpha = 0.10f)
+                    else -> colors.surface.copy(alpha = 0.52f)
+                },
+            )
+            .border(
+                width = if (isSelected) 1.2.dp else 0.9.dp,
+                color = when {
+                    isSelected -> colors.primary.copy(alpha = 0.55f)
+                    tab.isPrivate -> colors.tertiary.copy(alpha = 0.35f)
+                    else -> colors.outlineVariant.copy(alpha = 0.30f)
+                },
+                shape = shape,
+            )
+            .clickable(onClick = onSelect)
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        if (tab.url.isBlank()) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(colors.surfaceContainerHighest),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (tab.isPrivate) Icons.Default.VisibilityOff else Icons.Default.Tab,
+                    contentDescription = null,
+                    tint = colors.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        } else {
+            SiteBadgeLogo(displayName = tab.title, domain = domain, size = 32.dp)
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = tab.title.ifBlank {
+                    tab.url.ifBlank { if (tab.isPrivate) strings.privateTabTitle else strings.newTabTitle }
+                },
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = when {
+                    tab.isPrivate -> strings.privateTabTitle
+                    tab.url.isBlank() -> strings.newTabTitle
+                    else -> domain
+                },
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.sp),
+                color = colors.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
-        if (visibleTabs.isEmpty()) Text(if (tabs.isEmpty()) strings.noTabs else strings.noMatchingTabs)
-        LazyColumn(modifier = Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(visibleTabs, key = { it.id }) { tab ->
-                val isSelected = tab.id == activeTabId
-                Card(
-                    modifier = Modifier
-                        .animateItem()
-                        .fillMaxWidth()
-                        .clickable { onSelectTab(tab.id) },
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isSelected) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surfaceContainerHigh
-                        },
-                    ),
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = tab.title.ifBlank { tab.url.ifBlank { if (tab.isPrivate) strings.privateTabTitle else strings.newTab } },
-                                style = MaterialTheme.typography.titleMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                text = if (tab.isPrivate) strings.privateTabTitle else tab.url,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        IconButton(onClick = { onCloseTab(tab.id) }) {
-                            Icon(Icons.Default.Close, contentDescription = strings.closeTab, modifier = Modifier.size(18.dp))
-                        }
-                    }
-                }
-            }
+        if (isSelected) {
+            Box(
+                modifier = Modifier
+                    .size(width = 3.dp, height = 22.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(colors.primary),
+            )
         }
-        Spacer(Modifier.height(16.dp))
+        IconButton(onClick = onClose, modifier = Modifier.size(30.dp)) {
+            Icon(Icons.Default.Close, contentDescription = strings.closeTab, modifier = Modifier.size(16.dp))
+        }
     }
 }
 
@@ -1321,11 +1479,12 @@ private fun BookmarksAndHistorySheet(
     onClearHistory: () -> Unit,
 ) {
     val strings = LocalMarbleStrings.current
+    val colors = MaterialTheme.colorScheme
     var selectedSection by remember { mutableStateOf(0) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
+            .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(
@@ -1346,9 +1505,7 @@ private fun BookmarksAndHistorySheet(
                 )
             }
             if (selectedSection == 1 && historyItems.isNotEmpty()) {
-                TextButton(onClick = onClearHistory) {
-                    Text(strings.clearHistory)
-                }
+                TextButton(onClick = onClearHistory) { Text(strings.clearHistory) }
             }
         }
 
@@ -1358,7 +1515,8 @@ private fun BookmarksAndHistorySheet(
             Text(
                 text = if (isBookmarks) strings.emptyBookmarks else strings.emptyHistory,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 16.dp),
             )
         } else {
             LazyColumn(
@@ -1367,11 +1525,11 @@ private fun BookmarksAndHistorySheet(
             ) {
                 if (isBookmarks) {
                     items(bookmarks, key = { it.id }) { bm ->
-                        LinkRow(title = bm.title, url = bm.url, onClick = { onSelectUrl(bm.url) })
+                        LibraryRow(title = bm.title, url = bm.url, onClick = { onSelectUrl(bm.url) })
                     }
                 } else {
                     items(historyItems, key = { it.id }) { item ->
-                        LinkRow(title = item.title, url = item.url, onClick = { onSelectUrl(item.url) })
+                        LibraryRow(title = item.title, url = item.url, onClick = { onSelectUrl(item.url) })
                     }
                 }
             }
@@ -1380,20 +1538,32 @@ private fun BookmarksAndHistorySheet(
 }
 
 @Composable
-private fun LinkRow(title: String, url: String, onClick: () -> Unit) {
-    Surface(
+private fun LibraryRow(title: String, url: String, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(16.dp)
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            .clip(shape)
+            .background(colors.surface.copy(alpha = 0.55f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Text(title.ifBlank { url }, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        SiteBadgeLogo(displayName = title, domain = siteDomain(url), size = 30.dp)
+        Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = url,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = title.ifBlank { siteDomain(url) },
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = siteDomain(url),
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.sp),
+                color = colors.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -1404,18 +1574,19 @@ private fun LinkRow(title: String, url: String, onClick: () -> Unit) {
 @Composable
 private fun DownloadsSheet(downloads: List<DownloadItem>) {
     val strings = LocalMarbleStrings.current
+    val colors = MaterialTheme.colorScheme
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
+            .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text(strings.downloadsMenu(downloads.size), style = MaterialTheme.typography.titleLarge)
+        Text(strings.downloadsMenu(downloads.size), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         if (downloads.isEmpty()) {
             Text(
                 text = strings.emptyDownloads,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.onSurfaceVariant,
             )
         } else {
             LazyColumn(
@@ -1423,299 +1594,51 @@ private fun DownloadsSheet(downloads: List<DownloadItem>) {
                 contentPadding = PaddingValues(bottom = 16.dp),
             ) {
                 items(downloads, key = { it.id }) { dl ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                    val shape = RoundedCornerShape(16.dp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(shape)
+                            .background(colors.surface.copy(alpha = 0.55f))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(dl.fileName, style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                text = dl.url,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            val total = dl.totalBytes
-                            val status = when (dl.state) {
-                                DownloadState.COMPLETED -> strings.savedPath(dl.destinationPath)
-                                DownloadState.FAILED -> strings.downloadFailed
-                                DownloadState.IN_PROGRESS -> strings.downloadInProgress
-                            }
-                            if (dl.state == DownloadState.IN_PROGRESS && total > 0) {
-                                val fraction = (dl.downloadedBytes.toFloat() / total).coerceIn(0f, 1f)
-                                LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
-                            }
-                            Text(
-                                text = status,
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
+                        Text(dl.fileName, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            text = dl.url,
+                            style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.sp),
+                            color = colors.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        val total = dl.totalBytes
+                        val status = when (dl.state) {
+                            DownloadState.COMPLETED -> strings.savedPath(dl.destinationPath)
+                            DownloadState.FAILED -> strings.downloadFailed
+                            DownloadState.IN_PROGRESS -> strings.downloadInProgress
                         }
+                        if (dl.state == DownloadState.IN_PROGRESS && total > 0) {
+                            val fraction = (dl.downloadedBytes.toFloat() / total).coerceIn(0f, 1f)
+                            LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+                        }
+                        Text(
+                            text = status,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = colors.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
             }
         }
-    }
-}
-
-/* ---------------------------- میانبرهای کاربردیِ نوار بالا ---------------------------- */
-
-/** دکمهٔ کپسولیِ کوچک برای میانبرهای نوار بالا (با همان شیشهٔ شناور). */
-/**
- * شیتِ «میانبرهای سریع»: به‌جای پیامِ بی‌فایدهٔ «مراقب این سایت هستیم»، همهٔ کارهای
- * پرکاربردِ مرورگر در یک صفحه و با آیکن و رنگ.
- */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun QuickActionsSheet(
-    strings: com.marble098.marblebr.core.i18n.MarbleStrings,
-    hasPage: Boolean,
-    activeTab: BrowserTab?,
-    prefs: BrowserPreferences,
-    blockedAdsCount: Int,
-    downloadsCount: Int,
-    viewModel: BrowserViewModel,
-    onSubmit: (String) -> Unit,
-    onOpenVault: () -> Unit,
-    onOpenBookmarks: () -> Unit,
-    onOpenDownloads: () -> Unit,
-    onOpenSettings: () -> Unit,
-    onCopyLink: (String) -> Unit,
-    onShareLink: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val pageUrl = activeTab?.url?.ifBlank { null }
-    val shortcutContext = LocalContext.current
-    var quickInput by remember { mutableStateOf("") }
-    val perform: (() -> Unit) -> Unit = { action ->
-        action()
-        onDismiss()
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        // جستجو/آدرس فوری
-        OutlinedTextField(
-            value = quickInput,
-            onValueChange = { quickInput = it },
-            modifier = Modifier.fillMaxWidth().testTag("quick_actions_search"),
-            singleLine = true,
-            shape = MaterialTheme.shapes.large,
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
-            trailingIcon = {
-                FilledTonalIconButton(
-                    onClick = {
-                        if (quickInput.isNotBlank()) {
-                            onSubmit(quickInput)
-                            onDismiss()
-                        }
-                    },
-                    enabled = quickInput.isNotBlank(),
-                    modifier = Modifier.size(36.dp),
-                ) {
-                    Icon(Icons.Default.ArrowRightAlt, contentDescription = strings.goToAddress, modifier = Modifier.size(18.dp))
-                }
-            },
-            placeholder = { Text(strings.addressPlaceholder, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-            keyboardActions = KeyboardActions(
-                onGo = {
-                    if (quickInput.isNotBlank()) {
-                        onSubmit(quickInput)
-                        onDismiss()
-                    }
-                },
-            ),
-        )
-
-        if (pageUrl != null && activeTab?.isPrivate != true) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(MaterialTheme.shapes.medium)
-                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(Icons.Default.Shield, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                Text(
-                    text = strings.quickSiteSignedInFor(
-                        days = prefs.defaultCookieLifetimeDays,
-                        minutes = 30,
-                    ),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-            }
-        } else if (activeTab?.isPrivate == true) {
-            Text(
-                text = strings.privateTabChip,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-
-        Text(strings.quickActionsTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            if (pageUrl != null) {
-                QuickActionTile(strings.quickCopyLink, Icons.Default.ContentCopy, MaterialTheme.colorScheme.primary) {
-                    perform { onCopyLink(pageUrl) }
-                }
-                QuickActionTile(strings.quickShare, Icons.Default.Share, MaterialTheme.colorScheme.tertiary) {
-                    perform { onShareLink(pageUrl) }
-                }
-                QuickActionTile(strings.quickFindInPage, Icons.Default.Search, MaterialTheme.colorScheme.secondary) {
-                    perform { viewModel.toggleFindInPage(true) }
-                }
-                QuickActionTile(
-                    label = strings.quickScreenshot,
-                    icon = Icons.Default.PhotoCamera,
-                    accent = MaterialTheme.colorScheme.primary,
-                ) {
-                    perform {
-                        captureAndSaveScreenshot(shortcutContext) { path ->
-                            viewModel.reportScreenshot(path)
-                        }
-                    }
-                }
-                QuickActionTile(
-                    label = strings.quickDesktop,
-                    icon = Icons.Default.DesktopWindows,
-                    accent = MaterialTheme.colorScheme.tertiary,
-                    active = activeTab?.isDesktopMode == true,
-                ) {
-                    perform { viewModel.toggleDesktopMode() }
-                }
-            }
-            QuickActionTile(strings.quickNewTab, Icons.Default.Add, MaterialTheme.colorScheme.primary) {
-                perform { viewModel.openNewTab() }
-            }
-            QuickActionTile(strings.quickPrivate, Icons.Default.VisibilityOff, MaterialTheme.colorScheme.tertiary) {
-                perform { viewModel.openNewTab(isPrivate = true) }
-            }
-            QuickActionTile(strings.quickHome, Icons.Default.Home, MaterialTheme.colorScheme.primary) {
-                perform { viewModel.showHome() }
-            }
-            QuickActionTile(strings.quickBookmarks, Icons.Default.Bookmark, MaterialTheme.colorScheme.tertiary) {
-                perform(onOpenBookmarks)
-            }
-            QuickActionTile(strings.quickDownloads, Icons.Default.Download, MaterialTheme.colorScheme.primary) {
-                perform(onOpenDownloads)
-            }
-            QuickActionTile(strings.quickSettings, Icons.Default.Settings, MaterialTheme.colorScheme.secondary) {
-                perform(onOpenSettings)
-            }
-            if (pageUrl != null && activeTab?.isPrivate != true) {
-                QuickActionTile(strings.quickSaveLogin, Icons.Default.Fingerprint, MaterialTheme.colorScheme.primary) {
-                    perform { viewModel.captureManualSnapshotNow() }
-                }
-                QuickActionTile(strings.quickTimeMachine, Icons.Default.History, MaterialTheme.colorScheme.tertiary) {
-                    perform(onOpenVault)
-                }
-                QuickActionTile(strings.quickAddShortcut, Icons.Default.InstallMobile, MaterialTheme.colorScheme.secondary) {
-                    perform { viewModel.installCurrentSiteAsPwa() }
-                }
-            }
-            QuickActionTile(strings.quickClearCache, Icons.Default.CleaningServices, MaterialTheme.colorScheme.secondary) {
-                perform { viewModel.clearCacheWithoutTouchingSessions() }
-            }
-            if (blockedAdsCount > 0) {
-                QuickActionTile(
-                    label = strings.adBlockChip(blockedAdsCount),
-                    icon = Icons.Default.Security,
-                    accent = MaterialTheme.colorScheme.error,
-                ) {
-                    perform(onOpenSettings)
-                }
-            }
-            if (downloadsCount > 0) {
-                QuickActionTile(
-                    label = strings.downloadsMenu(downloadsCount),
-                    icon = Icons.Default.Download,
-                    accent = MaterialTheme.colorScheme.primary,
-                ) {
-                    perform(onOpenDownloads)
-                }
-            }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(MaterialTheme.shapes.medium)
-                .clickable { perform { onCopyLink(MarbleLinks.GITHUB_URL) } }
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-            Text(
-                text = "${strings.appName} · ${MarbleLinks.GITHUB_DISPLAY}",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Spacer(Modifier.height(20.dp))
-    }
-}
-
-/** یک کاشیِ گرد و رنگی برای مینحبرهای سریع. */
-@Composable
-private fun QuickActionTile(
-    label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    accent: androidx.compose.ui.graphics.Color,
-    active: Boolean = false,
-    enabled: Boolean = true,
-    onClick: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .size(width = 84.dp, height = 86.dp)
-            .clip(MaterialTheme.shapes.medium)
-            .background(
-                if (active) accent.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceContainerHigh,
-            )
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(38.dp)
-                .clip(androidx.compose.foundation.shape.CircleShape)
-                .background(accent.copy(alpha = 0.18f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(imageVector = icon, contentDescription = null, tint = accent, modifier = Modifier.size(19.dp))
-        }
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 
 /* ------------------------------------ کمکی‌ها ------------------------------------ */
 
 /** کپی متن در کلیپ‌بورد سیستم. */
-private fun copyTextToClipboard(context: Context, label: String, text: String) {
+internal fun copyTextToClipboard(context: Context, label: String, text: String) {
     runCatching {
         context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText(label, text))
     }

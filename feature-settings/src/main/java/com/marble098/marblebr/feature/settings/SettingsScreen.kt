@@ -1,22 +1,25 @@
 package com.marble098.marblebr.feature.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Home
@@ -26,24 +29,16 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -60,11 +55,20 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
+import com.marble098.marblebr.core.designsystem.MarbleBackButton
+import com.marble098.marblebr.core.designsystem.MarbleSegmentedRow
+import com.marble098.marblebr.core.designsystem.liquidGlass
+import com.marble098.marblebr.core.model.ChromeBarStyle
 import com.marble098.marblebr.core.i18n.AppLanguage
 import com.marble098.marblebr.core.i18n.MarbleStrings
 import com.marble098.marblebr.core.model.BackButtonBehavior
-import com.marble098.marblebr.core.model.ChromeBarStyle
 import com.marble098.marblebr.core.model.DnsMode
 import com.marble098.marblebr.core.model.HomeShortcutPosition
 import com.marble098.marblebr.core.model.MarbleLinks
@@ -125,107 +129,131 @@ fun SettingsScreen(
         mutableStateOf(prefs.proxyDnsConfig.proxyPort.toString())
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            Column {
-                TopAppBar(
-                    title = { Text(strings.settingsTitle, fontWeight = FontWeight.Bold) },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                        MaterialTheme.colorScheme.background,
+                        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.06f),
                     ),
-                    navigationIcon = {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = strings.back)
-                        }
-                    },
-                )
-                PrimaryTabRow(
-                    selectedTabIndex = selectedTabIndex,
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier.testTag("settings_tab_row"),
+                ),
+            ),
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // سربرگ شیشه‌ای: دکمهٔ بازگشتِ انیمیشنی + عنوان + انتخاب‌گرِ کپسولیِ تب‌ها
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    tabs.forEachIndexed { index, tab ->
-                        Tab(
-                            selected = selectedTabIndex == index,
-                            onClick = { selectedTabIndex = index },
-                            modifier = Modifier.testTag("settings_tab_${tab.name.lowercase()}"),
-                            text = {
-                                Text(
-                                    text = tab.title(strings),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            },
-                            icon = {
-                                Icon(
-                                    imageVector = tab.icon,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            },
+                    MarbleBackButton(
+                        onClick = onNavigateBack,
+                        contentDescription = strings.back,
+                        testTag = "settings_back_btn",
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = strings.settingsTitle,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                        )
+                        Text(
+                            text = strings.settingsIntro,
+                            style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
-            }
-        },
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            item {
-                Text(
-                    text = strings.settingsIntro,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp),
+                MarbleSegmentedRow(
+                    options = tabs,
+                    selected = tabs[selectedTabIndex],
+                    label = { it.title(strings) },
+                    icon = { it.icon },
+                    onSelect = { selectedTabIndex = tabs.indexOf(it) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("settings_tab_row"),
+                    testTagPrefix = "settings_tab_segment",
                 )
             }
 
-            when (tabs[selectedTabIndex]) {
-                SettingsTab.APPEARANCE -> appearanceTab(strings, prefs, viewModel)
-                SettingsTab.BROWSER -> browserTab(
-                    strings = strings,
-                    prefs = prefs,
-                    viewModel = viewModel,
-                    selectedEngineId = selectedEngineId,
-                    onSelectEngine = { engine ->
-                        selectedEngineId = engine.id
-                        viewModel.selectSearchEngine(engine)
-                    },
-                    selectedHomeShortcut = selectedHomeShortcut,
-                    onSelectHomeShortcut = { position ->
-                        selectedHomeShortcut = position
-                        viewModel.setHomeShortcutPosition(position)
-                    },
-                )
-                SettingsTab.PROTECTION -> protectionTab(strings, prefs, viewModel)
-                SettingsTab.NETWORK -> networkTab(
-                    strings = strings,
-                    viewModel = viewModel,
-                    selectedDns = selectedDns,
-                    onSelectDns = { selectedDns = it },
-                    customDohUri = customDohUri,
-                    onCustomDohUri = { customDohUri = it },
-                    selectedProxyType = selectedProxyType,
-                    onSelectProxyType = { selectedProxyType = it },
-                    proxyHost = proxyHost,
-                    onProxyHost = { proxyHost = it },
-                    proxyPortText = proxyPortText,
-                    onProxyPortText = { proxyPortText = it },
-                )
-                SettingsTab.ABOUT -> aboutTab(strings, viewModel.appVersionName)
+            Box(modifier = Modifier.weight(1f)) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 28.dp),
+                ) {
+                    item(key = "tab_intro") {
+                        Text(
+                            text = tabs[selectedTabIndex].description(strings),
+                            style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.5.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    when (tabs[selectedTabIndex]) {
+                        SettingsTab.APPEARANCE -> appearanceTab(strings, prefs, viewModel)
+                        SettingsTab.BROWSER -> browserTab(
+                            strings = strings,
+                            prefs = prefs,
+                            viewModel = viewModel,
+                            selectedEngineId = selectedEngineId,
+                            onSelectEngine = { engine ->
+                                selectedEngineId = engine.id
+                                viewModel.selectSearchEngine(engine)
+                            },
+                            selectedHomeShortcut = selectedHomeShortcut,
+                            onSelectHomeShortcut = { position ->
+                                selectedHomeShortcut = position
+                                viewModel.setHomeShortcutPosition(position)
+                            },
+                        )
+                        SettingsTab.PROTECTION -> protectionTab(strings, prefs, viewModel)
+                        SettingsTab.NETWORK -> networkTab(
+                            strings = strings,
+                            viewModel = viewModel,
+                            selectedDns = selectedDns,
+                            onSelectDns = { selectedDns = it },
+                            customDohUri = customDohUri,
+                            onCustomDohUri = { customDohUri = it },
+                            selectedProxyType = selectedProxyType,
+                            onSelectProxyType = { selectedProxyType = it },
+                            proxyHost = proxyHost,
+                            onProxyHost = { proxyHost = it },
+                            proxyPortText = proxyPortText,
+                            onProxyPortText = { proxyPortText = it },
+                        )
+                        SettingsTab.ABOUT -> aboutTab(strings, viewModel.appVersionName)
+                    }
+                }
             }
-
-            item { Spacer(Modifier.height(28.dp)) }
         }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
+}
+
+private fun SettingsTab.description(strings: MarbleStrings): String = when (this) {
+    SettingsTab.APPEARANCE -> strings.appearanceTitle
+    SettingsTab.BROWSER -> strings.homeScreenTitle
+    SettingsTab.PROTECTION -> strings.protectionSectionBody
+    SettingsTab.NETWORK -> strings.networkBody
+    SettingsTab.ABOUT -> strings.aboutTitle
 }
 
 private fun SettingsTab.title(strings: MarbleStrings): String = when (this) {
@@ -639,38 +667,50 @@ private fun SettingsSection(
     description: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(24.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .liquidGlass(
+                style = ChromeBarStyle.GLASS,
+                shape = shape,
+                fillAlphaOverride = 0.58f,
+                elevation = 6.dp,
+            )
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(colors.primary.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center,
+            ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(Modifier.size(8.dp))
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
+                    tint = colors.primary,
+                    modifier = Modifier.size(18.dp),
                 )
             }
-            if (description.isNotBlank()) {
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            content()
+            Spacer(Modifier.size(9.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
         }
+        if (description.isNotBlank()) {
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onSurfaceVariant,
+            )
+        }
+        content()
     }
 }
 

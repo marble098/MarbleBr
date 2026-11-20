@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -55,6 +56,9 @@ import javax.inject.Inject
  */
 private val MarbleEasing: Easing = CubicBezierEasing(0.2f, 0.9f, 0.1f, 1f)
 
+/** منحنیِ ورودِ ملایم‌تر برای صفحه‌های تنظیمات و گاوصندوق؛ بدون پرشِ مقیاس. */
+private val MarbleSoftEasing: Easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
+
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
 
@@ -71,11 +75,16 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // حالت کیبورد از AndroidManifest (adjustResize) می‌آید و `imePadding` فقط در صفحهٔ
+        // خانه/شیت‌ها اعمال می‌شود؛ در نتیجه نمای وب هنگام باز شدن کیبورد بازچیدمان نمی‌شود.
+        // (این فراخوانی صریح، رفتار را روی دستگاه‌هایی که manifest را بازنویسی می‌کنند تضمین می‌کند.)
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
 
         // لبه‌به‌لبه با نوارهای شفاف؛ رنگ آیکن‌ها را خودِ تم (روشن/تاریک) تنظیم می‌کند.
+        // نوار ناوبری هم شفاف است تا شیشهٔ شناورِ نوار تب از پشت آن دیده شود.
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.auto(LIGHT_SCRIM, DARK_SCRIM),
+            navigationBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
         )
 
         if (savedInstanceState == null) incomingNavigation = resolveIncomingNavigation(intent)
@@ -158,11 +167,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private data class IncomingNavigation(val url: String, val pinnedContainerId: String?)
-
-    private companion object {
-        val LIGHT_SCRIM: Int = Color.argb(0xE6, 0xFF, 0xFF, 0xFF)
-        val DARK_SCRIM: Int = Color.argb(0xE6, 0x10, 0x12, 0x18)
-    }
 }
 
 @Composable
@@ -188,26 +192,35 @@ fun MarbleBrAppNavHost(
         navController = navController,
         startDestination = "browser",
         enterTransition = {
-            // صفحهٔ تازه از پایین می‌آید، کمی بزرگ می‌شود و نرم روشن می‌شود.
-            fadeIn(tween(durationMillis = 220, delayMillis = 40)) +
-                slideInVertically(tween(durationMillis = 420, easing = MarbleEasing)) { full -> full / 6 } +
-                scaleIn(tween(durationMillis = 420, easing = MarbleEasing), initialScale = 0.92f)
+            // «لایهٔ شیشه‌ای که روی صفحه می‌نشیند»: فقط یک لغزشِ کوتاه از پایین + روشن‌شدنِ نرم
+            // و مقیاسِ بسیار جزئی. مقیاسِ بزرگ و جابه‌جاییِ زیاد، همان چیزی بود که حرکت را
+            // ارزان و پرش‌دار نشان می‌داد.
+            fadeIn(tween(durationMillis = 230, delayMillis = 40)) +
+                slideInVertically(
+                    animationSpec = tween(durationMillis = 420, easing = MarbleSoftEasing),
+                    initialOffsetY = { full -> full / 14 },
+                ) +
+                scaleIn(
+                    animationSpec = tween(durationMillis = 420, easing = MarbleSoftEasing),
+                    initialScale = 0.972f,
+                )
         },
         exitTransition = {
-            // صفحهٔ پشتی آرام عقب می‌رود و محو می‌شود تا حس عمق بدهد.
-            fadeOut(tween(durationMillis = 180, easing = FastOutLinearInEasing)) +
-                slideOutVertically(tween(durationMillis = 320, easing = MarbleEasing)) { full -> -full / 14 } +
-                scaleOut(tween(durationMillis = 320, easing = MarbleEasing), targetScale = 0.94f)
+            // صفحهٔ پشتی کمی عقب می‌نشیند (بدون محو شدنِ کامل) تا حس عمق بماند و
+            // هنگام برگشت، محتوا «از نو» ساخته نشود.
+            fadeOut(tween(durationMillis = 200, easing = FastOutLinearInEasing)) +
+                scaleOut(tween(durationMillis = 260, easing = MarbleEasing), targetScale = 0.985f)
         },
         popEnterTransition = {
-            fadeIn(tween(durationMillis = 200)) +
-                scaleIn(tween(durationMillis = 380, easing = MarbleEasing), initialScale = 0.94f) +
-                slideInVertically(tween(durationMillis = 380, easing = MarbleEasing)) { full -> -full / 18 }
+            // بازگشت، قرینهٔ ورود است: صفحهٔ قبلی آرام بزرگ می‌شود و از لبه بالا می‌آید.
+            fadeIn(tween(durationMillis = 240)) +
+                scaleIn(tween(durationMillis = 400, easing = MarbleSoftEasing), initialScale = 0.976f) +
+                slideInVertically(tween(durationMillis = 400, easing = MarbleSoftEasing)) { full -> full / 20 }
         },
         popExitTransition = {
-            fadeOut(tween(durationMillis = 200)) +
-                scaleOut(tween(durationMillis = 340, easing = MarbleEasing), targetScale = 1.04f) +
-                slideOutVertically(tween(durationMillis = 340, easing = MarbleEasing)) { full -> full / 5 }
+            // صفحهٔ رویی به‌سمت پایین سُر می‌خورد و محو می‌شود؛ بدون بزرگ‌شدنِ آزاردهنده.
+            fadeOut(tween(durationMillis = 170)) +
+                slideOutVertically(tween(durationMillis = 300, easing = MarbleEasing)) { full -> full / 16 }
         },
     ) {
         composable("browser") {

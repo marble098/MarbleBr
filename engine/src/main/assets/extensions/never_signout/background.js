@@ -26,7 +26,18 @@
             ? Math.floor(c.expiresEpochMillis / 1000)
             : Math.floor(Date.now() / 1000) + DEFAULT_EXPIRATION_SECONDS;
 
-          await browser.cookies.set({
+          // مقدارِ SameSite در GeckoView به شکل «Lax/Strict/None» است، اما API کوکیِ
+          // افزونه «lax/strict/no_restriction» می‌خواهد؛ بدون این نگاشت، درخواست کوکی
+          // رد می‌شد و بازیابی بی‌صدا ناقص می‌ماند.
+          const sameSiteMap = {
+            lax: "lax",
+            strict: "strict",
+            none: "no_restriction",
+            no_restriction: "no_restriction"
+          };
+          const sameSite = sameSiteMap[String(c.sameSite || "lax").toLowerCase()];
+
+          const details = {
             url: url,
             name: c.name,
             value: c.value,
@@ -35,7 +46,10 @@
             secure: Boolean(c.isSecure),
             httpOnly: Boolean(c.isHttpOnly),
             expirationDate: expirationDate
-          });
+          };
+          if (sameSite) details.sameSite = sameSite;
+
+          await browser.cookies.set(details);
         } catch (e) {
           // Ignore individual cookie set error
         }

@@ -91,7 +91,14 @@
   try {
     const port = browser.runtime.connectNative(NATIVE_APP);
     port.onMessage.addListener(async (message) => {
-      if (message?.type !== "CAPTURE_PAGE") return;
+      if (!message || !message.type) return;
+      if (message.type === "APPLY_VAULT_SNAPSHOT") {
+        // بازگردانیِ نسخهٔ «ماشین زمان»: نوشتنِ حافظهٔ محلی روی همین صفحه.
+        // بازخوانی (reload) را سمت بومی انجام می‌دهد تا ترتیبِ نوشتنِ کوکی‌ها هم رعایت شود.
+        restoreStorageSnapshot(message.payload);
+        return;
+      }
+      if (message.type !== "CAPTURE_PAGE") return;
       try {
         const snapshot = await collectStorageSnapshot();
         port.postMessage({ ...snapshot, requestId: message.requestId });

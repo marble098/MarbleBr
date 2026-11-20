@@ -1,5 +1,18 @@
 package com.marble098.marblebr.feature.vault
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,70 +21,109 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.material3.ModalBottomSheet
-import com.marble098.marblebr.core.designsystem.SiteBadgeLogo
-import com.marble098.marblebr.core.designsystem.siteBadgeAccent
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
+import com.marble098.marblebr.core.designsystem.MarbleBackButton
+import com.marble098.marblebr.core.designsystem.MarbleGlassIconButton
+import com.marble098.marblebr.core.designsystem.SiteBadgeLogo
+import com.marble098.marblebr.core.designsystem.liquidGlass
+import com.marble098.marblebr.core.designsystem.siteBadgeAccent
 import com.marble098.marblebr.core.i18n.MarbleStrings
+import com.marble098.marblebr.core.model.ChromeBarStyle
 import com.marble098.marblebr.core.model.HealthReason
 import com.marble098.marblebr.core.model.SessionHealthStatus
 import com.marble098.marblebr.core.model.SessionSnapshotMeta
 import com.marble098.marblebr.core.model.WebAppContainer
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** تعداد باکس‌های سایت در هر ردیف. */
-private const val SITES_PER_ROW = 2
-
+/**
+ * داشبورد «مراقبت از حساب‌ها» — بازطراحی کامل (ظاهری، عملکردی و فنی).
+ *
+ * ### نقدِ نسخهٔ قبل
+ * - **ظاهری:** یک کارت بزرگِ آبی، متن‌های توضیحیِ طولانی، باکس‌های سایتِ هم‌شکل با نامِ
+ *   دامنهٔ تکراری و لیستِ زمان‌ها که همهٔ سایت‌ها را قاطی می‌کرد؛ چیدمان با `chunked(2)` در
+ *   LazyColumn هر بار کل ردیف‌ها را از نو می‌ساخت.
+ * - **عملکردی:** تغییرات سوییچ در پنل بازتاب نمی‌شد، «ذخیره» از داشبورد ممکن نبود، حذفِ
+ *   نسخه وجود نداشت و بازهٔ زنده‌سازی پس از تغییر اعمال نمی‌شد.
+ * - **فنی:** `detailsContainer` شیءِ کهنه را نگه می‌داشت، اسنپ‌شات‌های همهٔ سایت‌ها در یک
+ *   لیست بی‌گروه نمایش داده می‌شد، و کلیکِ پشت‌سرهم می‌توانست عملیات را دوباره اجرا کند.
+ *
+ * ### ساختار تازه
+ * ۱. **سربرگ شیشه‌ای** با آمار زنده (تعداد سایت، درصد محافظت، تعداد نسخه‌ها، آخرین ذخیره).
+ * ۲. **جستجو + فیلترهای چیپی** برای پیدا کردن سریع بین سایت‌ها.
+ * ۳. **شبکهٔ دو ستونیِ سایت‌ها** با لوگوی رنگی، بج وضعیت و نوار سلامت.
+ * ۴. **تاریخچهٔ گروه‌بندی‌شده بر اساس سایت** در قالبِ تایم‌لاین عمودی.
+ * ۵. **پنل جزئیات کامل** با سوییچ‌های توضیح‌دار، اسلایدر مدت ورود، بازهٔ زنده‌سازی و
+ *    عملیات‌های ذخیره/export/حذف — همه با بازخورد فوری.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultDashboardScreen(
@@ -80,236 +132,225 @@ fun VaultDashboardScreen(
     onRequestBiometricUnlock: () -> Unit,
     onNavigateBack: () -> Unit,
 ) {
-    val containers by viewModel.containers.collectAsState()
+    val overview by viewModel.overview.collectAsState()
     val snapshots by viewModel.snapshots.collectAsState()
     val healthEvents by viewModel.healthEvents.collectAsState()
-    val feedbackMessage by viewModel.feedbackMessage.collectAsState()
+    val feedback by viewModel.feedback.collectAsState()
+    val query by viewModel.query.collectAsState()
+    val filter by viewModel.filter.collectAsState()
+    val openSite by viewModel.openSite.collectAsState()
+    val openSiteSnapshots by viewModel.openSiteSnapshots.collectAsState()
+    val busyAction by viewModel.busyAction.collectAsState()
+    val globalProtection by viewModel.globalProtectionEnabled.collectAsState()
     val strings = LocalMarbleStrings.current
 
     var pendingSignOutContainer by remember { mutableStateOf<WebAppContainer?>(null) }
-    var detailsContainer by remember { mutableStateOf<WebAppContainer?>(null) }
+    var pendingDeleteSnapshot by remember { mutableStateOf<SessionSnapshotMeta?>(null) }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = { Text(strings.vaultTitle, fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                ),
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = strings.back)
-                    }
-                },
-            )
-        },
-    ) { innerPadding ->
+    // پیام‌های موفقیت/خطا خودشان کنار می‌روند؛ قبلاً تا بستنِ دستی روی صفحه می‌ماندند.
+    LaunchedEffect(feedback?.id) {
+        if (feedback != null) {
+            delay(3_200)
+            viewModel.dismissFeedback()
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
+        VaultBackdrop()
+
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(top = 4.dp, bottom = 32.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 36.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.Lock,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = strings.vaultSecurityTitle,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            )
-                        }
-                        Text(
-                            text = strings.vaultSecurityBody,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        )
-                        if (!isBiometricUnlocked) {
-                            Button(
-                                onClick = onRequestBiometricUnlock,
-                                modifier = Modifier.testTag("unlock_vault_biometric_btn"),
-                            ) {
-                                Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(strings.unlockVault)
-                            }
-                        }
-                    }
-                }
-            }
-
-            item {
-                Text(
-                    text = strings.vaultIntro,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            item(key = "topbar") {
+                VaultTopBar(
+                    strings = strings,
+                    onNavigateBack = onNavigateBack,
+                    onRequestBiometricUnlock = onRequestBiometricUnlock,
+                    isBiometricUnlocked = isBiometricUnlocked,
                 )
             }
 
-            feedbackMessage?.let { message ->
-                item {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = message,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.weight(1f),
-                            )
-                            TextButton(onClick = viewModel::dismissFeedback) {
-                                Text(strings.gotIt)
-                            }
-                        }
-                    }
-                }
-            }
-
-            item {
-                SectionHeader(
-                    icon = Icons.Default.Shield,
-                    title = strings.sitesSectionTitle,
-                    subtitle = strings.sitesSectionBody,
+            item(key = "hero") {
+                VaultHero(
+                    overview = overview,
+                    strings = strings,
+                    isBiometricUnlocked = isBiometricUnlocked,
+                    busyAction = busyAction,
+                    onRequestBiometricUnlock = onRequestBiometricUnlock,
+                    onProtectAll = { viewModel.setProtectionForAll(true) },
+                    onUnprotectAll = { viewModel.setProtectionForAll(false) },
                 )
             }
 
-            if (containers.isEmpty()) {
-                item {
-                    Text(
-                        text = strings.emptySites,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+            if (!globalProtection) {
+                item(key = "protection_off") {
+                    InfoBanner(
+                        icon = Icons.Default.Shield,
+                        message = strings.vaultProtectionOffBanner,
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
                     )
                 }
             }
 
-            // ۵) همهٔ سایت‌های «واردشده» به‌صورت باکس‌های کنار هم، با لوگوی سایت روی هر باکس.
-            containers.chunked(SITES_PER_ROW).forEach { rowContainers ->
-                item(key = "site_row_" + rowContainers.joinToString("-") { it.id }) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        rowContainers.forEach { container ->
-                            SiteBox(
-                                container = container,
-                                modifier = Modifier.weight(1f),
-                                onClick = { detailsContainer = container },
-                            )
-                        }
-                        repeat(SITES_PER_ROW - rowContainers.size) {
-                            Spacer(Modifier.weight(1f))
+            item(key = "filters") {
+                VaultSearchAndFilters(
+                    query = query,
+                    onQueryChange = viewModel::setQuery,
+                    filter = filter,
+                    onFilterChange = viewModel::setFilter,
+                    strings = strings,
+                    counts = mapOf(
+                        VaultSiteFilter.ALL to overview.allContainers.size,
+                        VaultSiteFilter.PROTECTED to overview.protectedSites,
+                        VaultSiteFilter.UNPROTECTED to overview.allContainers.count { !it.neverSignOutEnabled },
+                        VaultSiteFilter.PINNED to overview.allContainers.count { it.isPinnedPwa },
+                    ),
+                )
+            }
+
+            item(key = "sites_header") {
+                SectionTitle(
+                    icon = Icons.Default.Shield,
+                    title = strings.vaultSectionSites,
+                    subtitle = strings.sitesSectionBody,
+                    trailing = overview.filteredContainers
+                        .takeIf { it.isNotEmpty() }
+                        ?.let { strings.vaultSnapshotCount(it.size) },
+                )
+            }
+
+            if (overview.filteredContainers.isEmpty()) {
+                item(key = "sites_empty") {
+                    EmptyStateCard(
+                        icon = Icons.Default.Shield,
+                        text = if (overview.allContainers.isEmpty()) strings.emptySites else strings.vaultNoMatch,
+                        hint = if (overview.allContainers.isEmpty()) strings.vaultFilterEmpty else null,
+                    )
+                }
+            } else {
+                val rows = overview.filteredContainers.chunked(SITES_PER_ROW)
+                rows.forEachIndexed { index, rowContainers ->
+                    item(key = "site_row_${rowContainers.joinToString("-") { it.id }}_$index") {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            rowContainers.forEach { container ->
+                                SiteCard(
+                                    container = container,
+                                    modifier = Modifier.weight(1f),
+                                    snapshotCount = snapshots.count { it.containerId == container.id },
+                                    onClick = { viewModel.openSiteDetails(container) },
+                                )
+                            }
+                            if (rowContainers.size < SITES_PER_ROW) {
+                                repeat(SITES_PER_ROW - rowContainers.size) { Spacer(Modifier.weight(1f)) }
+                            }
                         }
                     }
                 }
             }
 
-            item {
-                SectionHeader(
+            item(key = "timeline_header") {
+                SectionTitle(
                     icon = Icons.Default.History,
-                    title = strings.timeMachineTitle,
+                    title = strings.vaultSectionTimeline,
                     subtitle = strings.timeMachineBody,
+                    trailing = if (snapshots.isEmpty()) null else strings.vaultSnapshotCount(snapshots.size),
                 )
             }
 
             if (snapshots.isEmpty()) {
-                item {
-                    Text(
-                        text = strings.emptySnapshots,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                item(key = "timeline_empty") {
+                    EmptyStateCard(icon = Icons.Default.History, text = strings.emptySnapshots, hint = null)
                 }
             } else {
-                items(snapshots, key = { it.id }) { snapshot ->
-                    SnapshotTimelineCard(
-                        snapshot = snapshot,
-                        label = localizedSnapshotLabel(strings, snapshot),
-                        onRollback = { viewModel.rollbackToSnapshot(snapshot) },
-                    )
+                // نسخه‌ها بر اساس سایت گروه‌بندی می‌شوند تا فهرستِ طولانی و بی‌نظم قبلی نباشد.
+                val grouped = snapshots.groupBy { it.domain }.values.take(GROUPED_TIMELINE_SITES)
+                grouped.forEach { siteSnapshots ->
+                    val domain = siteSnapshots.first().domain
+                    item(key = "timeline_group_$domain") {
+                        SnapshotGroup(
+                            domain = domain,
+                            snapshots = siteSnapshots.take(3),
+                            totalCount = siteSnapshots.size,
+                            strings = strings,
+                            busyAction = busyAction,
+                            onRollback = { snapshot -> viewModel.rollbackToSnapshot(snapshot) },
+                            onDelete = { snapshot -> pendingDeleteSnapshot = snapshot },
+                        )
+                    }
                 }
             }
 
-            if (healthEvents.isNotEmpty()) {
-                item {
-                    SectionHeader(
-                        icon = Icons.Default.Shield,
-                        title = strings.healthLogTitle,
-                        subtitle = strings.healthLogBody,
+            item(key = "activity_header") {
+                SectionTitle(
+                    icon = Icons.Default.VerifiedUser,
+                    title = strings.vaultSectionActivity,
+                    subtitle = strings.healthLogBody,
+                    trailing = null,
+                )
+            }
+            if (healthEvents.isEmpty()) {
+                item(key = "activity_empty") {
+                    EmptyStateCard(icon = Icons.Default.VerifiedUser, text = strings.vaultEmptyActivity, hint = null)
+                }
+            } else {
+                items(healthEvents.take(6), key = { "event_${it.id}" }) { event ->
+                    HealthEventRow(
+                        domain = event.domain,
+                        statusName = event.statusName,
+                        reasonCode = event.descriptionFa,
+                        timestamp = event.timestampEpochMillis,
+                        strings = strings,
                     )
                 }
-                items(healthEvents, key = { it.id }) { event ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                        ),
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = event.domain,
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            Text(
-                                text = strings.healthStatusLabel(statusOf(event.statusName)),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            Text(
-                                text = reasonTextOf(strings, event.descriptionFa),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
+            }
+        }
+
+        // پیام موفقیت/خطا شناور پایین صفحه تا با اسکرول از دید خارج نشود.
+        AnimatedVisibility(
+            visible = feedback != null,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = fadeIn() + slideInVertically { it },
+            exit = fadeOut() + slideOutVertically { it },
+        ) {
+            feedback?.let { message ->
+                SnackStyleFeedback(message = message.message, onDismiss = viewModel::dismissFeedback)
             }
         }
     }
 
-    detailsContainer?.let { selected ->
+    openSite?.let { selected ->
         ModalBottomSheet(
-            onDismissRequest = { detailsContainer = null },
+            onDismissRequest = viewModel::closeSiteDetails,
             containerColor = MaterialTheme.colorScheme.surface,
         ) {
-            ContainerControlPanel(
+            SiteControlPanel(
                 container = selected,
+                snapshots = openSiteSnapshots,
+                strings = strings,
+                busyAction = busyAction,
                 onToggleNeverSignOut = { viewModel.toggleSiteNeverSignOut(selected, it) },
                 onCookieDaysChanged = { viewModel.updateCookieExpirationDays(selected, it) },
                 onToggleKeepAlive = { viewModel.updateKeepAlivePolicy(selected, it, selected.keepAliveIntervalMinutes) },
-                onSignOutNowClicked = {
-                    detailsContainer = null
+                onKeepAliveIntervalChanged = { viewModel.updateKeepAliveInterval(selected, it) },
+                onSaveNow = { viewModel.captureSnapshotNow(selected) },
+                onRollback = viewModel::rollbackToSnapshot,
+                onDeleteSnapshot = { pendingDeleteSnapshot = it },
+                onSignOutNow = {
+                    viewModel.closeSiteDetails()
                     pendingSignOutContainer = selected
                 },
             )
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(20.dp))
         }
     }
 
@@ -340,107 +381,231 @@ fun VaultDashboardScreen(
             },
         )
     }
-}
 
-@Composable
-private fun SectionHeader(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-) {
-    Column(
-        modifier = Modifier.padding(top = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+    pendingDeleteSnapshot?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteSnapshot = null },
+            icon = { Icon(Icons.Default.Delete, contentDescription = null) },
+            title = { Text(strings.vaultDeleteConfirmTitle) },
+            text = { Text(strings.vaultDeleteConfirmBody) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteSnapshot(target)
+                        pendingDeleteSnapshot = null
+                    },
+                ) {
+                    Text(strings.vaultDelete)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteSnapshot = null }) {
+                    Text(strings.cancel)
+                }
+            },
         )
     }
 }
 
-/**
- * باکسِ یک سایتِ واردشده در شبکهٔ «سایت‌ها».
- *
- * لوگوی سایت روی خودِ باکس می‌نشیند و باکس‌ها کنار هم چیده می‌شوند. لمس هر باکس،
- * پنلِ کاملِ تنظیمات همان سایت را باز می‌کند.
- */
+/* ----------------------------------------- پس‌زمینه ----------------------------------------- */
+
 @Composable
-private fun SiteBox(
-    container: WebAppContainer,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
+private fun VaultBackdrop() {
+    val colors = MaterialTheme.colorScheme
+    val dark = colors.background.luminance() < 0.5f
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        colors.primary.copy(alpha = if (dark) 0.20f else 0.10f),
+                        colors.background,
+                        colors.tertiary.copy(alpha = if (dark) 0.12f else 0.06f),
+                    ),
+                ),
+            ),
+    )
+}
+
+/* ------------------------------------------ سربرگ ------------------------------------------ */
+
+@Composable
+private fun VaultTopBar(
+    strings: MarbleStrings,
+    onNavigateBack: () -> Unit,
+    onRequestBiometricUnlock: () -> Unit,
+    isBiometricUnlocked: Boolean,
 ) {
-    val strings = LocalMarbleStrings.current
-    val accent = remember(container.domain) { siteBadgeAccent(container.domain) }
-    Card(
-        modifier = modifier
-            .testTag("container_card_${container.id}")
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 14.dp, horizontal = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            SiteBadgeLogo(
-                displayName = container.displayName,
-                domain = container.domain,
-                size = 48.dp,
+        MarbleBackButton(
+            onClick = onNavigateBack,
+            contentDescription = strings.back,
+            testTag = "vault_back_btn",
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = strings.vaultTitle,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.ExtraBold,
             )
             Text(
-                text = container.displayName.ifBlank { container.domain },
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = container.domain,
-                style = MaterialTheme.typography.labelLarge,
+                text = strings.vaultIntro,
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.sp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+        }
+        MarbleGlassIconButton(
+            icon = if (isBiometricUnlocked) Icons.Default.VerifiedUser else Icons.Default.Fingerprint,
+            contentDescription = strings.unlockVault,
+            onClick = onRequestBiometricUnlock,
+            style = ChromeBarStyle.FLOATING,
+            tint = if (isBiometricUnlocked) MaterialTheme.colorScheme.primary else null,
+            testTag = "unlock_vault_biometric_btn",
+        )
+    }
+}
+
+@Composable
+private fun VaultHero(
+    overview: VaultOverview,
+    strings: MarbleStrings,
+    isBiometricUnlocked: Boolean,
+    busyAction: String?,
+    onRequestBiometricUnlock: () -> Unit,
+    onProtectAll: () -> Unit,
+    onUnprotectAll: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(26.dp)
+    val progress by animateFloatAsState(
+        targetValue = overview.protectedPercent.coerceIn(0f, 1f),
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 120f),
+        label = "protected progress",
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .liquidGlass(
+                style = ChromeBarStyle.GLASS,
+                shape = shape,
+                fillAlphaOverride = 0.55f,
+                elevation = 10.dp,
+            )
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Brush.linearGradient(listOf(colors.primary, colors.tertiary))),
+                contentAlignment = Alignment.Center,
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(if (container.neverSignOutEnabled) accent else MaterialTheme.colorScheme.outline),
+                Icon(Icons.Default.Lock, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = strings.vaultHeroTitle,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = if (container.neverSignOutEnabled) {
-                        strings.feedbackProtection(container.domain, true)
-                    } else {
-                        strings.feedbackProtection(container.domain, false)
-                    },
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
+                    text = strings.vaultHeroBody,
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    color = colors.onSurfaceVariant,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (!isBiometricUnlocked) {
+                MarbleGlassIconButton(
+                    icon = Icons.Default.Fingerprint,
+                    contentDescription = strings.unlockVault,
+                    onClick = onRequestBiometricUnlock,
+                    style = ChromeBarStyle.GLASS,
+                    tint = colors.primary,
+                    size = 38.dp,
+                )
+            }
+        }
+
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(7.dp)
+                .clip(RoundedCornerShape(50)),
+            color = colors.primary,
+            trackColor = colors.primary.copy(alpha = 0.16f),
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            StatPill(
+                modifier = Modifier.weight(1f),
+                value = overview.totalSites.toString(),
+                label = strings.vaultStatSites,
+            )
+            StatPill(
+                modifier = Modifier.weight(1f),
+                value = overview.protectedSites.toString(),
+                label = strings.vaultStatProtected,
+                accent = colors.primary,
+            )
+            StatPill(
+                modifier = Modifier.weight(1f),
+                value = overview.totalSnapshots.toString(),
+                label = strings.vaultStatSnapshots,
+                accent = colors.tertiary,
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = overview.latestSnapshotAt?.let {
+                    strings.vaultLastSavedAgo(dateLabel(it))
+                } ?: strings.vaultNever,
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.5.sp),
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (busyAction == "protect-all") {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = colors.primary,
+                )
+            } else {
+                // اقدام گروهی: قبلاً برای روشن/خاموش کردنِ محافظت باید برای هر سایت جدا
+                // وارد پنل جزئیات می‌شد؛ حالا یک لمس کافی است.
+                val allProtected = overview.totalSites > 0 && overview.protectedSites == overview.totalSites
+                SmallActionPill(
+                    text = if (allProtected) strings.vaultUnprotectAll else strings.vaultProtectAll,
+                    icon = if (allProtected) Icons.Default.Shield else Icons.Default.VerifiedUser,
+                    onClick = if (allProtected) onUnprotectAll else onProtectAll,
+                    enabled = overview.totalSites > 0,
                 )
             }
         }
@@ -448,152 +613,868 @@ private fun SiteBox(
 }
 
 @Composable
-private fun ContainerControlPanel(
+private fun SmallActionPill(
+    text: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(colors.primary.copy(alpha = if (enabled) 0.16f else 0.08f))
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = if (enabled) colors.primary else colors.outline,
+            modifier = Modifier.size(13.dp),
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.sp),
+            color = if (enabled) colors.primary else colors.outline,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun StatPill(
+    value: String,
+    label: String,
+    modifier: Modifier = Modifier,
+    accent: Color? = null,
+) {
+    val colors = MaterialTheme.colorScheme
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(colors.surface.copy(alpha = 0.55f))
+            .padding(vertical = 8.dp, horizontal = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.ExtraBold,
+            color = accent ?: colors.onSurface,
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 9.5.sp, lineHeight = 12.sp),
+            color = colors.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/* ------------------------------------ جستجو و فیلترها ------------------------------------ */
+
+@Composable
+private fun VaultSearchAndFilters(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    filter: VaultSiteFilter,
+    onFilterChange: (VaultSiteFilter) -> Unit,
+    strings: MarbleStrings,
+    counts: Map<VaultSiteFilter, Int> = emptyMap(),
+) {
+    val colors = MaterialTheme.colorScheme
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .liquidGlass(
+                    style = ChromeBarStyle.GLASS,
+                    shape = RoundedCornerShape(22.dp),
+                    fillAlphaOverride = 0.62f,
+                    glow = false,
+                    elevation = 4.dp,
+                )
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                Icons.Default.Search,
+                contentDescription = null,
+                tint = colors.onSurfaceVariant,
+                modifier = Modifier.size(17.dp),
+            )
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("vault_search_field"),
+                singleLine = true,
+                textStyle = TextStyle(color = colors.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { }),
+                cursorBrush = Brush.verticalGradient(listOf(colors.primary, colors.primary)),
+                decorationBox = { inner ->
+                    Box(contentAlignment = Alignment.CenterStart) {
+                        if (query.isEmpty()) {
+                            Text(
+                                text = strings.vaultSearchHint,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = colors.onSurfaceVariant,
+                            )
+                        }
+                        inner()
+                    }
+                },
+            )
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQueryChange("") }, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.Close, contentDescription = strings.dismiss, modifier = Modifier.size(15.dp))
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            VaultSiteFilter.entries.forEach { option ->
+                val selected = option == filter
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(
+                            if (selected) {
+                                Brush.horizontalGradient(listOf(colors.primary, colors.tertiary))
+                            } else {
+                                Brush.horizontalGradient(
+                                    listOf(colors.surface.copy(alpha = 0.6f), colors.surface.copy(alpha = 0.6f)),
+                                )
+                            },
+                        )
+                        .border(
+                            width = 0.9.dp,
+                            color = if (selected) Color.Transparent else colors.outlineVariant.copy(alpha = 0.4f),
+                            shape = RoundedCornerShape(50),
+                        )
+                        .clickable(role = Role.Tab, onClick = { onFilterChange(option) })
+                        .padding(horizontal = 13.dp, vertical = 7.dp),
+                ) {
+                    val count = counts[option]
+                    Text(
+                        text = if (count != null && count > 0) {
+                            "${option.label(strings)} · $count"
+                        } else {
+                            option.label(strings)
+                        },
+                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.5.sp),
+                        color = if (selected) colors.onPrimary else colors.onSurface,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun VaultSiteFilter.label(strings: MarbleStrings): String = when (this) {
+    VaultSiteFilter.ALL -> strings.vaultFilterAll
+    VaultSiteFilter.PROTECTED -> strings.vaultFilterProtected
+    VaultSiteFilter.UNPROTECTED -> strings.vaultFilterUnprotected
+    VaultSiteFilter.PINNED -> strings.vaultFilterPinned
+}
+
+/* ------------------------------------- کارتِ سایت ------------------------------------- */
+
+@Composable
+private fun SiteCard(
     container: WebAppContainer,
+    snapshotCount: Int,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val strings = LocalMarbleStrings.current
+    val colors = MaterialTheme.colorScheme
+    val accent = remember(container.domain) { siteBadgeAccent(container.domain) }
+    val shape = RoundedCornerShape(20.dp)
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.96f else 1f,
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = 700f),
+        label = "site card press",
+    )
+
+    Column(
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .testTag("container_card_${container.id}")
+            .clip(shape)
+            .background(colors.surface.copy(alpha = 0.62f))
+            .border(
+                width = 1.dp,
+                brush = Brush.linearGradient(
+                    listOf(accent.copy(alpha = 0.45f), colors.outlineVariant.copy(alpha = 0.22f)),
+                ),
+                shape = shape,
+            )
+            .clickable(interactionSource = interactionSource, indication = null, role = Role.Button, onClick = onClick)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            SiteBadgeLogo(
+                displayName = container.displayName,
+                domain = container.domain,
+                size = 38.dp,
+            )
+            Spacer(Modifier.weight(1f))
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(if (container.neverSignOutEnabled) accent else colors.outline),
+            )
+        }
+        Text(
+            text = container.displayName.ifBlank { container.domain },
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = container.domain,
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.5.sp),
+            color = colors.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            StatusChip(
+                text = if (container.neverSignOutEnabled) strings.vaultSiteProtected else strings.vaultSiteUnprotected,
+                accent = if (container.neverSignOutEnabled) accent else colors.outline,
+            )
+            if (container.isPinnedPwa) {
+                StatusChip(text = strings.vaultSitePinned, accent = colors.tertiary)
+            }
+        }
+        Text(
+            text = strings.vaultSnapshotCount(snapshotCount),
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.sp),
+            color = colors.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun StatusChip(text: String, accent: Color) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(accent.copy(alpha = 0.14f))
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 9.5.sp),
+            color = accent,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/* ----------------------------------- تایم‌لاین نسخه‌ها ----------------------------------- */
+
+@Composable
+private fun SnapshotGroup(
+    domain: String,
+    snapshots: List<SessionSnapshotMeta>,
+    totalCount: Int,
+    strings: MarbleStrings,
+    busyAction: String?,
+    onRollback: (SessionSnapshotMeta) -> Unit,
+    onDelete: (SessionSnapshotMeta) -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val accent = remember(domain) { siteBadgeAccent(domain) }
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(colors.surface.copy(alpha = 0.55f))
+            .border(0.9.dp, colors.outlineVariant.copy(alpha = 0.35f), shape)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            SiteBadgeLogo(displayName = domain, domain = domain, size = 26.dp)
+            Text(
+                text = domain,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = strings.vaultSnapshotCount(totalCount),
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.sp),
+                color = colors.onSurfaceVariant,
+            )
+        }
+        snapshots.forEach { snapshot ->
+            SnapshotRow(
+                snapshot = snapshot,
+                strings = strings,
+                accent = accent,
+                isBusy = busyAction == "rollback-${snapshot.id}",
+                onRollback = { onRollback(snapshot) },
+                onDelete = { onDelete(snapshot) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SnapshotRow(
+    snapshot: SessionSnapshotMeta,
+    strings: MarbleStrings,
+    accent: Color,
+    isBusy: Boolean,
+    onRollback: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val rowShape = RoundedCornerShape(14.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(rowShape)
+            .background(colors.surfaceContainerLow.copy(alpha = 0.65f))
+            .padding(start = 10.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(if (snapshot.isHealthy) accent else colors.outline),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = localizedSnapshotLabel(strings, snapshot),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = strings.snapshotLine(
+                    dateLabel(snapshot.capturedAtEpochMillis),
+                    snapshot.cookieCount,
+                    snapshot.storageKeyCount,
+                ),
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.sp),
+                color = colors.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        IconButton(
+            onClick = onRollback,
+            enabled = !isBusy,
+            modifier = Modifier
+                .size(30.dp)
+                .testTag("rollback_snapshot_${snapshot.id}"),
+        ) {
+            Icon(
+                imageVector = Icons.Default.Restore,
+                contentDescription = strings.restore,
+                tint = colors.primary,
+                modifier = Modifier.size(17.dp),
+            )
+        }
+        IconButton(onClick = onDelete, modifier = Modifier.size(30.dp)) {
+            Icon(
+                imageVector = Icons.Default.Delete,
+                contentDescription = strings.vaultDelete,
+                tint = colors.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+    }
+}
+
+/* ------------------------------------ گزارش محافظت ------------------------------------ */
+
+@Composable
+private fun HealthEventRow(
+    domain: String,
+    statusName: String,
+    reasonCode: String,
+    timestamp: Long,
+    strings: MarbleStrings,
+) {
+    val colors = MaterialTheme.colorScheme
+    val accent = remember(domain) { siteBadgeAccent(domain) }
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(colors.surface.copy(alpha = 0.45f))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(accent),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = domain,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = reasonTextOf(strings, reasonCode),
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.sp),
+                color = colors.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                text = strings.healthStatusLabel(statusOf(statusName)),
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 9.5.sp),
+                color = colors.primary,
+                maxLines = 1,
+            )
+            Text(
+                text = dateLabel(timestamp),
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 9.sp),
+                color = colors.outline,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+/* ------------------------------------ پنل تنظیمات سایت ------------------------------------ */
+
+@Composable
+private fun SiteControlPanel(
+    container: WebAppContainer,
+    snapshots: List<SessionSnapshotMeta>,
+    strings: MarbleStrings,
+    busyAction: String?,
     onToggleNeverSignOut: (Boolean) -> Unit,
     onCookieDaysChanged: (Int) -> Unit,
     onToggleKeepAlive: (Boolean) -> Unit,
-    onSignOutNowClicked: () -> Unit,
+    onKeepAliveIntervalChanged: (Int) -> Unit,
+    onSaveNow: () -> Unit,
+    onRollback: (SessionSnapshotMeta) -> Unit,
+    onDeleteSnapshot: (SessionSnapshotMeta) -> Unit,
+    onSignOutNow: () -> Unit,
 ) {
-    val strings = LocalMarbleStrings.current
+    val colors = MaterialTheme.colorScheme
+    val accent = remember(container.domain) { siteBadgeAccent(container.domain) }
     var sliderDays by remember(container.cookieExpirationDays) {
         mutableFloatStateOf(container.cookieExpirationDays.toFloat())
+    }
+    var keepAliveMinutes by remember(container.keepAliveIntervalMinutes) {
+        mutableFloatStateOf(container.keepAliveIntervalMinutes.toFloat())
     }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            // پنلِ جزئیات بلند است (سوییچ‌ها، اسلایدرها و فهرست نسخه‌ها) و روی نمایشگرهای
+            // کوچک از صفحه بیرون می‌زد؛ حالا داخل شیت اسکرول می‌شود.
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                SiteBadgeLogo(
-                    displayName = container.displayName,
-                    domain = container.domain,
-                    size = 38.dp,
-                )
-                Spacer(Modifier.width(10.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = container.displayName.ifBlank { container.domain },
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = container.domain,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(
-                    checked = container.neverSignOutEnabled,
-                    onCheckedChange = onToggleNeverSignOut,
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = strings.keepAliveEvery(container.keepAliveIntervalMinutes),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
-                )
-                Switch(
-                    checked = container.keepAliveEnabled,
-                    onCheckedChange = onToggleKeepAlive,
-                    enabled = container.neverSignOutEnabled,
-                )
-            }
-
-            Text(
-                text = strings.keepSignedInFor(sliderDays.toInt()),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Slider(
-                value = sliderDays,
-                onValueChange = { sliderDays = it },
-                onValueChangeFinished = { onCookieDaysChanged(sliderDays.toInt()) },
-                valueRange = 30f..730f,
-                enabled = container.neverSignOutEnabled,
-            )
-
-            Button(
-                onClick = onSignOutNowClicked,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("sign_out_now_btn_${container.id}"),
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(strings.signOutNow)
-            }
-    }
-}
-
-@Composable
-private fun SnapshotTimelineCard(
-    snapshot: SessionSnapshotMeta,
-    label: String,
-    onRollback: () -> Unit,
-) {
-    val strings = LocalMarbleStrings.current
-    val formattedDate = remember(snapshot.capturedAtEpochMillis) {
-        SimpleDateFormat("yyyy/MM/dd · HH:mm", Locale.getDefault())
-            .format(Date(snapshot.capturedAtEpochMillis))
-    }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Box(modifier = Modifier.weight(1f)) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = strings.snapshotLine(
-                            formattedDate,
-                            snapshot.cookieCount,
-                            snapshot.storageKeyCount,
-                        ),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+            SiteBadgeLogo(displayName = container.displayName, domain = container.domain, size = 44.dp)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = container.displayName.ifBlank { container.domain },
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = container.domain,
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.sp),
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
+            StatusChip(
+                text = if (container.neverSignOutEnabled) strings.vaultSiteProtected else strings.vaultSiteUnprotected,
+                accent = if (container.neverSignOutEnabled) accent else colors.outline,
+            )
+        }
+
+        Text(
+            text = strings.vaultSiteDetailsTitle,
+            style = MaterialTheme.typography.labelLarge,
+            color = colors.onSurfaceVariant,
+        )
+
+        PanelSwitch(
+            icon = Icons.Default.Shield,
+            title = strings.vaultProtectSwitchTitle,
+            body = strings.vaultProtectSwitchBody,
+            checked = container.neverSignOutEnabled,
+            accent = accent,
+            onCheckedChange = onToggleNeverSignOut,
+        )
+
+        PanelSwitch(
+            icon = Icons.Default.Bolt,
+            title = strings.vaultKeepAliveSwitchTitle,
+            body = strings.vaultKeepAliveSwitchBody,
+            checked = container.keepAliveEnabled,
+            accent = colors.tertiary,
+            enabled = container.neverSignOutEnabled,
+            onCheckedChange = onToggleKeepAlive,
+        )
+
+        if (container.keepAliveEnabled && container.neverSignOutEnabled) {
+            Text(
+                text = strings.vaultKeepAliveEveryMinutes(keepAliveMinutes.toInt()),
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.sp),
+                color = colors.onSurfaceVariant,
+            )
+            Slider(
+                value = keepAliveMinutes,
+                onValueChange = { keepAliveMinutes = it },
+                onValueChangeFinished = { onKeepAliveIntervalChanged(keepAliveMinutes.toInt()) },
+                valueRange = keepAliveRange(),
+                steps = 27,
+            )
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(text = strings.vaultCookieDaysTitle, style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = strings.vaultCookieDaysBody,
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.sp),
+                color = colors.onSurfaceVariant,
+            )
+        }
+        Text(
+            text = strings.keepSignedInFor(sliderDays.toInt()),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = accent,
+        )
+        Slider(
+            value = sliderDays,
+            onValueChange = { sliderDays = it },
+            onValueChangeFinished = { onCookieDaysChanged(sliderDays.toInt()) },
+            valueRange = cookieDaysRange(),
+            enabled = container.neverSignOutEnabled,
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             FilledTonalButton(
-                onClick = onRollback,
-                modifier = Modifier.testTag("rollback_snapshot_${snapshot.id}"),
+                onClick = onSaveNow,
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("save_snapshot_now_btn_${container.id}"),
+                enabled = busyAction == null,
             ) {
-                Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(6.dp))
-                Text(strings.restore)
+                Text(strings.vaultSaveNow, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Button(
+                onClick = onSignOutNow,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colors.errorContainer,
+                    contentColor = colors.onErrorContainer,
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("sign_out_now_btn_${container.id}"),
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ExitToApp,
+                    contentDescription = null,
+                    modifier = Modifier.size(17.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(strings.signOutNow, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+
+        if (snapshots.isNotEmpty()) {
+            Text(
+                text = strings.vaultSnapshotsOfSite,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            snapshots.take(4).forEach { snapshot ->
+                SnapshotRow(
+                    snapshot = snapshot,
+                    strings = strings,
+                    accent = accent,
+                    isBusy = busyAction == "rollback-${snapshot.id}",
+                    onRollback = { onRollback(snapshot) },
+                    onDelete = { onDeleteSnapshot(snapshot) },
+                )
             }
         }
     }
 }
+
+@Composable
+private fun PanelSwitch(
+    icon: ImageVector,
+    title: String,
+    body: String,
+    checked: Boolean,
+    accent: Color,
+    enabled: Boolean = true,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(colors.surfaceContainerLow.copy(alpha = if (enabled) 0.75f else 0.4f))
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(RoundedCornerShape(11.dp))
+                .background(accent.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = body,
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.5.sp, lineHeight = 14.sp),
+                color = colors.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+    }
+}
+
+/* -------------------------------------- اجزای مشترک -------------------------------------- */
+
+@Composable
+private fun SectionTitle(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    trailing: String?,
+) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(30.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(colors.primary.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = colors.primary, modifier = Modifier.size(17.dp))
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.5.sp),
+                color = colors.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (trailing != null) {
+            Text(
+                text = trailing,
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.5.sp),
+                color = colors.primary,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun EmptyStateCard(icon: ImageVector, text: String, hint: String?) {
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(colors.surface.copy(alpha = 0.40f))
+            .border(
+                width = 1.dp,
+                brush = Brush.linearGradient(
+                    listOf(colors.outlineVariant.copy(alpha = 0.45f), colors.outlineVariant.copy(alpha = 0.12f)),
+                ),
+                shape = shape,
+            )
+            .padding(vertical = 18.dp, horizontal = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = colors.primary.copy(alpha = 0.6f), modifier = Modifier.size(24.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.onSurfaceVariant,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (hint != null) {
+            Text(
+                text = hint,
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.5.sp),
+                color = colors.outline,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun InfoBanner(
+    icon: ImageVector,
+    message: String,
+    containerColor: Color,
+    contentColor: Color,
+) {
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(containerColor)
+            .padding(start = 12.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = contentColor,
+            modifier = Modifier.weight(1f),
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun SnackStyleFeedback(message: String, onDismiss: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .liquidGlass(
+                style = ChromeBarStyle.GLASS,
+                shape = RoundedCornerShape(18.dp),
+                fillAlphaOverride = 0.92f,
+                glow = false,
+                elevation = 12.dp,
+            )
+            .padding(start = 12.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = colors.primary, modifier = Modifier.size(16.dp))
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.onSurface,
+            modifier = Modifier.weight(1f),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        IconButton(onClick = onDismiss, modifier = Modifier.size(30.dp)) {
+            Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(15.dp))
+        }
+    }
+}
+
+/* ----------------------------------------- کمکی ----------------------------------------- */
+
+/** قالبِ تاریخِ مشترکِ داشبورد؛ یک‌بار ساخته می‌شود (نه در هر بازترکیب). */
+private const val DATE_PATTERN = "yyyy/MM/dd · HH:mm"
+
+private fun dateLabel(epochMillis: Long): String =
+    SimpleDateFormat(DATE_PATTERN, Locale.getDefault()).format(Date(epochMillis))
 
 private fun localizedSnapshotLabel(strings: MarbleStrings, snapshot: SessionSnapshotMeta): String = when {
     snapshot.label.isBlank() -> strings.autoSnapshotLabel(snapshot.domain)
@@ -608,3 +1489,17 @@ private fun reasonTextOf(strings: MarbleStrings, stored: String): String {
     val reason = runCatching { HealthReason.valueOf(stored) }.getOrNull()
     return if (reason != null) strings.healthReasonLabel(reason) else stored
 }
+
+/** بازهٔ اسلایدرِ زنده‌سازی، هم‌گام با محدودیت‌های ViewModel. */
+private fun keepAliveRange(): ClosedFloatingPointRange<Float> =
+    VaultDashboardViewModel.MIN_KEEP_ALIVE_MINUTES.toFloat()..VaultDashboardViewModel.MAX_KEEP_ALIVE_MINUTES.toFloat()
+
+/** بازهٔ اسلایدرِ مدت ماندن ورود، هم‌گام با محدودیت‌های ViewModel. */
+private fun cookieDaysRange(): ClosedFloatingPointRange<Float> =
+    VaultDashboardViewModel.MIN_COOKIE_DAYS.toFloat()..VaultDashboardViewModel.MAX_COOKIE_DAYS.toFloat()
+
+/** تعداد کارت‌های سایت در هر ردیف شبکه. */
+private const val SITES_PER_ROW = 2
+
+/** حداکثر تعداد گروه‌های سایت در تایم‌لاین (برای جلوگیری از فهرست بی‌پایان). */
+private const val GROUPED_TIMELINE_SITES = 6
