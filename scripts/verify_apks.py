@@ -34,6 +34,14 @@ def build_tools():
     return max(candidates, key=lambda p: tuple(map(int, p.name.split("."))))
 
 
+def signing_certificate(signature, name):
+    # Recent build-tools add a scheme prefix and colon (e.g. "V3.0 Signer:").
+    certs = re.findall(r"^(?:V[0-9.]+ )?Signer(?: #\d+)?:? certificate SHA-256 digest: ([0-9a-f]{64})$",
+                       signature, re.M | re.I)
+    require(len(certs) == 1, f"{name}: expected one verified signing certificate:\n{signature[:2000]}")
+    return certs[0].lower()
+
+
 def inspect_identity(apk, tools):
     def tool(name, *args):
         result = subprocess.run([str(tools / name), *args], stdout=subprocess.PIPE,
@@ -43,14 +51,13 @@ def inspect_identity(apk, tools):
 
     signature = tool("apksigner", "verify", "--min-sdk-version", str(MIN_SDK),
                      "--verbose", "--print-certs", str(apk))
-    certs = re.findall(r"^Signer #\d+ certificate SHA-256 digest: ([0-9a-f]{64})$", signature, re.M)
-    require(len(certs) == 1, f"{apk.name}: expected one verified signing certificate")
+    cert = signing_certificate(signature, apk.name)
     badging = tool("aapt2", "dump", "badging", str(apk))
     package = next((line for line in badging.splitlines() if line.startswith("package: ")), "")
     fields = dict(re.findall(r"(\w+)='([^']*)'", package))
     require(fields.get("name") == PACKAGE and not fields.get("split"),
             f"{apk.name}: not a standalone {PACKAGE} APK: {package}")
-    return fields["versionName"], int(fields["versionCode"]), certs[0], badging, tool
+    return fields["versionName"], int(fields["versionCode"]), cert, badging, tool
 
 
 def verify_16k_segments(lib, header, label):

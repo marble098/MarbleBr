@@ -38,6 +38,15 @@ class ApkGateTest(unittest.TestCase):
                         elf = header + struct.pack("<II6Q", 1, 5, 0, 0, 0, 0, 0, alignment)
                     archive.writestr(f"lib/{abi}/{lib}", elf)
 
+    def test_apksigner_old_and_new_formats(self):
+        digest = "1a" * 32
+        for label in ("Signer #1", "V3.0 Signer:", "V2 Signer #1:"):
+            line = f"{label} certificate SHA-256 digest: {digest}"
+            stamp = f"Source Stamp Signer: certificate SHA-256 digest: {'2b' * 32}"
+            self.assertEqual(gate.signing_certificate(f"{line}\n{stamp}", "app.apk"), digest)
+        with self.assertRaisesRegex(ValueError, "expected one"):
+            gate.signing_certificate(f"{line}\n{line}", "app.apk")
+
     def test_exact_output_set(self):
         self.assertEqual(gate.output_apks(self.root), self.apks)
         (self.root / "stale-x86.apk").touch()
