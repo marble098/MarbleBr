@@ -76,6 +76,7 @@ class ContainerSessionManager @Inject constructor(
 ) {
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val activeSessions = ConcurrentHashMap<String, GeckoSession>()
+
     // پورت‌ها از تردِ Gecko هم لمس می‌شوند؛ نگه‌داشتن آن‌ها در ConcurrentHashMap از
     // ConcurrentModificationException و نشتِ پورتِ بسته‌شده جلوگیری می‌کند.
     private val capturePorts = ConcurrentHashMap<GeckoSession, WebExtension.Port>()
