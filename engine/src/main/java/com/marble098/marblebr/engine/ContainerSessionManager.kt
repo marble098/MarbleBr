@@ -80,6 +80,7 @@ class ContainerSessionManager @Inject constructor(
 ) {
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val activeSessions = ConcurrentHashMap<String, GeckoSession>()
+
     /** پروفایلِ دسترسی‌های هر تب؛ delegate هر نشست همین را می‌خواند. */
     private val permissionProfiles = ConcurrentHashMap<String, SitePermissionProfile>()
 
