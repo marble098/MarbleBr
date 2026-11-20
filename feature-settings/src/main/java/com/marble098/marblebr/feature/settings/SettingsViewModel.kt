@@ -11,6 +11,7 @@ import com.marble098.marblebr.core.model.ProxyDnsConfig
 import com.marble098.marblebr.core.model.ProxyType
 import com.marble098.marblebr.core.model.SearchEngine
 import com.marble098.marblebr.core.model.ThemeMode
+import com.marble098.marblebr.core.preferences.AddressSelectionMode
 import com.marble098.marblebr.core.preferences.BrowserPreferences
 import com.marble098.marblebr.core.preferences.BrowserPreferencesRepository
 import com.marble098.marblebr.engine.ContainerSessionManager
@@ -101,6 +102,14 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             preferencesRepository.setSearchEngine(engine)
         }
+    }
+
+    fun setAddressSelectionMode(mode: AddressSelectionMode) {
+        viewModelScope.launch { preferencesRepository.setAddressSelectionMode(mode) }
+    }
+
+    fun setOpenGoogleOnNewTab(enabled: Boolean) {
+        viewModelScope.launch { preferencesRepository.setOpenGoogleOnNewTab(enabled) }
     }
 
     fun setHomeShortcutPosition(position: HomeShortcutPosition) {

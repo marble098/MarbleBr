@@ -80,6 +80,23 @@ abstract class MarbleStrings {
     abstract val closeTab: String
     abstract val newTabTitle: String
     abstract val privateTabTitle: String
+    abstract val addressSelectionTitle: String
+    abstract val addressSelectionDescription: String
+    abstract val addressSelectAll: String
+    abstract val addressSelectPart: String
+    abstract val addressCursor: String
+    abstract val googleNewTab: String
+    abstract val googleNewTabDescription: String
+    abstract val goToAddress: String
+    abstract val navigationFailed: String
+    abstract val stopLoading: String
+    abstract val duplicateTab: String
+    abstract val reopenTab: String
+    abstract val closeAllTabs: String
+    abstract val confirmCloseAllTabs: String
+    abstract val searchTabs: String
+    abstract val noTabs: String
+    abstract val noMatchingTabs: String
     abstract val clearHistory: String
     abstract val emptyBookmarks: String
     abstract val emptyHistory: String
@@ -363,6 +380,23 @@ private object PersianStrings : MarbleStrings() {
     override val closeTab = "بستن تب"
     override val newTabTitle = "تب جدید"
     override val privateTabTitle = "تب خصوصی"
+    override val addressSelectionTitle = "انتخاب متن نوار آدرس"
+    override val addressSelectionDescription = "هنگام لمس نوار آدرس، نحوهٔ انتخاب متن را تعیین کنید."
+    override val addressSelectAll = "همهٔ آدرس"
+    override val addressSelectPart = "بخش لمس‌شده"
+    override val addressCursor = "فقط نشانگر"
+    override val googleNewTab = "باز کردن گوگل در تب جدید"
+    override val googleNewTabDescription = "اگر خاموش باشد، تب جدید صفحهٔ خانه را نشان می‌دهد و هیچ سایتی بارگیری نمی‌شود."
+    override val goToAddress = "برو به آدرس"
+    override val navigationFailed = "آدرس باز نشد. دوباره تلاش کنید."
+    override val stopLoading = "توقف بارگیری"
+    override val duplicateTab = "ایجاد نسخهٔ دوم تب"
+    override val reopenTab = "بازگشایی تب بسته‌شده"
+    override val closeAllTabs = "بستن همهٔ تب‌ها"
+    override val confirmCloseAllTabs = "همهٔ تب‌های عادی و خصوصی بسته شوند؟"
+    override val searchTabs = "جستجو در تب‌ها"
+    override val noTabs = "هیچ تب بازی نیست."
+    override val noMatchingTabs = "تبی با این عبارت پیدا نشد."
     override val clearHistory = "پاک کردن تاریخچه"
     override val emptyBookmarks = "هنوز چیزی نشان نکرده‌ای. با آیکن نشان بالای صفحه، هر سایتی را ذخیره کن."
     override val emptyHistory = "اینجا خالی است؛ سایت‌هایی که باز کنی اینجا می‌آیند."
@@ -580,6 +614,23 @@ private object EnglishStrings : MarbleStrings() {
     override val closeTab = "Close tab"
     override val newTabTitle = "New tab"
     override val privateTabTitle = "Private tab"
+    override val addressSelectionTitle = "Address bar selection"
+    override val addressSelectionDescription = "Choose what is selected when you tap the address bar."
+    override val addressSelectAll = "Entire address"
+    override val addressSelectPart = "Tapped segment"
+    override val addressCursor = "Cursor only"
+    override val googleNewTab = "Open Google in new tabs"
+    override val googleNewTabDescription = "When off, new tabs stay on Home and no website loads."
+    override val goToAddress = "Go to address"
+    override val navigationFailed = "Could not open the address. Try again."
+    override val stopLoading = "Stop loading"
+    override val duplicateTab = "Duplicate tab"
+    override val reopenTab = "Reopen closed tab"
+    override val closeAllTabs = "Close all tabs"
+    override val confirmCloseAllTabs = "Close all regular and private tabs?"
+    override val searchTabs = "Search tabs"
+    override val noTabs = "No open tabs."
+    override val noMatchingTabs = "No matching tabs."
     override val clearHistory = "Clear history"
     override val emptyBookmarks = "Nothing saved yet. Use the bookmark icon at the top to save a site."
     override val emptyHistory = "Nothing here yet. Sites you open will show up here."

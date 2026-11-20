@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       verify_only:
-        description: "Build and verify all signed APKs without committing a version bump or publishing a release"
+        description: "Build and verify all signed APKs without committing a version bump or creating a draft release"
         required: false
         default: false
         type: boolean
@@ -18,8 +18,8 @@ concurrency:
 
 jobs:
   release:
-    name: Bump Version, Sign All ABI APKs & Publish GitHub Release
-    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
+    name: Bump Version, Sign All ABI APKs & Prepare Draft GitHub Release
+    if: ${{ (github.ref == 'refs/heads/main' || inputs.verify_only) && !startsWith(github.event.head_commit.message, 'chore(release):') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -51,7 +51,13 @@ jobs:
         run: |
           set -euo pipefail
           if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
-            ./scripts/bump_version.sh --base=HEAD~1
+            OLD_NAME=$(git show HEAD~1:gradle.properties | sed -n 's/^MARBLE_VERSION_NAME=//p')
+            NEW_NAME=$(sed -n 's/^MARBLE_VERSION_NAME=//p' gradle.properties)
+            if [[ "$NEW_NAME" != "$OLD_NAME" && "$NEW_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              ./scripts/bump_version.sh --base=HEAD~1 --keep-name
+            else
+              ./scripts/bump_version.sh --base=HEAD~1
+            fi
           else
             ./scripts/bump_version.sh
           fi
@@ -127,27 +133,41 @@ jobs:
           ls -lh "${OUT_DIR}"
 
       - name: Commit Bumped Version to main
+        id: version_commit
         if: ${{ !inputs.verify_only }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add gradle.properties
-          if git diff --staged --quiet; then
-            echo "ℹ️ نسخه تغییری نکرده است؛ Commit لازم نیست."
-            exit 0
+          if ! git diff --staged --quiet; then
+            git commit -m "chore(release): v${{ steps.bump.outputs.version_name }} (code ${{ steps.bump.outputs.version_code }})"
+            # A rerun may find the identical version commit already on main.
+            git fetch origin main
+            if [[ "$(git rev-parse origin/main^)" == "$GITHUB_SHA" &&
+                  "$(git rev-parse origin/main^{tree})" == "$(git rev-parse HEAD^{tree})" ]]; then
+              echo "sha=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            git push origin HEAD:main
           fi
-          git commit -m "chore(release): v${{ steps.bump.outputs.version_name }} (code ${{ steps.bump.outputs.version_code }})"
-          # آخرین تغییرات main (در صورت concurrent push) را دریافت و سپس push کن
-          git pull --rebase origin main || true
-          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub Release and Attach All 5 APKs
+      - name: Create Draft GitHub Release and Attach All 5 APKs
         if: ${{ !inputs.verify_only }}
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: v${{ steps.bump.outputs.version_name }}
-          name: MarbleBr v${{ steps.bump.outputs.version_name }}
-          body_path: ${{ runner.temp }}/release_notes.md
-          files: ${{ runner.temp }}/release_apks/*.apk
-          generate_release_notes: false
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ steps.bump.outputs.version_name }}
+          TARGET: ${{ steps.version_commit.outputs.sha }}
+        run: |
+          set -euo pipefail
+          if existing=$(gh release view "$TAG" --json isDraft --jq .isDraft); then
+            if [[ "$existing" != "true" ]]; then
+              echo "::error::Release $TAG is already published. Refusing to modify it."
+              exit 1
+            fi
+            gh release upload "$TAG" "${RUNNER_TEMP}/release_apks/"*.apk --clobber
+          else
+            gh release create "$TAG" "${RUNNER_TEMP}/release_apks/"*.apk --draft --target "$TARGET" \
+              --title "MarbleBr $TAG" --notes-file "${RUNNER_TEMP}/release_notes.md"
+          fi

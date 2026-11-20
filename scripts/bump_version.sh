@@ -93,12 +93,14 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     LINES_OVERRIDE=""
     BREAKING_OVERRIDE="false"
     DRY_RUN="false"
+    KEEP_NAME="false"
 
     for arg in "$@"; do
         case "$arg" in
             --base=*) BASE_REF="${arg#*=}" ;;
             --lines=*) LINES_OVERRIDE="${arg#*=}" ;;
             --breaking) BREAKING_OVERRIDE="true" ;;
+            --keep-name) KEEP_NAME="true" ;;
             --dry-run) DRY_RUN="true" ;;
             --props=*) PROPS_FILE="${arg#*=}" ;;
         esac
@@ -139,7 +141,11 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
         IS_BREAKING="true"
     fi
 
-    NEXT_VERSION=$(compute_next_semver "$CURRENT_VERSION" "$CHANGED_LINES" "$IS_BREAKING")
+    if [[ "$KEEP_NAME" == "true" ]]; then
+        NEXT_VERSION="$CURRENT_VERSION"
+    else
+        NEXT_VERSION=$(compute_next_semver "$CURRENT_VERSION" "$CHANGED_LINES" "$IS_BREAKING")
+    fi
     COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "1")
     RUN_NUMBER="${GITHUB_RUN_NUMBER:-0}"
     NEXT_CODE=$(compute_monotonic_version_code "$CURRENT_CODE" "$COMMIT_COUNT" "$RUN_NUMBER")

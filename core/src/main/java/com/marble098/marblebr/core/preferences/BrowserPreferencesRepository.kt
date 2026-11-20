@@ -15,8 +15,12 @@ import com.marble098.marblebr.core.model.SearchEngine
 import com.marble098.marblebr.core.model.ThemeMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import javax.inject.Singleton
+
+enum class AddressSelectionMode { SELECT_ALL, SELECT_PART, CURSOR }
 
 data class BrowserPreferences(
     val globalNeverSignOutEnabled: Boolean = true,
@@ -33,6 +37,8 @@ data class BrowserPreferences(
     val searchEngineTemplate: String = "https://www.google.com/search?q=%s",
     val selectedSearchEngineId: String = SearchEngine.DEFAULT.id,
     val homeShortcutPosition: HomeShortcutPosition = HomeShortcutPosition.BOTTOM,
+    val addressSelectionMode: AddressSelectionMode = AddressSelectionMode.SELECT_ALL,
+    val openGoogleOnNewTab: Boolean = false,
     val rateDialogShown: Boolean = false,
     val rateLaunchCount: Int = 0,
 )
@@ -60,6 +66,9 @@ class BrowserPreferencesRepository @Inject constructor(
         val SEARCH_ENGINE = stringPreferencesKey("search_engine")
         val SELECTED_SEARCH_ENGINE_ID = stringPreferencesKey("selected_search_engine_id")
         val HOME_SHORTCUT_POSITION = stringPreferencesKey("home_shortcut_position")
+        val SAVED_TABS = stringPreferencesKey("saved_tabs_v1")
+        val ADDRESS_SELECTION = stringPreferencesKey("address_selection")
+        val GOOGLE_NEW_TAB = booleanPreferencesKey("google_new_tab")
         val RATE_DIALOG_SHOWN = booleanPreferencesKey("rate_dialog_shown")
         val RATE_LAUNCH_COUNT = intPreferencesKey("rate_launch_count")
     }
@@ -104,9 +113,34 @@ class BrowserPreferencesRepository @Inject constructor(
             homeShortcutPosition = prefs[Keys.HOME_SHORTCUT_POSITION]?.let {
                 runCatching { HomeShortcutPosition.valueOf(it) }.getOrNull()
             } ?: HomeShortcutPosition.BOTTOM,
+            addressSelectionMode = AddressSelectionMode.entries.firstOrNull { it.name == prefs[Keys.ADDRESS_SELECTION] }
+                ?: AddressSelectionMode.SELECT_ALL,
+            openGoogleOnNewTab = prefs[Keys.GOOGLE_NEW_TAB] ?: false,
             rateDialogShown = prefs[Keys.RATE_DIALOG_SHOWN] ?: false,
             rateLaunchCount = prefs[Keys.RATE_LAUNCH_COUNT] ?: 0,
         )
+    }
+
+    val savedBrowserTabs: Flow<SavedBrowserTabs?> = dataStore.data.map { prefs ->
+        prefs[Keys.SAVED_TABS]?.let { saved ->
+            try {
+                Json.decodeFromString<SavedBrowserTabs>(saved)
+            } catch (_: SerializationException) {
+                null
+            }
+        }
+    }
+
+    suspend fun saveBrowserTabs(snapshot: SavedBrowserTabs) {
+        dataStore.edit { it[Keys.SAVED_TABS] = Json.encodeToString(snapshot) }
+    }
+
+    suspend fun setAddressSelectionMode(mode: AddressSelectionMode) {
+        dataStore.edit { it[Keys.ADDRESS_SELECTION] = mode.name }
+    }
+
+    suspend fun setOpenGoogleOnNewTab(enabled: Boolean) {
+        dataStore.edit { it[Keys.GOOGLE_NEW_TAB] = enabled }
     }
 
     suspend fun setGlobalNeverSignOut(enabled: Boolean) {

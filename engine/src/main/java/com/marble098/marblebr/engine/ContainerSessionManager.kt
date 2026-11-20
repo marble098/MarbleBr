@@ -132,6 +132,7 @@ class ContainerSessionManager @Inject constructor(
     fun getOrCreateGeckoSession(
         tabId: String,
         container: WebAppContainer,
+        initialUrl: String,
         isPrivate: Boolean = false,
         isDesktopMode: Boolean = false,
         adBlockEnabled: Boolean = true,
@@ -160,12 +161,11 @@ class ContainerSessionManager @Inject constructor(
 
         val session = GeckoSession(sessionSettings)
         val runtime = getOrCreateRuntime()
-        session.open(runtime)
-
         attachSessionDelegates(
             session = session,
             container = container,
             adBlockEnabled = adBlockEnabled,
+            isPrivate = isPrivate,
             onLocationChanged = onLocationChanged,
             onTitleChanged = onTitleChanged,
             onProgressChanged = onProgressChanged,
@@ -175,12 +175,32 @@ class ContainerSessionManager @Inject constructor(
             onDownloadRequested = onDownloadRequested,
         )
 
-        installedExtension?.let { ext ->
-            attachSessionExtensionBridge(session, ext, container, onHealthRestored, onServerRevokedFallbackRequired)
+        if (!isPrivate) {
+            val attachBridge: (WebExtension) -> Unit = { extension ->
+                attachSessionExtensionBridge(session, extension, container, onHealthRestored, onServerRevokedFallbackRequired)
+            }
+            val extension = installedExtension
+            if (extension != null) {
+                attachBridge(extension)
+            } else {
+                runtime.webExtensionController.ensureBuiltIn(EXTENSION_ASSET_URI, EXTENSION_ID).accept { available ->
+                    if (available != null && activeSessions[tabId] === session) attachBridge(available)
+                }
+            }
         }
 
         activeSessions[tabId] = session
+        session.open(runtime)
+        session.loadUri(initialUrl)
         return session
+    }
+
+    fun loadInOpenSession(tabId: String, url: String) {
+        activeSessions[tabId]?.loadUri(url)
+    }
+
+    fun stopLoading(tabId: String) {
+        activeSessions[tabId]?.stop()
     }
 
     fun setDesktopMode(tabId: String, enabled: Boolean) {
@@ -401,6 +421,7 @@ class ContainerSessionManager @Inject constructor(
         session: GeckoSession,
         container: WebAppContainer,
         adBlockEnabled: Boolean,
+        isPrivate: Boolean,
         onLocationChanged: (url: String, isSecure: Boolean) -> Unit,
         onTitleChanged: (title: String) -> Unit,
         onProgressChanged: (progress: Int, isLoading: Boolean) -> Unit,
@@ -422,7 +443,7 @@ class ContainerSessionManager @Inject constructor(
                     return GeckoResult.fromValue(AllowOrDeny.DENY)
                 }
 
-                if (healthGuard.isSuspiciousLoginRedirect(previousUrl, request.uri)) {
+                if (!isPrivate && healthGuard.isSuspiciousLoginRedirect(previousUrl, request.uri)) {
                     engineScope.launch {
                         val freshContainer = containerDao.getById(container.id)?.toDomain() ?: container
                         val assessment = healthGuard.evaluateSignal(
@@ -483,7 +504,7 @@ class ContainerSessionManager @Inject constructor(
 
         session.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onPageStart(session: GeckoSession, url: String) {
-                onProgressChanged(10, true)
+                onProgressChanged(0, true)
             }
 
             override fun onProgressChange(session: GeckoSession, progress: Int) {

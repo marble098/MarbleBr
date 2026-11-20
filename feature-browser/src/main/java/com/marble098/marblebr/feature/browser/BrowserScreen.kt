@@ -3,11 +3,15 @@ package com.marble098.marblebr.feature.browser
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,6 +19,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -28,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowRightAlt
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CleaningServices
@@ -77,6 +83,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -84,17 +92,26 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
+import com.marble098.marblebr.core.preferences.AddressSelectionMode
 import com.marble098.marblebr.core.model.BookmarkItem
 import com.marble098.marblebr.core.model.BrowserTab
 import com.marble098.marblebr.core.model.DownloadItem
@@ -104,9 +121,6 @@ import com.marble098.marblebr.core.model.SessionHealthStatus
 import com.marble098.marblebr.core.model.WebAppContainer
 import org.mozilla.geckoview.GeckoView
 
-const val HOME_BOTTOM_INDEX = 0
-const val TABS_BOTTOM_INDEX = 1
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BrowserScreen(
@@ -115,7 +129,6 @@ fun BrowserScreen(
     onOpenSettings: () -> Unit,
     onTriggerBiometricPasskeyRelogin: (domain: String) -> Unit,
     renderGeckoWebView: Boolean = true,
-    initialShowHome: Boolean = true,
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val prefs by viewModel.preferences.collectAsState()
@@ -126,25 +139,39 @@ fun BrowserScreen(
     val strings = LocalMarbleStrings.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    var showHome by remember { mutableStateOf(initialShowHome) }
-    var bottomBarIndex by remember { mutableStateOf(if (initialShowHome) HOME_BOTTOM_INDEX else TABS_BOTTOM_INDEX) }
+    val showHome = uiState.showHome
     var showTabsSheet by remember { mutableStateOf(false) }
     var showBookmarksHistorySheet by remember { mutableStateOf(false) }
     var showDownloadsSheet by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
 
     val activeTab = uiState.activeTab
+    val hasHomeShortcut = showHome && prefs.homeShortcutPosition == HomeShortcutPosition.BOTTOM
+    val hasPage = !activeTab?.url.isNullOrBlank()
+    val focusManager = LocalFocusManager.current
+    val submit: (String) -> Unit = { query ->
+        if (query.isNotBlank()) {
+            focusManager.clearFocus()
+            keyboardController?.hide()
+            viewModel.navigateToInput(query)
+        }
+    }
+    BackHandler(enabled = !showHome) {
+        if (activeTab?.canGoBack == true) viewModel.goBack() else viewModel.showHome()
+    }
     val isBookmarked = activeTab != null && bookmarks.any { it.url == activeTab.url }
 
     Scaffold(
+        modifier = Modifier.imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface)
                     .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 8.dp, vertical = 5.dp)
+                    .liquidGlass()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Row(
@@ -175,44 +202,18 @@ fun BrowserScreen(
                         )
                     }
 
-                    OutlinedTextField(
-                        value = uiState.addressBarInput,
-                        onValueChange = viewModel::onAddressBarChanged,
-                        modifier = Modifier.weight(1f).testTag("smart_address_bar"),
-                        singleLine = true,
-                        shape = MaterialTheme.shapes.large,
-                        textStyle = MaterialTheme.typography.bodyLarge,
-                        leadingIcon = {
-                            Icon(
-                                imageVector = if (activeTab?.isSecure == true) Icons.Default.Lock else Icons.Default.Search,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        },
-                        trailingIcon = {
-                            IconButton(onClick = viewModel::toggleBookmarkCurrentPage) {
-                                Icon(
-                                    imageVector = if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                                    contentDescription = strings.bookmarkToggle,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            }
-                        },
-                        placeholder = {
-                            Text(
-                                text = strings.addressPlaceholder,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                        keyboardActions = KeyboardActions(onGo = {
-                            viewModel.navigateToInput()
-                            keyboardController?.hide()
-                            showHome = false
-                        }),
-                    )
+                    key(activeTab?.id) {
+                        BrowserAddressField(
+                            url = activeTab?.url.orEmpty(),
+                            secure = activeTab?.isSecure == true,
+                            isBookmarked = isBookmarked,
+                            canBookmark = hasPage && activeTab?.isPrivate != true,
+                            mode = prefs.addressSelectionMode,
+                            onSubmit = submit,
+                            onBookmark = viewModel::toggleBookmarkCurrentPage,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
 
                     Box {
                         IconButton(
@@ -223,7 +224,10 @@ fun BrowserScreen(
                         }
                         BrowserOverflowMenu(
                             expanded = showOverflowMenu,
-                            pageUrl = activeTab?.url,
+                            pageUrl = activeTab?.url?.ifBlank { null },
+                            isPrivate = activeTab?.isPrivate == true,
+                            canDuplicate = activeTab != null,
+                            onDuplicate = viewModel::duplicateTab,
                             onDismiss = { showOverflowMenu = false },
                             isDesktopMode = activeTab?.isDesktopMode == true,
                             downloadsCount = downloads.size,
@@ -258,8 +262,16 @@ fun BrowserScreen(
                             modifier = Modifier.size(18.dp),
                         )
                     }
-                    IconButton(onClick = viewModel::reloadPage) {
-                        Icon(Icons.Default.Refresh, contentDescription = strings.reload, modifier = Modifier.size(18.dp))
+                    IconButton(
+                        onClick = if (activeTab?.isLoading == true) viewModel::stopLoading else viewModel::reloadPage,
+                        enabled = !showHome && (hasPage || activeTab?.isLoading == true),
+                    ) {
+                        val loading = activeTab?.isLoading == true
+                        Icon(
+                            if (loading) Icons.Default.Close else Icons.Default.Refresh,
+                            contentDescription = if (loading) strings.stopLoading else strings.reload,
+                            modifier = Modifier.size(18.dp),
+                        )
                     }
 
                     AssistChip(
@@ -269,7 +281,7 @@ fun BrowserScreen(
                             Text(
                                 text = when {
                                     activeTab?.isPrivate == true -> strings.privateTabChip
-                                    uiState.activeContainer?.neverSignOutEnabled == false -> strings.protectionOffChip
+                                    uiState.activeContainer?.neverSignOutEnabled != true -> strings.protectionOffChip
                                     else -> strings.protectionOnChip
                                 },
                                 style = MaterialTheme.typography.labelLarge,
@@ -309,15 +321,15 @@ fun BrowserScreen(
                     }
                 }
 
-                if (activeTab?.isLoading == true) {
-                    val progress = (activeTab.progress / 100f).coerceIn(0f, 1f)
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(3.dp),
-                        trackColor = MaterialTheme.colorScheme.outlineVariant,
-                    )
+                Box(Modifier.fillMaxWidth().height(3.dp)) {
+                    if (!showHome && activeTab?.isLoading == true) {
+                        val progress = (activeTab.progress / 100f).coerceIn(0f, 1f)
+                        if (progress == 0f) {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxSize())
+                        } else {
+                            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxSize())
+                        }
+                    }
                 }
 
                 if (uiState.isFindInPageVisible) {
@@ -367,24 +379,20 @@ fun BrowserScreen(
             }
         },
         bottomBar = {
-            if (!showHome) {
+            Box(Modifier.padding(horizontal = 8.dp, vertical = 5.dp).liquidGlass()) {
                 NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
                 ) {
                     NavigationBarItem(
-                        selected = bottomBarIndex == HOME_BOTTOM_INDEX,
-                        onClick = { showHome = true; bottomBarIndex = HOME_BOTTOM_INDEX },
+                        selected = showHome,
+                        onClick = viewModel::showHome,
                         icon = { Icon(Icons.Default.Home, contentDescription = strings.homeTitle) },
                         label = { Text(strings.homeTitle) },
                         modifier = Modifier.testTag("nav_home_btn"),
                     )
                     NavigationBarItem(
-                        selected = bottomBarIndex == TABS_BOTTOM_INDEX,
-                        onClick = {
-                            showHome = false
-                            bottomBarIndex = TABS_BOTTOM_INDEX
-                            showTabsSheet = true
-                        },
+                        selected = showTabsSheet,
+                        onClick = { showTabsSheet = true },
                         icon = {
                             BadgedBox(
                                 badge = { Badge { Text("${uiState.tabs.size}") } },
@@ -424,7 +432,7 @@ fun BrowserScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(if (showHome && prefs.homeShortcutPosition == HomeShortcutPosition.BOTTOM) PaddingValues(bottom = 86.dp) else PaddingValues(0.dp)),
+                .padding(bottom = if (hasHomeShortcut) 58.dp else 0.dp),
         ) {
             val isInspection = LocalInspectionMode.current
             val container = uiState.activeContainer
@@ -435,40 +443,15 @@ fun BrowserScreen(
                     bookmarks = bookmarks,
                     historyItems = historyItems,
                     shortcutPosition = prefs.homeShortcutPosition,
-                    onSearch = { query ->
-                        viewModel.navigateToInput(query)
-                        keyboardController?.hide()
-                        showHome = false
-                        bottomBarIndex = TABS_BOTTOM_INDEX
-                    },
-                    onNewTab = {
-                        viewModel.openNewTab(isPrivate = false)
-                        showHome = false
-                        bottomBarIndex = TABS_BOTTOM_INDEX
-                    },
-                    onNewPrivateTab = {
-                        viewModel.openNewTab(isPrivate = true)
-                        showHome = false
-                        bottomBarIndex = TABS_BOTTOM_INDEX
-                    },
+                    onSearch = submit,
+                    onNewTab = { viewModel.openNewTab() },
+                    onNewPrivateTab = { viewModel.openNewTab(isPrivate = true) },
                     onOpenBookmarksHistory = { showBookmarksHistorySheet = true },
                     onOpenSettings = onOpenSettings,
                 )
-            } else if (activeTab != null && renderGeckoWebView && !isInspection && container != null) {
-                val tab = activeTab
-                val activeContainer = uiState.activeContainer
-                if (activeContainer != null) {
-                    GeckoSessionWebView(
-                        tab = tab,
-                        container = activeContainer,
-                        viewModel = viewModel,
-                    )
-                } else {
-                    ReadyCard(
-                        tab = tab,
-                        onCaptureSnapshot = viewModel::captureManualSnapshotNow,
-                        onOpenVault = { onOpenVaultDashboard(tab.containerId) },
-                    )
+            } else if (activeTab != null && hasPage && renderGeckoWebView && !isInspection && container != null && container.id == activeTab.containerId) {
+                key(activeTab.id, activeTab.contextId) {
+                    GeckoSessionWebView(tab = activeTab, container = container, viewModel = viewModel)
                 }
             } else {
                 ReadyCard(
@@ -478,17 +461,13 @@ fun BrowserScreen(
                 )
             }
 
-            if (showHome && prefs.homeShortcutPosition == HomeShortcutPosition.BOTTOM) {
+            if (hasHomeShortcut) {
                 Box(
                     modifier = Modifier.fillMaxWidth().align(Alignment.BottomEnd),
                     contentAlignment = Alignment.BottomEnd,
                 ) {
                     HomeShortcutButton(
-                        onClick = {
-                            viewModel.openNewTab(isPrivate = false)
-                            showHome = false
-                            bottomBarIndex = TABS_BOTTOM_INDEX
-                        },
+                        onClick = { viewModel.openNewTab() },
                     )
                 }
             }
@@ -502,9 +481,7 @@ fun BrowserScreen(
                 historyItems = historyItems,
                 onSelectUrl = { url ->
                     showBookmarksHistorySheet = false
-                    viewModel.navigateToInput(url)
-                    showHome = false
-                    bottomBarIndex = TABS_BOTTOM_INDEX
+                    submit(url)
                 },
                 onClearHistory = viewModel::clearBrowsingHistory,
             )
@@ -525,21 +502,21 @@ fun BrowserScreen(
                 onSelectTab = {
                     viewModel.selectTab(it)
                     showTabsSheet = false
-                    showHome = false
-                    bottomBarIndex = TABS_BOTTOM_INDEX
                 },
                 onCloseTab = viewModel::closeTab,
+                canReopenTab = uiState.canReopenTab,
+                onReopenTab = {
+                    viewModel.reopenClosedTab()
+                    showTabsSheet = false
+                },
+                onCloseAll = viewModel::closeAllTabs,
                 onNewNormalTab = {
                     viewModel.openNewTab(isPrivate = false)
                     showTabsSheet = false
-                    showHome = false
-                    bottomBarIndex = TABS_BOTTOM_INDEX
                 },
                 onNewPrivateTab = {
                     viewModel.openNewTab(isPrivate = true)
                     showTabsSheet = false
-                    showHome = false
-                    bottomBarIndex = TABS_BOTTOM_INDEX
                 },
             )
         }
@@ -568,6 +545,67 @@ fun BrowserScreen(
             },
         )
     }
+}
+
+@Composable
+private fun BrowserAddressField(
+    url: String,
+    secure: Boolean,
+    isBookmarked: Boolean,
+    canBookmark: Boolean,
+    mode: AddressSelectionMode,
+    onSubmit: (String) -> Unit,
+    onBookmark: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val strings = LocalMarbleStrings.current
+    var focused by remember { mutableStateOf(false) }
+    var input by remember { mutableStateOf(TextFieldValue(url)) }
+    LaunchedEffect(url, focused) {
+        if (!focused) input = TextFieldValue(url)
+    }
+    LaunchedEffect(focused) {
+        if (focused && mode != AddressSelectionMode.CURSOR) {
+            input = input.copy(selection = addressSelection(input.text, input.selection.end, mode))
+        }
+    }
+    OutlinedTextField(
+        value = input,
+        onValueChange = { input = it },
+        modifier = modifier.testTag("smart_address_bar")
+            .onFocusChanged { focused = it.isFocused }
+            .onPreviewKeyEvent { event ->
+                if (event.key != Key.Enter && event.key != Key.NumPadEnter) {
+                    false
+                } else {
+                    if (event.type == KeyEventType.KeyUp) onSubmit(input.text)
+                    true
+                }
+            },
+        singleLine = true,
+        shape = MaterialTheme.shapes.extraLarge,
+        textStyle = MaterialTheme.typography.bodyMedium,
+        leadingIcon = {
+            Icon(if (secure) Icons.Default.Lock else Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+        },
+        trailingIcon = {
+            if (focused) {
+                IconButton(onClick = { onSubmit(input.text) }, enabled = input.text.isNotBlank()) {
+                    Icon(Icons.Default.ArrowRightAlt, contentDescription = strings.goToAddress)
+                }
+            } else if (canBookmark) {
+                IconButton(onClick = onBookmark) {
+                    Icon(
+                        if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                        contentDescription = strings.bookmarkToggle,
+                    )
+                }
+            }
+        },
+        placeholder = { Text(strings.addressPlaceholder, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+        keyboardActions = KeyboardActions(onGo = { onSubmit(input.text) }),
+    )
 }
 
 @Composable
@@ -602,7 +640,8 @@ private fun HomeContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(if (showTopShortcut) PaddingValues(top = 72.dp, bottom = 16.dp) else PaddingValues(16.dp)),
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
@@ -648,37 +687,17 @@ private fun HomeContent(
         if (bookmarks.isEmpty()) {
             EmptyState(icon = Icons.Default.BookmarkBorder, text = strings.homeEmptyShortcuts)
         } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(bookmarks.take(6), key = { it.id }) { bm ->
-                    LinkCard(
-                        title = bm.title.ifBlank { bm.url },
-                        subtitle = bm.url,
-                        icon = Icons.Default.Bookmark,
-                        onClick = { onSearch(bm.url) },
-                    )
-                }
+            bookmarks.take(6).forEach { bookmark ->
+                LinkCard(bookmark.title.ifBlank { bookmark.url }, bookmark.url, Icons.Default.Bookmark) { onSearch(bookmark.url) }
             }
         }
 
-        SectionHeader(strings = strings, title = strings.homeRecentTitle, action = { onOpenBookmarksHistory() })
+        SectionHeader(strings = strings, title = strings.homeRecentTitle, action = onOpenBookmarksHistory)
         if (historyItems.isEmpty()) {
             EmptyState(icon = Icons.Default.History, text = strings.homeEmptyRecent)
         } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(historyItems.take(8), key = { it.id }) { item ->
-                    LinkCard(
-                        title = item.title.ifBlank { item.url },
-                        subtitle = item.url,
-                        icon = Icons.Default.History,
-                        onClick = { onSearch(item.url) },
-                    )
-                }
+            historyItems.take(8).forEach { item ->
+                LinkCard(item.title.ifBlank { item.url }, item.url, Icons.Default.History) { onSearch(item.url) }
             }
         }
 
@@ -797,6 +816,9 @@ private fun QuickActionButton(
 @Composable
 private fun BrowserOverflowMenu(
     pageUrl: String?,
+    isPrivate: Boolean,
+    canDuplicate: Boolean,
+    onDuplicate: () -> Unit,
     expanded: Boolean,
     onDismiss: () -> Unit,
     isDesktopMode: Boolean,
@@ -830,48 +852,61 @@ private fun BrowserOverflowMenu(
                 },
             )
         }
-        MenuEntry(
-            title = strings.menuSaveState,
-            subtitle = strings.menuSaveStateHint,
-            icon = Icons.Default.Security,
-            onClick = {
-                onDismiss()
-                onSaveState()
-            },
-        )
-        MenuEntry(
-            title = strings.menuTimeMachine,
-            subtitle = strings.menuTimeMachineHint,
-            icon = Icons.Default.History,
-            onClick = {
-                onDismiss()
-                onOpenTimeMachine()
-            },
-        )
-        DropdownMenuItem(
-            text = { Text(strings.menuFindInPage) },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-            onClick = {
-                onDismiss()
-                onFindInPage()
-            },
-        )
-        DropdownMenuItem(
-            text = { Text(if (isDesktopMode) strings.menuDesktopModeOff else strings.menuDesktopModeOn) },
-            leadingIcon = { Icon(Icons.Default.DesktopWindows, contentDescription = null) },
-            onClick = {
-                onDismiss()
-                onToggleDesktop()
-            },
-        )
-        DropdownMenuItem(
-            text = { Text(strings.menuSaveShortcut) },
-            leadingIcon = { Icon(Icons.Default.InstallMobile, contentDescription = null) },
-            onClick = {
-                onDismiss()
-                onInstallShortcut()
-            },
-        )
+        if (canDuplicate) {
+            DropdownMenuItem(
+                text = { Text(strings.duplicateTab) },
+                onClick = {
+                    onDismiss()
+                    onDuplicate()
+                },
+            )
+        }
+        if (pageUrl != null && !isPrivate) {
+            MenuEntry(
+                title = strings.menuSaveState,
+                subtitle = strings.menuSaveStateHint,
+                icon = Icons.Default.Security,
+                onClick = {
+                    onDismiss()
+                    onSaveState()
+                },
+            )
+            MenuEntry(
+                title = strings.menuTimeMachine,
+                subtitle = strings.menuTimeMachineHint,
+                icon = Icons.Default.History,
+                onClick = {
+                    onDismiss()
+                    onOpenTimeMachine()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(strings.menuSaveShortcut) },
+                leadingIcon = { Icon(Icons.Default.InstallMobile, contentDescription = null) },
+                onClick = {
+                    onDismiss()
+                    onInstallShortcut()
+                },
+            )
+        }
+        if (pageUrl != null) {
+            DropdownMenuItem(
+                text = { Text(strings.menuFindInPage) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                onClick = {
+                    onDismiss()
+                    onFindInPage()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(if (isDesktopMode) strings.menuDesktopModeOff else strings.menuDesktopModeOn) },
+                leadingIcon = { Icon(Icons.Default.DesktopWindows, contentDescription = null) },
+                onClick = {
+                    onDismiss()
+                    onToggleDesktop()
+                },
+            )
+        }
         MenuEntry(
             title = strings.menuFreeSpace,
             subtitle = strings.menuFreeSpaceHint,
@@ -937,41 +972,22 @@ private fun GeckoSessionWebView(
                 val geckoSession = viewModel.sessionManager.getOrCreateGeckoSession(
                     tabId = tab.id,
                     container = container,
+                    initialUrl = tab.url,
                     isPrivate = tab.isPrivate,
                     isDesktopMode = tab.isDesktopMode,
-                    onLocationChanged = { url, secure ->
-                        viewModel.onPageLocationChanged(tab.id, url, secure)
-                    },
-                    onTitleChanged = { title ->
-                        viewModel.onPageTitleChanged(tab.id, title)
-                    },
-                    onProgressChanged = { progress, loading ->
-                        viewModel.onPageProgressChanged(tab.id, progress, loading)
-                    },
-                    onNavStateChanged = { back, fwd ->
-                        viewModel.onNavStateChanged(tab.id, back, fwd)
-                    },
+                    adBlockEnabled = viewModel.preferences.value.adBlockEnabled,
+                    onLocationChanged = { url, secure -> viewModel.onPageLocationChanged(tab.id, url, secure) },
+                    onTitleChanged = { title -> viewModel.onPageTitleChanged(tab.id, title) },
+                    onProgressChanged = { progress, loading -> viewModel.onPageProgressChanged(tab.id, progress, loading) },
+                    onNavStateChanged = { back, fwd -> viewModel.onNavStateChanged(tab.id, back, fwd) },
                     onHealthRestored = viewModel::onHealthRestored,
                     onServerRevokedFallbackRequired = viewModel::onServerRevokedFallbackRequired,
-                    onDownloadRequested = { url, _ -> viewModel.enqueueDownload(url) },
+                    onDownloadRequested = { url, _ -> if (!tab.isPrivate) viewModel.enqueueDownload(url) },
                 )
                 setSession(geckoSession)
-                geckoSession.loadUri(tab.url)
             }
         },
-        update = { geckoView ->
-            val targetSession = viewModel.sessionManager.getOrCreateGeckoSession(
-                tabId = tab.id,
-                container = container,
-                isPrivate = tab.isPrivate,
-                isDesktopMode = tab.isDesktopMode,
-            )
-            if (geckoView.session !== targetSession) {
-                geckoView.releaseSession()
-                geckoView.setSession(targetSession)
-                targetSession.loadUri(tab.url)
-            }
-        },
+        onRelease = { it.releaseSession() },
     )
 }
 
@@ -1091,44 +1107,71 @@ private fun TabsSwitcherSheet(
     activeTabId: String,
     onSelectTab: (String) -> Unit,
     onCloseTab: (String) -> Unit,
+    canReopenTab: Boolean,
+    onReopenTab: () -> Unit,
+    onCloseAll: () -> Unit,
     onNewNormalTab: () -> Unit,
     onNewPrivateTab: () -> Unit,
 ) {
     val strings = LocalMarbleStrings.current
+    var filter by remember { mutableStateOf("") }
+    var confirmCloseAll by remember { mutableStateOf(false) }
+    val visibleTabs = tabs.filter {
+        it.url.contains(filter, ignoreCase = true) || it.title.contains(filter, ignoreCase = true)
+    }
+    if (confirmCloseAll) {
+        AlertDialog(
+            onDismissRequest = { confirmCloseAll = false },
+            title = { Text(strings.closeAllTabs) },
+            text = { Text(strings.confirmCloseAllTabs) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmCloseAll = false
+                    onCloseAll()
+                }) { Text(strings.closeAllTabs) }
+            },
+            dismissButton = { TextButton(onClick = { confirmCloseAll = false }) { Text(strings.dismiss) } },
+        )
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = strings.openTabsTitle(tabs.size),
-                style = MaterialTheme.typography.titleLarge,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(onClick = onNewPrivateTab) {
-                    Icon(Icons.Default.VisibilityOff, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(strings.newPrivateTab)
-                }
-                Button(onClick = onNewNormalTab) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(strings.newTab)
-                }
+        Text(strings.openTabsTitle(tabs.size), style = MaterialTheme.typography.titleLarge)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilledTonalButton(onClick = onNewPrivateTab) {
+                Icon(Icons.Default.VisibilityOff, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(strings.newPrivateTab)
+            }
+            Button(onClick = onNewNormalTab) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(strings.newTab)
+            }
+            TextButton(onClick = onReopenTab, enabled = canReopenTab) { Text(strings.reopenTab) }
+            if (tabs.isNotEmpty()) {
+                TextButton(onClick = { confirmCloseAll = true }) { Text(strings.closeAllTabs) }
             }
         }
-
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(tabs, key = { it.id }) { tab ->
+        if (tabs.isNotEmpty()) {
+            OutlinedTextField(
+                value = filter,
+                onValueChange = { filter = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text(strings.searchTabs) },
+            )
+        }
+        if (visibleTabs.isEmpty()) Text(if (tabs.isEmpty()) strings.noTabs else strings.noMatchingTabs)
+        LazyColumn(modifier = Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(visibleTabs, key = { it.id }) { tab ->
                 val isSelected = tab.id == activeTabId
                 Card(
                     modifier = Modifier
+                        .animateItem()
                         .fillMaxWidth()
                         .clickable { onSelectTab(tab.id) },
                     colors = CardDefaults.cardColors(
@@ -1148,13 +1191,13 @@ private fun TabsSwitcherSheet(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = tab.title.ifBlank { tab.url },
+                                text = tab.title.ifBlank { tab.url.ifBlank { if (tab.isPrivate) strings.privateTabTitle else strings.newTab } },
                                 style = MaterialTheme.typography.titleMedium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                text = tab.url,
+                                text = if (tab.isPrivate) strings.privateTabTitle else tab.url,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,

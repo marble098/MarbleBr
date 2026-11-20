@@ -22,14 +22,19 @@ import com.marble098.marblebr.core.model.SessionSnapshotPayload
 import com.marble098.marblebr.core.model.WebAppContainer
 import com.marble098.marblebr.core.preferences.BrowserPreferences
 import com.marble098.marblebr.core.preferences.BrowserPreferencesRepository
+import com.marble098.marblebr.core.preferences.SavedBrowserTabs
 import com.marble098.marblebr.engine.ContainerSessionManager
 import com.marble098.marblebr.engine.LightweightAdBlocker
 import com.marble098.marblebr.vault.SessionVaultManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -42,7 +47,8 @@ data class BrowserUiState(
     val tabs: List<BrowserTab> = emptyList(),
     val activeTabId: String = "",
     val activeContainer: WebAppContainer? = null,
-    val addressBarInput: String = "https://github.com",
+    val showHome: Boolean = true,
+    val canReopenTab: Boolean = false,
     val isFindInPageVisible: Boolean = false,
     val findQuery: String = "",
     val bannerMessage: String? = null,
@@ -86,122 +92,218 @@ class BrowserViewModel @Inject constructor(
         .map { list -> list.map(DownloadEntity::toDomain) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    private val containers = mutableMapOf<String, WebAppContainer>()
+    private val pendingNavigation = mutableMapOf<String, Job>()
+    private val recentlyClosed = ArrayDeque<BrowserTab>()
+    private val restore = viewModelScope.launch { restoreTabs() }
+
     init {
         viewModelScope.launch {
-            openNewTab(initialUrl = "https://github.com", isPrivate = false)
+            restore.join()
+            uiState.map { SavedBrowserTabs.fromTabs(it.tabs, it.activeTabId, it.showHome) }
+                .distinctUntilChanged()
+                .collect { snapshot -> preferencesRepository.saveBrowserTabs(snapshot) }
         }
     }
 
-    fun onAddressBarChanged(input: String) {
-        _uiState.update { it.copy(addressBarInput = input) }
+    private suspend fun restoreTabs() {
+        val saved = preferencesRepository.savedBrowserTabs.first()
+        if (saved == null) {
+            if (preferencesRepository.preferencesFlow.first().openGoogleOnNewTab) {
+                loadPage(createTab(isPrivate = false), GOOGLE_HOME)
+            }
+            return
+        }
+        val tabs = saved.tabs.map { tab ->
+            val container = if (tab.url.isBlank()) {
+                null
+            } else {
+                containerDao.getById(tab.containerId)?.toDomain() ?: sessionManager.getOrCreateContainerForUrl(tab.url)
+            }
+            if (container != null) containers[tab.id] = container
+            BrowserTab(
+                id = tab.id,
+                containerId = container?.id.orEmpty(),
+                contextId = container?.contextId.orEmpty(),
+                url = tab.url,
+                title = tab.title,
+                isDesktopMode = tab.isDesktopMode,
+                isLoading = container != null,
+                isSecure = tab.url.startsWith("https://"),
+                healthStatus = healthStatus(container),
+            )
+        }
+        val active = tabs.firstOrNull { it.id == saved.activeTabId } ?: tabs.lastOrNull()
+        _uiState.update { state ->
+            state.copy(
+                tabs = tabs,
+                activeTabId = active?.id.orEmpty(),
+                activeContainer = active?.id?.let(containers::get),
+                showHome = saved.showHome || active?.url.isNullOrBlank(),
+            )
+        }
     }
 
-    fun navigateToInput(rawInput: String = _uiState.value.addressBarInput) {
+    fun navigateToInput(rawInput: String) {
+        if (rawInput.isBlank()) return
         viewModelScope.launch {
-            val prefs = preferencesRepository.preferencesFlow.first()
-            val targetUrl = urlResolver.resolveInputToUrl(rawInput, prefs.searchEngineTemplate)
-            val currentTab = _uiState.value.activeTab ?: return@launch
-            val container = sessionManager.getOrCreateContainerForUrl(targetUrl)
+            restore.join()
+            loadPage(_uiState.value.activeTab ?: createTab(isPrivate = false), rawInput)
+        }
+    }
 
-            updateTab(currentTab.id) {
-                it.copy(
-                    url = targetUrl,
-                    containerId = container.id,
-                    contextId = container.contextId,
-                    healthStatus = if (container.neverSignOutEnabled) {
-                        SessionHealthStatus.PROTECTED_ACTIVE
-                    } else {
-                        SessionHealthStatus.DISABLED
-                    },
-                )
-            }
-            _uiState.update {
-                it.copy(
-                    addressBarInput = targetUrl,
-                    activeContainer = container,
-                )
-            }
+    fun openNewTab(initialUrl: String? = null, isPrivate: Boolean = false) {
+        viewModelScope.launch {
+            restore.join()
+            val tab = createTab(isPrivate)
+            val input = initialUrl ?: if (!isPrivate && preferencesRepository.preferencesFlow.first().openGoogleOnNewTab) GOOGLE_HOME else ""
+            if (input.isNotBlank()) loadPage(tab, input)
+        }
+    }
 
-            if (!currentTab.isPrivate) {
-                val now = System.currentTimeMillis()
-                val existing = historyDao.getLatestByUrl(targetUrl)
-                if (existing != null) {
-                    historyDao.updateVisit(existing.id, container.displayName, now)
+    private fun createTab(isPrivate: Boolean, desktop: Boolean = false): BrowserTab {
+        val tab = BrowserTab(
+            id = UUID.randomUUID().toString(),
+            containerId = "",
+            contextId = "",
+            url = "",
+            isPrivate = isPrivate,
+            isDesktopMode = desktop,
+            isSecure = false,
+            healthStatus = SessionHealthStatus.DISABLED,
+        )
+        _uiState.update { it.copy(tabs = it.tabs + tab) }
+        activateTab(tab)
+        return tab
+    }
+
+    private fun loadPage(tab: BrowserTab, input: String, preferredContainer: WebAppContainer? = null) {
+        pendingNavigation.remove(tab.id)?.cancel()
+        toggleFindInPage(false)
+        updateTab(tab.id) { it.copy(isLoading = true, progress = 0) }
+        _uiState.update { it.copy(showHome = false) }
+        val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                val target = urlResolver.resolveInputToUrl(input, preferencesRepository.preferencesFlow.first().searchEngineTemplate)
+                val container = preferredContainer ?: if (tab.isPrivate) {
+                    WebAppContainer(id = tab.id, domain = ContainerSessionManager.extractDomain(target), displayName = "")
                 } else {
-                    historyDao.insert(
-                        HistoryEntity(
-                            id = UUID.randomUUID().toString(),
-                            title = container.displayName,
-                            url = targetUrl,
-                            containerId = container.id,
-                            visitedAtEpochMillis = now,
-                        ),
+                    sessionManager.getOrCreateContainerForUrl(target)
+                }
+                val recreate = !tab.isPrivate && containers[tab.id]?.contextId != container.contextId
+                if (recreate) sessionManager.closeTabSession(tab.id)
+                containers[tab.id] = container
+                updateTab(tab.id) {
+                    it.copy(
+                        url = target,
+                        title = container.displayName,
+                        containerId = container.id,
+                        contextId = container.contextId,
+                        isSecure = target.startsWith("https://"),
+                        canGoBack = !recreate && it.canGoBack,
+                        canGoForward = !recreate && it.canGoForward,
+                        healthStatus = healthStatus(container.takeUnless { tab.isPrivate }),
                     )
                 }
+                _uiState.update { if (it.activeTabId == tab.id) it.copy(activeContainer = container) else it }
+                if (!recreate) sessionManager.loadInOpenSession(tab.id, target)
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (_: Exception) {
+                updateTab(tab.id) { it.copy(isLoading = false) }
+                showBanner(localizationManager.current().navigationFailed)
+            } finally {
+                if (pendingNavigation[tab.id] === coroutineContext[Job]) pendingNavigation.remove(tab.id)
             }
         }
+        pendingNavigation[tab.id] = job
+        job.start()
     }
 
-    fun openNewTab(initialUrl: String = "https://github.com", isPrivate: Boolean = false) {
-        viewModelScope.launch {
-            val strings = localizationManager.current()
-            val resolvedUrl = urlResolver.resolveInputToUrl(initialUrl)
-            val container = sessionManager.getOrCreateContainerForUrl(resolvedUrl)
-            val tabId = UUID.randomUUID().toString()
-            val newTab = BrowserTab(
-                id = tabId,
-                containerId = container.id,
-                contextId = if (isPrivate) "private_$tabId" else container.contextId,
-                url = resolvedUrl,
-                title = if (isPrivate) strings.privateTabTitle else container.displayName,
-                isPrivate = isPrivate,
-                healthStatus = if (isPrivate) {
-                    SessionHealthStatus.DISABLED
-                } else if (container.neverSignOutEnabled) {
-                    SessionHealthStatus.PROTECTED_ACTIVE
-                } else {
-                    SessionHealthStatus.DISABLED
-                },
-            )
-            _uiState.update { state ->
-                state.copy(
-                    tabs = state.tabs + newTab,
-                    activeTabId = newTab.id,
-                    activeContainer = container,
-                    addressBarInput = resolvedUrl,
-                )
-            }
-        }
+    private fun healthStatus(container: WebAppContainer?): SessionHealthStatus =
+        if (container?.neverSignOutEnabled == true) SessionHealthStatus.PROTECTED_ACTIVE else SessionHealthStatus.DISABLED
+
+    fun showHome() {
+        toggleFindInPage(false)
+        _uiState.update { it.copy(showHome = true) }
     }
 
     fun selectTab(tabId: String) {
-        viewModelScope.launch {
-            val tab = _uiState.value.tabs.firstOrNull { it.id == tabId } ?: return@launch
-            val container = containerDao.getById(tab.containerId)?.toDomain()
-                ?: sessionManager.getOrCreateContainerForUrl(tab.url)
-            _uiState.update {
-                it.copy(
-                    activeTabId = tab.id,
-                    activeContainer = container,
-                    addressBarInput = tab.url,
-                )
-            }
+        val tab = _uiState.value.tabs.firstOrNull { it.id == tabId } ?: return
+        activateTab(tab)
+    }
+
+    private fun activateTab(tab: BrowserTab?) {
+        toggleFindInPage(false)
+        _uiState.update {
+            it.copy(
+                activeTabId = tab?.id.orEmpty(),
+                activeContainer = tab?.id?.let(containers::get),
+                showHome = tab?.url.isNullOrBlank() && tab?.isLoading != true,
+            )
         }
     }
 
     fun closeTab(tabId: String) {
+        val state = _uiState.value
+        val tab = state.tabs.firstOrNull { it.id == tabId } ?: return
+        rememberClosedTab(tab)
+        releaseTab(tabId)
+        val remaining = state.tabs.filterNot { it.id == tabId }
+        _uiState.update { it.copy(tabs = remaining, canReopenTab = recentlyClosed.isNotEmpty()) }
+        if (state.activeTabId == tabId) activateTab(remaining.lastOrNull())
+        if (state.showHome) showHome()
+    }
+
+    fun closeAllTabs() {
+        val state = _uiState.value
+        val active = state.activeTab
+        (state.tabs.filterNot { it == active } + listOfNotNull(active)).forEach { tab ->
+            rememberClosedTab(tab)
+            releaseTab(tab.id)
+        }
+        _uiState.update { it.copy(tabs = emptyList(), canReopenTab = recentlyClosed.isNotEmpty()) }
+        activateTab(null)
+    }
+
+    private fun releaseTab(tabId: String) {
+        pendingNavigation.remove(tabId)?.cancel()
+        containers.remove(tabId)
         sessionManager.closeTabSession(tabId)
-        _uiState.update { state ->
-            val remaining = state.tabs.filterNot { it.id == tabId }
-            if (remaining.isEmpty()) {
-                return@update state.copy(tabs = emptyList(), activeTabId = "")
-            }
-            val nextActive = if (state.activeTabId == tabId) remaining.last().id else state.activeTabId
-            state.copy(tabs = remaining, activeTabId = nextActive)
-        }
-        if (_uiState.value.tabs.isEmpty()) {
-            openNewTab()
-        }
+    }
+
+    private fun rememberClosedTab(tab: BrowserTab) {
+        if (tab.isPrivate || tab.url.isBlank()) return
+        if (recentlyClosed.size >= 10) recentlyClosed.removeFirst()
+        recentlyClosed.addLast(tab)
+    }
+
+    fun reopenClosedTab() {
+        val tab = recentlyClosed.removeLastOrNull() ?: return
+        _uiState.update { it.copy(canReopenTab = recentlyClosed.isNotEmpty()) }
+        copyTab(tab)
+    }
+
+    fun duplicateTab() {
+        _uiState.value.activeTab?.let(::copyTab)
+    }
+
+    private fun copyTab(source: BrowserTab) {
+        val tab = createTab(source.isPrivate, desktop = source.isDesktopMode)
+        if (source.url.isNotBlank()) loadPage(tab, source.url, containers[source.id]?.takeUnless { source.isPrivate })
+    }
+
+    fun stopLoading() {
+        val tab = _uiState.value.activeTab ?: return
+        pendingNavigation.remove(tab.id)?.cancel()
+        sessionManager.stopLoading(tab.id)
+        updateTab(tab.id) { it.copy(isLoading = false) }
+        if (tab.url.isBlank()) showHome()
+    }
+
+    override fun onCleared() {
+        _uiState.value.tabs.forEach { sessionManager.closeTabSession(it.id) }
+        super.onCleared()
     }
 
     fun goBack() {
@@ -213,7 +315,10 @@ class BrowserViewModel @Inject constructor(
     }
 
     fun reloadPage() {
-        _uiState.value.activeTab?.let { sessionManager.reload(it.id) }
+        val tab = _uiState.value.activeTab ?: return
+        if (tab.url.isBlank()) return
+        updateTab(tab.id) { it.copy(progress = 0, isLoading = true) }
+        sessionManager.reload(tab.id)
     }
 
     fun toggleDesktopMode() {
@@ -246,6 +351,7 @@ class BrowserViewModel @Inject constructor(
         viewModelScope.launch {
             val tab = _uiState.value.activeTab ?: return@launch
             val strings = localizationManager.current()
+            if (tab.url.isBlank() || tab.isPrivate) return@launch
             val existing = bookmarks.value.firstOrNull { it.url == tab.url }
             if (existing != null) {
                 bookmarkDao.deleteById(existing.id)
@@ -269,6 +375,7 @@ class BrowserViewModel @Inject constructor(
         viewModelScope.launch {
             val tab = _uiState.value.activeTab ?: return@launch
             val strings = localizationManager.current()
+            if (tab.url.isBlank() || tab.isPrivate) return@launch
             val pwaContainer = sessionManager.getOrCreateContainerForUrl(
                 url = tab.url,
                 isPinnedPwa = true,
@@ -289,6 +396,7 @@ class BrowserViewModel @Inject constructor(
         viewModelScope.launch {
             val tab = _uiState.value.activeTab ?: return@launch
             val strings = localizationManager.current()
+            if (tab.url.isBlank() || tab.isPrivate) return@launch
             val container = _uiState.value.activeContainer
                 ?: sessionManager.getOrCreateContainerForUrl(tab.url)
 
@@ -339,9 +447,20 @@ class BrowserViewModel @Inject constructor(
     }
 
     fun onPageLocationChanged(tabId: String, url: String, isSecure: Boolean) {
+        if (!url.startsWith("https://", ignoreCase = true) && !url.startsWith("http://", ignoreCase = true)) return
+        val tab = _uiState.value.tabs.firstOrNull { it.id == tabId } ?: return
         updateTab(tabId) { it.copy(url = url, isSecure = isSecure) }
-        if (_uiState.value.activeTabId == tabId) {
-            _uiState.update { it.copy(addressBarInput = url) }
+        if (!tab.isPrivate) {
+            viewModelScope.launch {
+                val now = System.currentTimeMillis()
+                val title = containers[tabId]?.displayName ?: url
+                val existing = historyDao.getLatestByUrl(url)
+                if (existing != null) {
+                    historyDao.updateVisit(existing.id, title, now)
+                } else {
+                    historyDao.insert(HistoryEntity(UUID.randomUUID().toString(), title, url, tab.containerId, now))
+                }
+            }
         }
     }
 
@@ -389,6 +508,10 @@ class BrowserViewModel @Inject constructor(
         viewModelScope.launch {
             showBanner(builder(localizationManager.current()))
         }
+    }
+
+    private companion object {
+        const val GOOGLE_HOME = "https://www.google.com/"
     }
 
     private fun updateTab(tabId: String, transform: (BrowserTab) -> BrowserTab) {

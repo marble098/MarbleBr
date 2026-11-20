@@ -61,6 +61,7 @@ import com.marble098.marblebr.core.model.DnsMode
 import com.marble098.marblebr.core.model.HomeShortcutPosition
 import com.marble098.marblebr.core.model.ProxyType
 import com.marble098.marblebr.core.model.SearchEngine
+import com.marble098.marblebr.core.preferences.AddressSelectionMode
 import com.marble098.marblebr.core.model.ThemeMode
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -342,6 +343,27 @@ fun SettingsScreen(
                 }
             }
 
+            item {
+                SettingsSection(
+                    icon = Icons.Default.Search,
+                    title = strings.addressSelectionTitle,
+                    description = strings.addressSelectionDescription,
+                ) {
+                    OptionChips(
+                        options = AddressSelectionMode.entries,
+                        selected = prefs.addressSelectionMode,
+                        label = { mode ->
+                            when (mode) {
+                                AddressSelectionMode.SELECT_ALL -> strings.addressSelectAll
+                                AddressSelectionMode.SELECT_PART -> strings.addressSelectPart
+                                AddressSelectionMode.CURSOR -> strings.addressCursor
+                            }
+                        },
+                        onSelect = viewModel::setAddressSelectionMode,
+                    )
+                }
+            }
+
             // 4.6) صفحه‌ی خانه
             item {
                 SettingsSection(
@@ -349,6 +371,13 @@ fun SettingsScreen(
                     title = strings.homeScreenTitle,
                     description = strings.homeShortcutPositionTitle,
                 ) {
+                    SettingSwitch(
+                        title = strings.googleNewTab,
+                        description = strings.googleNewTabDescription,
+                        checked = prefs.openGoogleOnNewTab,
+                        onCheckedChange = viewModel::setOpenGoogleOnNewTab,
+                    )
+                    Spacer(Modifier.height(12.dp))
                     Text(
                         text = strings.homeShortcutPositionTitle,
                         style = MaterialTheme.typography.titleMedium,

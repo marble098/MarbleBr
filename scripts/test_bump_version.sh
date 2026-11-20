@@ -61,3 +61,11 @@ else
 fi
 
 echo "🎉 All version bump unit tests passed!"
+
+# An explicitly selected release name must not reset the Android upgrade counter.
+props=$(mktemp)
+trap 'rm -f "$props"' EXIT
+printf 'MARBLE_VERSION_NAME=1.0.0\nMARBLE_VERSION_CODE=99999\n' > "$props"
+GITHUB_RUN_NUMBER=1 bash "$SCRIPT_DIR/bump_version.sh" --props="$props" --keep-name --lines=600
+assert_eq 'MARBLE_VERSION_NAME=1.0.0' "$(grep '^MARBLE_VERSION_NAME=' "$props")" "explicit version is preserved"
+assert_eq 'MARBLE_VERSION_CODE=100000' "$(grep '^MARBLE_VERSION_CODE=' "$props")" "explicit version still increments code"
