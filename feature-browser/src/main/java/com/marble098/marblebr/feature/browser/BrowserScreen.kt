@@ -425,7 +425,7 @@ fun BrowserScreen(
                 )
             }
         }
-    ),
+    )
 { innerPadding ->
         Box(
             modifier = Modifier
