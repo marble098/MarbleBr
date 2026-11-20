@@ -407,5 +407,4 @@ class BrowserViewModel @Inject constructor(
             )
         }
     }
-
 }
