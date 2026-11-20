@@ -299,7 +299,7 @@ fun SettingsScreen(
             // 4.5) موتور جستجو
             item {
                 SettingsSection(
-                    icon = Icons.Default.Search,
+                    icon = Icons.Filled.Search,
                     title = strings.searchEngineTitle,
                     description = strings.searchEngineDescription,
                 ) {
@@ -343,7 +343,7 @@ fun SettingsScreen(
             // 4.6) صفحه‌ی خانه
             item {
                 SettingsSection(
-                    icon = Icons.Default.Home,
+                    icon = Icons.Filled.Home,
                     title = strings.homeScreenTitle,
                     description = strings.homeShortcutPositionTitle,
                 ) {
