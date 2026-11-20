@@ -81,7 +81,11 @@ android {
     }
 
     packaging {
-        jniLibs.useLegacyPackaging = true
+        jniLibs {
+            useLegacyPackaging = true
+            // Third-party libraries may still include 32-bit Intel even though GeckoView does not.
+            excludes += "**/x86/**"
+        }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }

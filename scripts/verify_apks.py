@@ -179,4 +179,7 @@ if __name__ == "__main__":
     try:
         main()
     except (ValueError, KeyError, OSError, BadZipFile) as exc:
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            error = str(exc).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+            print(f"::error title=APK verification failed::{error}")
         sys.exit(f"APK verification failed: {exc}")
