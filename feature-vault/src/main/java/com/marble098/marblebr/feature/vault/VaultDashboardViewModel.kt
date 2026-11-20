@@ -251,7 +251,7 @@ class VaultDashboardViewModel @Inject constructor(
     fun deleteSnapshot(snapshot: SessionSnapshotMeta) {
         runBusy("delete-${snapshot.id}") {
             vaultManager.deleteSnapshot(snapshot.id)
-            notify { it.feedbackSnapshotDeleted(snapshot.domain) }
+            notify { it.vaultDeleteSnapshotDone(snapshot.domain) }
         }
     }
 

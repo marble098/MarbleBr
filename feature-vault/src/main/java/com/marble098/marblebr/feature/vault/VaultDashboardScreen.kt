@@ -637,7 +637,7 @@ private fun SmallActionPill(
         )
         Text(
             text = text,
-            style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.dp),
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.sp),
             color = if (enabled) colors.primary else colors.outline,
             maxLines = 1,
         )

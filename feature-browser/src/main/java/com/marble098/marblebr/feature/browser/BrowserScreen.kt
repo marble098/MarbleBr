@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
@@ -247,7 +248,7 @@ fun BrowserScreen(
                 bookmarks = bookmarks,
                 historyItems = historyItems,
                 downloadsCount = downloads.size,
-                blockedAdsCount = blockedAdsCount,
+                blockedAdsCount = blockedAdsCount.toInt(),
                 submit = submit,
                 viewModel = viewModel,
                 onOpenVaultDashboard = onOpenVaultDashboard,
@@ -282,7 +283,7 @@ fun BrowserScreen(
                 findMatchIndex = activeTab?.findMatchIndex ?: 0,
                 findTotalMatches = activeTab?.findTotalMatches ?: 0,
                 bannerMessage = uiState.bannerMessage,
-                blockedAdsCount = blockedAdsCount,
+                blockedAdsCount = blockedAdsCount.toInt(),
                 showAdChip = showHome && blockedAdsCount > 0,
                 onSubmit = submit,
                 onBookmark = viewModel::toggleBookmarkCurrentPage,
@@ -651,7 +652,7 @@ private fun BrowserTopBar(
             exit = fadeOut() + shrinkVertically(),
         ) {
             AssistChip(
-                onClick = onOpenSettings,
+                onClick = onOpenVault,
                 label = {
                     Text(
                         text = strings.adsBlocked(blockedAdsCount),
@@ -740,7 +741,7 @@ private fun BrowserAddressField(
     Row(
         modifier = modifier
             .height(44.dp)
-            .liquidGlassPill(style = style, emphasized = focused)
+            .floatingGlassPill(style = style, emphasized = focused)
             .onFocusChanged { focused = it.isFocused }
             .padding(start = 12.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1113,7 +1114,7 @@ private fun FindInPageBar(
         modifier = Modifier
             .fillMaxWidth()
             .height(44.dp)
-            .liquidGlassPill(style = ChromeBarStyle.FLOATING)
+            .floatingGlassPill(style = ChromeBarStyle.FLOATING)
             .padding(start = 12.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -1312,7 +1313,7 @@ private fun TabsSwitcherSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(42.dp)
-                    .liquidGlassPill(style = ChromeBarStyle.FLOATING)
+                    .floatingGlassPill(style = ChromeBarStyle.FLOATING)
                     .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
