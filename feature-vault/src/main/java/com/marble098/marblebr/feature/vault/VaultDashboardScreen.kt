@@ -220,9 +220,9 @@ fun VaultDashboardScreen(
                     icon = Icons.Default.Shield,
                     title = strings.vaultSectionSites,
                     subtitle = strings.sitesSectionBody,
-                    trailing = if (overview.filteredContainers.isEmpty()) null else {
-                        strings.vaultSnapshotCount(overview.filteredContainers.size)
-                    },
+                    trailing = overview.filteredContainers
+                        .takeIf { it.isNotEmpty() }
+                        ?.let { strings.vaultSnapshotCount(it.size) },
                 )
             }
 
@@ -1190,8 +1190,7 @@ private fun SiteControlPanel(
                 value = keepAliveMinutes,
                 onValueChange = { keepAliveMinutes = it },
                 onValueChangeFinished = { onKeepAliveIntervalChanged(keepAliveMinutes.toInt()) },
-                valueRange = VaultDashboardViewModel.MIN_KEEP_ALIVE_MINUTES.toFloat()..
-                    VaultDashboardViewModel.MAX_KEEP_ALIVE_MINUTES.toFloat(),
+                valueRange = keepAliveRange(),
                 steps = 27,
             )
         }
@@ -1214,8 +1213,7 @@ private fun SiteControlPanel(
             value = sliderDays,
             onValueChange = { sliderDays = it },
             onValueChangeFinished = { onCookieDaysChanged(sliderDays.toInt()) },
-            valueRange = VaultDashboardViewModel.MIN_COOKIE_DAYS.toFloat()..
-                VaultDashboardViewModel.MAX_COOKIE_DAYS.toFloat(),
+            valueRange = cookieDaysRange(),
             enabled = container.neverSignOutEnabled,
         )
 
@@ -1491,6 +1489,14 @@ private fun reasonTextOf(strings: MarbleStrings, stored: String): String {
     val reason = runCatching { HealthReason.valueOf(stored) }.getOrNull()
     return if (reason != null) strings.healthReasonLabel(reason) else stored
 }
+
+/** بازهٔ اسلایدرِ زنده‌سازی، هم‌گام با محدودیت‌های ViewModel. */
+private fun keepAliveRange(): ClosedFloatingPointRange<Float> =
+    VaultDashboardViewModel.MIN_KEEP_ALIVE_MINUTES.toFloat()..VaultDashboardViewModel.MAX_KEEP_ALIVE_MINUTES.toFloat()
+
+/** بازهٔ اسلایدرِ مدت ماندن ورود، هم‌گام با محدودیت‌های ViewModel. */
+private fun cookieDaysRange(): ClosedFloatingPointRange<Float> =
+    VaultDashboardViewModel.MIN_COOKIE_DAYS.toFloat()..VaultDashboardViewModel.MAX_COOKIE_DAYS.toFloat()
 
 /** تعداد کارت‌های سایت در هر ردیف شبکه. */
 private const val SITES_PER_ROW = 2
