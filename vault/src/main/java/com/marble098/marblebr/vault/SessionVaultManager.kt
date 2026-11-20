@@ -64,7 +64,9 @@ class SessionVaultManager @Inject constructor(
             nowEpochMillis = payload.capturedAtEpochMillis,
         )
         val normalizedPayload = payload.copy(cookies = promotedCookies)
-        val isHealthy = evaluatePayloadHealth(normalizedPayload)
+        val isHealthy = evaluatePayloadHealth(normalizedPayload) ||
+            (triggerReason == "MANUAL_USER_CAPTURE" &&
+                (normalizedPayload.cookies.isNotEmpty() || normalizedPayload.localStorage.isNotEmpty() || normalizedPayload.sessionStorage.isNotEmpty()))
 
         val serializedJson = json.encodeToString(normalizedPayload)
         val encryptedBlob = vaultCipher.encrypt(

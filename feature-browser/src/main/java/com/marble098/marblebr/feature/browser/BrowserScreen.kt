@@ -7,6 +7,8 @@ import android.content.ContextWrapper
 import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
@@ -14,6 +16,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -100,6 +104,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -175,6 +181,7 @@ fun BrowserScreen(
     val bookmarks by viewModel.bookmarks.collectAsState()
     val historyItems by viewModel.historyItems.collectAsState()
     val downloads by viewModel.downloads.collectAsState()
+    val siteAccounts by viewModel.siteAccounts.collectAsState()
     val blockedAdsCount by viewModel.adBlocker.blockedCount.collectAsState()
     val strings = LocalMarbleStrings.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -185,10 +192,22 @@ fun BrowserScreen(
     var showDownloadsSheet by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
     var showQuickActions by remember { mutableStateOf(false) }
+    var showAccounts by remember { mutableStateOf(false) }
     var backPromptVisible by remember { mutableStateOf(false) }
     var pendingCloseTabId by remember { mutableStateOf<String?>(null) }
 
     val activeTab = uiState.activeTab
+    var pdfTargetTabId by remember { mutableStateOf<String?>(null) }
+    val pdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        val tabId = pdfTargetTabId
+        pdfTargetTabId = null
+        if (uri != null && tabId != null) viewModel.savePageAsPdf(tabId, uri)
+    }
+    val requestPdf: (String, String) -> Unit = { tabId, title ->
+        pdfTargetTabId = tabId
+        val safeTitle = title.replace(Regex("[^\\p{L}\\p{N}._ -]"), "_").take(70).ifBlank { "page" }
+        pdfPicker.launch("$safeTitle.pdf")
+    }
     // «میان‌بر صفحهٔ خانه» دیگر یک دکمهٔ مستقلِ شناور روی محتوا نیست؛ فقط کاربرانی که
     // صریحاً حالت شناور را انتخاب کرده‌اند آن را می‌بینند (پیش‌فرض: داخل کاشی‌های میان‌بر).
     val hasHomeShortcut = showHome && prefs.homeShortcutPosition == HomeShortcutPosition.FLOATING
@@ -268,6 +287,8 @@ fun BrowserScreen(
         onReadAloud = viewModel::startReadAloud,
         onReaderMode = viewModel::toggleReaderMode,
         onSitePermissions = { viewModel.toggleSitePermissionsPanel(true) },
+        onSiteAccounts = { showAccounts = true },
+        onSavePdf = { activeTab?.let { requestPdf(it.id, it.title) } },
     )
 
     Column(
@@ -339,6 +360,7 @@ fun BrowserScreen(
                 onShowDownloads = { showDownloadsSheet = true },
                 onShowQuickActions = { showQuickActions = true },
                 onShowTabs = { showTabsSheet = true },
+                onSavePdf = requestPdf,
                 onClearBackPrompt = { backPromptVisible = false },
             )
         }
@@ -375,6 +397,41 @@ fun BrowserScreen(
             onReset = viewModel::resetSitePermissions,
             onDismiss = { viewModel.toggleSitePermissionsPanel(false) },
         )
+    }
+
+    uiState.contextTarget?.let { target ->
+        ModalBottomSheet(onDismissRequest = viewModel::dismissPageContextMenu) {
+            PageContextMenu(
+                target = target,
+                canDownload = activeTab?.isPrivate != true,
+                onOpen = { url -> viewModel.dismissPageContextMenu(); viewModel.openLinkInNewTab(url) },
+                onCopy = { url ->
+                    viewModel.dismissPageContextMenu()
+                    copyTextToClipboard(clipboardContext, strings.copyLink, url)
+                },
+                onShare = { url ->
+                    viewModel.dismissPageContextMenu()
+                    val share = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, url)
+                    clipboardContext.startActivity(Intent.createChooser(share, strings.shareLink))
+                },
+                onDownload = { url -> viewModel.dismissPageContextMenu(); viewModel.enqueueDownload(url) },
+                onSavePdf = {
+                    viewModel.dismissPageContextMenu()
+                    activeTab?.let { requestPdf(it.id, it.title) }
+                },
+            )
+        }
+    }
+
+    if (showAccounts) {
+        ModalBottomSheet(onDismissRequest = { showAccounts = false }) {
+            SiteAccountsSheet(
+                accounts = siteAccounts,
+                activeId = uiState.activeContainer?.id,
+                onSelect = { account -> showAccounts = false; viewModel.openSiteAccount(account) },
+                onCreate = { name -> showAccounts = false; viewModel.createSiteAccount(name) },
+            )
+        }
     }
 
     if (showQuickActions) {
@@ -767,7 +824,7 @@ private fun BannerCard(message: String, onDismiss: () -> Unit) {
  * را دوباره بکشد؛ رنگ و شکل در Composable جدا کش می‌شوند.
  */
 @Composable
-private fun BrowserAddressField(
+fun BrowserAddressField(
     url: String,
     secure: Boolean,
     isBookmarked: Boolean,
@@ -792,28 +849,20 @@ private fun BrowserAddressField(
     LaunchedEffect(url, focused) {
         if (!focused && input.text != url) input = TextFieldValue(url)
     }
-    // خواستهٔ محصول: با کلیک روی نوار آدرس کل آدرس انتخاب شود و نشانگر در «آخرِ» آدرس باشد.
-    // چرا `selection = TextRange(text.length)` و نه `TextRange(0, length)`؟
-    // چون در Compose، «مکان‌نمای دیداری» در انتهای Selection قرار می‌گیرد؛ با انتخابِ کامل
-    // (0..length) خودِ آدرس آبی و انتخاب‌شده است و نشانگر هم در انتهای آن می‌نشیند. با این کار
-    // کاربر می‌تواند یک‌جا آدرس را پاک/جایگزین کند و مکان‌نما هم جایی است که انتظار دارد.
-    LaunchedEffect(focused, tapSelectRequest) {
+    // Focus can be acquired by accessibility/keyboard as well as a touch. Do not overwrite typing.
+    LaunchedEffect(focused, tapSelectRequest, mode) {
         if (!focused) return@LaunchedEffect
-        val current = input
-        input = current.copy(
-            selection = when (mode) {
-                AddressSelectionMode.SELECT_ALL -> TextRange(0, current.text.length)
-                AddressSelectionMode.CURSOR -> TextRange(current.text.length)
-                AddressSelectionMode.SELECT_PART -> addressSelection(current.text, current.text.length, mode)
-            },
-        )
+        val originalText = input.text
+        delay(100)
+        if (focused && input.text == originalText) {
+            input = input.copy(selection = addressSelection(input.text, input.selection.end, mode))
+        }
     }
 
     Row(
         modifier = modifier
             .height(44.dp)
             .floatingGlassPill(style = style, emphasized = focused)
-            .onFocusChanged { focused = it.isFocused }
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -853,6 +902,26 @@ private fun BrowserAddressField(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
+                    .pointerInput(mode) {
+                        val slop = viewConfiguration.touchSlop
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                            val firstFocus = !focused
+                            var moved = false
+                            var released = false
+                            do {
+                                // Observe the final pass even when BasicTextField consumed the touch.
+                                val change = awaitPointerEvent(PointerEventPass.Final).changes.firstOrNull { it.id == down.id }
+                                if (change == null) break
+                                if ((change.position - down.position).getDistance() > slop) moved = true
+                                if (!change.pressed) released = true
+                            } while (!released)
+                            if (firstFocus && released && !moved && focused) {
+                                input = input.copy(selection = addressSelection(input.text, input.selection.end, mode))
+                            }
+                        }
+                    }
+                    .onFocusChanged { focused = it.isFocused }
                     .focusRequester(focusRequester)
                     .testTag("smart_address_bar")
                     .onPreviewKeyEvent { event ->
@@ -923,6 +992,7 @@ private fun LauncherContent(
     onShowDownloads: () -> Unit,
     onShowQuickActions: () -> Unit,
     onShowTabs: () -> Unit,
+    onSavePdf: (String, String) -> Unit,
     onClearBackPrompt: () -> Unit,
 ) {
     val activeTab = uiState.activeTab
@@ -955,7 +1025,12 @@ private fun LauncherContent(
 
             activeTab != null && hasPage && renderGeckoWebView && !isInspection && container != null && container.id == activeTab.containerId -> {
                 key(activeTab.id, activeTab.contextId) {
-                    GeckoSessionWebView(tab = activeTab, container = container, viewModel = viewModel)
+                    GeckoSessionWebView(
+                        tab = activeTab,
+                        container = container,
+                        viewModel = viewModel,
+                        onSavePdf = { onSavePdf(activeTab.id, activeTab.title) },
+                    )
                 }
             }
 
@@ -1015,7 +1090,9 @@ private fun GeckoSessionWebView(
     tab: BrowserTab,
     container: WebAppContainer,
     viewModel: BrowserViewModel,
+    onSavePdf: () -> Unit,
 ) {
+    val strings = LocalMarbleStrings.current
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { ctx ->
@@ -1034,7 +1111,13 @@ private fun GeckoSessionWebView(
                     onHealthRestored = viewModel::onHealthRestored,
                     onServerRevokedFallbackRequired = viewModel::onServerRevokedFallbackRequired,
                     onDownloadRequested = { url, _ -> if (!tab.isPrivate) viewModel.enqueueDownload(url) },
+                    onContextMenu = { target -> viewModel.onPageContextMenu(tab.id, target) },
                 )
+                ctx.findActivity()?.let { activity ->
+                    geckoSession.selectionActionDelegate = PageSelectionDelegate(
+                        activity, strings.contextShareText, strings.contextSavePdf, onSavePdf,
+                    )
+                }
                 GeckoSurfaceBinding.bind(this, geckoSession)
             }
         },

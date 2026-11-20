@@ -216,6 +216,14 @@ fun VaultDashboardScreen(
                 }
             }
 
+            item(key = "credentials") {
+                CredentialVaultSection(
+                    vault = viewModel.credentialVault,
+                    unlocked = isBiometricUnlocked,
+                    onUnlock = onRequestBiometricUnlock,
+                )
+            }
+
             item(key = "filters") {
                 VaultSearchAndFilters(
                     query = query,

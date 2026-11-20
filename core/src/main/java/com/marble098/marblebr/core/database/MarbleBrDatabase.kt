@@ -11,8 +11,9 @@ import androidx.room.RoomDatabase
         HistoryEntity::class,
         DownloadEntity::class,
         HealthEventEntity::class,
+        CredentialEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class MarbleBrDatabase : RoomDatabase() {
@@ -22,4 +23,5 @@ abstract class MarbleBrDatabase : RoomDatabase() {
     abstract fun historyDao(): HistoryDao
     abstract fun downloadDao(): DownloadDao
     abstract fun healthEventDao(): HealthEventDao
+    abstract fun credentialDao(): CredentialDao
 }

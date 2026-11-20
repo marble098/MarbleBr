@@ -76,6 +76,7 @@ class SettingsViewModel @Inject constructor(
     fun setGlobalNeverSignOut(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setGlobalNeverSignOut(enabled)
+            sessionManager.refreshCookiePolicies()
         }
     }
 

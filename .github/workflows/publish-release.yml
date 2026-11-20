@@ -1,0 +1,37 @@
+name: Publish an existing draft release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Exact draft tag, for example v1.4.1"
+        required: true
+        type: string
+      channel:
+        description: "Publish as prerelease or stable Latest"
+        required: true
+        type: choice
+        default: prerelease
+        options:
+          - prerelease
+          - latest
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Publish and verify the selected draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+        run: ./scripts/publish_release.sh "$RELEASE_TAG" "$RELEASE_CHANNEL"

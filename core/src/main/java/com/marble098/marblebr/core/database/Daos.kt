@@ -132,3 +132,18 @@ interface HealthEventDao {
     @Query("DELETE FROM health_events WHERE containerId = :containerId")
     suspend fun clearForContainer(containerId: String)
 }
+
+@Dao
+interface CredentialDao {
+    @Query("SELECT * FROM saved_credentials ORDER BY updatedAtEpochMillis DESC")
+    fun observeAll(): Flow<List<CredentialEntity>>
+
+    @Query("SELECT * FROM saved_credentials WHERE id = :id LIMIT 1")
+    suspend fun getById(id: String): CredentialEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(credential: CredentialEntity)
+
+    @Query("DELETE FROM saved_credentials WHERE id = :id")
+    suspend fun deleteById(id: String)
+}

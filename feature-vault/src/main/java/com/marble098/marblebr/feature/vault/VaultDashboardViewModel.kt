@@ -17,6 +17,7 @@ import com.marble098.marblebr.core.model.WebAppContainer
 import com.marble098.marblebr.engine.ContainerSessionManager
 import com.marble098.marblebr.engine.KeepAliveScheduler
 import com.marble098.marblebr.vault.SessionVaultManager
+import com.marble098.marblebr.vault.CredentialVault
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -85,6 +86,7 @@ data class ExpiringSite(
 @HiltViewModel
 class VaultDashboardViewModel @Inject constructor(
     private val containerDao: ContainerDao,
+    val credentialVault: CredentialVault,
     private val vaultManager: SessionVaultManager,
     private val sessionManager: ContainerSessionManager,
     private val localizationManager: LocalizationManager,
@@ -216,6 +218,7 @@ class VaultDashboardViewModel @Inject constructor(
     fun toggleSiteNeverSignOut(container: WebAppContainer, enabled: Boolean) {
         runBusy("toggle-${container.id}") {
             containerDao.updateNeverSignOut(container.id, enabled)
+            sessionManager.refreshCookiePolicies()
             // اگر محافظت خاموش شد، زنده‌سازی پس‌زمینه هم باید متوقف شود (وگرنه نشستِ کاربر
             // برخلافِ انتخابش تازه می‌ماند).
             if (!enabled) {
@@ -230,6 +233,7 @@ class VaultDashboardViewModel @Inject constructor(
         val safeDays = days.coerceIn(MIN_COOKIE_DAYS, MAX_COOKIE_DAYS)
         runBusy("cookie-${container.id}") {
             containerDao.updateCookieExpirationDays(container.id, safeDays)
+            sessionManager.refreshCookiePolicies()
             notify { it.feedbackCookieDays(container.domain, safeDays) }
         }
     }
@@ -266,6 +270,7 @@ class VaultDashboardViewModel @Inject constructor(
             val outcome = sessionManager.restoreSnapshotOnOpenTab(snapshot)
             when {
                 outcome.payloadUnavailable -> notify { it.feedbackRestoreFailed }
+                outcome.openTabMissing -> notify { it.vaultRestoreNeedsOpenTab }
                 outcome.cookiesRestored == 0 && outcome.storageKeysRestored == 0 ->
                     notify { it.feedbackRestoreEmpty }
                 else -> notify {
@@ -308,6 +313,7 @@ class VaultDashboardViewModel @Inject constructor(
                     }
                 }
             }
+            sessionManager.refreshCookiePolicies()
             refreshKeepAliveSchedule()
             notify { if (enabled) it.vaultProtectAllOnDone else it.vaultProtectAllOffDone }
         }

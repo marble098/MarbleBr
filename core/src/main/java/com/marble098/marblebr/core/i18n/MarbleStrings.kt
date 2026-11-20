@@ -18,6 +18,49 @@ import java.util.Locale
  */
 abstract class MarbleStrings {
 
+
+    // Multi-account browsing, encrypted credentials and page actions.
+    abstract val accountsTitle: String
+    abstract val accountsDescription: String
+    abstract val accountCurrent: String
+    abstract val accountCreate: String
+    abstract val accountName: String
+    abstract val accountOpen: String
+    abstract val credentialVaultTitle: String
+    abstract val credentialVaultDescription: String
+    abstract val credentialLockRequired: String
+    abstract val credentialLockUnavailable: String
+    abstract val credentialAdd: String
+    abstract val credentialEdit: String
+    abstract val credentialSite: String
+    abstract val credentialUsername: String
+    abstract val credentialPassword: String
+    abstract val credentialNotes: String
+    abstract val credentialSave: String
+    abstract val credentialDelete: String
+    abstract val credentialDeleteBody: String
+    abstract val credentialInvalid: String
+    abstract val credentialFailed: String
+    abstract val credentialEmpty: String
+    abstract val credentialGenerate: String
+    abstract val credentialShow: String
+    abstract val credentialHide: String
+    abstract val credentialCopyUser: String
+    abstract val credentialCopyPassword: String
+    abstract val credentialCopied: String
+    abstract val contextTitle: String
+    abstract val contextOpenTab: String
+    abstract val contextCopyLink: String
+    abstract val contextShareLink: String
+    abstract val contextSaveImage: String
+    abstract val contextCopyImage: String
+    abstract val contextShareText: String
+    abstract val contextSavePdf: String
+    abstract val pdfSaved: String
+    abstract val pdfFailed: String
+    abstract val credentialUnlock: String
+    abstract val accountSessionWarning: String
+
     // ---------------------------------------------------------------- عمومی
     abstract val appName: String
     abstract val back: String
@@ -527,6 +570,47 @@ abstract class MarbleStrings {
 }
 
 private object PersianStrings : MarbleStrings() {
+    override val accountsTitle = "حساب‌های این سایت"
+    override val accountsDescription = "هر حساب در فضای جداگانه ذخیره می‌شود. وارد حساب جدید شوید."
+    override val accountCurrent = "حساب فعال"
+    override val accountCreate = "افزودن حساب دیگر"
+    override val accountName = "نام حساب"
+    override val accountOpen = "باز کردن حساب"
+    override val credentialVaultTitle = "گذرواژه‌ها و حساب‌ها"
+    override val credentialVaultDescription = "فقط روی این دستگاه و به‌صورت رمزنگاری‌شده ذخیره می‌شوند."
+    override val credentialLockRequired = "برای دیدن گذرواژه‌ها با اثر انگشت یا قفل گوشی تأیید کنید."
+    override val credentialLockUnavailable = "ابتدا قفل صفحه یا اثر انگشت دستگاه را فعال کنید."
+    override val credentialAdd = "افزودن اطلاعات ورود"
+    override val credentialEdit = "ویرایش اطلاعات ورود"
+    override val credentialSite = "آدرس سایت (https://...)"
+    override val credentialUsername = "نام کاربری"
+    override val credentialPassword = "گذرواژه"
+    override val credentialNotes = "یادداشت"
+    override val credentialSave = "ذخیره"
+    override val credentialDelete = "حذف اطلاعات ورود؟"
+    override val credentialDeleteBody = "این اطلاعات فقط از مخزن گذرواژه حذف می‌شود."
+    override val credentialInvalid = "آدرس معتبر و نام کاربری یا گذرواژه را وارد کنید."
+    override val credentialFailed = "ذخیره اطلاعات ممکن نشد. دوباره تلاش کنید."
+    override val credentialEmpty = "هنوز اطلاعات ورودی ذخیره نشده است."
+    override val credentialGenerate = "ساخت گذرواژه قوی"
+    override val credentialShow = "نمایش گذرواژه"
+    override val credentialHide = "پنهان کردن گذرواژه"
+    override val credentialCopyUser = "کپی نام کاربری"
+    override val credentialCopyPassword = "کپی گذرواژه"
+    override val credentialCopied = "کپی شد؛ پس از ۳۰ ثانیه پاک می‌شود."
+    override val contextTitle = "گزینه‌های پیوند و تصویر"
+    override val contextOpenTab = "باز کردن پیوند در تب تازه"
+    override val contextCopyLink = "کپی پیوند"
+    override val contextShareLink = "اشتراک پیوند"
+    override val contextSaveImage = "دانلود تصویر"
+    override val contextCopyImage = "کپی آدرس تصویر"
+    override val contextShareText = "اشتراک متن"
+    override val contextSavePdf = "ذخیره صفحه به صورت PDF"
+    override val pdfSaved = "صفحه به صورت PDF ذخیره شد."
+    override val pdfFailed = "ذخیره صفحه ممکن نشد."
+    override val credentialUnlock = "باز کردن مخزن"
+    override val accountSessionWarning = "اگر سایت نشست را در سرور باطل کند، ورود دوباره لازم است."
+
     override val appName = "MarbleBr"
     override val back = "بازگشت"
     override val cancel = "بی خیال"
@@ -958,6 +1042,47 @@ private object PersianStrings : MarbleStrings() {
 }
 
 private object EnglishStrings : MarbleStrings() {
+    override val accountsTitle = "Accounts on this site"
+    override val accountsDescription = "Each account has its own storage. Sign in to the new account."
+    override val accountCurrent = "Current account"
+    override val accountCreate = "Add another account"
+    override val accountName = "Account name"
+    override val accountOpen = "Open account"
+    override val credentialVaultTitle = "Passwords and accounts"
+    override val credentialVaultDescription = "Stored encrypted on this device only."
+    override val credentialLockRequired = "Authenticate with biometrics or your device screen lock to see passwords."
+    override val credentialLockUnavailable = "Set up a device screen lock or biometrics first."
+    override val credentialAdd = "Add login"
+    override val credentialEdit = "Edit login"
+    override val credentialSite = "Site URL (https://...)"
+    override val credentialUsername = "Username"
+    override val credentialPassword = "Password"
+    override val credentialNotes = "Notes"
+    override val credentialSave = "Save"
+    override val credentialDelete = "Delete this login?"
+    override val credentialDeleteBody = "This removes the login from the password vault only."
+    override val credentialInvalid = "Enter a valid site URL and a username or password."
+    override val credentialFailed = "Could not save the login. Please try again."
+    override val credentialEmpty = "No saved logins yet."
+    override val credentialGenerate = "Generate strong password"
+    override val credentialShow = "Show password"
+    override val credentialHide = "Hide password"
+    override val credentialCopyUser = "Copy username"
+    override val credentialCopyPassword = "Copy password"
+    override val credentialCopied = "Copied; cleared after 30 seconds."
+    override val contextTitle = "Link and image actions"
+    override val contextOpenTab = "Open link in new tab"
+    override val contextCopyLink = "Copy link"
+    override val contextShareLink = "Share link"
+    override val contextSaveImage = "Download image"
+    override val contextCopyImage = "Copy image address"
+    override val contextShareText = "Share text"
+    override val contextSavePdf = "Save page as PDF"
+    override val pdfSaved = "Page saved as PDF."
+    override val pdfFailed = "Could not save the page."
+    override val credentialUnlock = "Unlock vault"
+    override val accountSessionWarning = "If the site revokes a session on its server, you must sign in again."
+
     override val appName = "MarbleBr"
     override val back = "Back"
     override val cancel = "Cancel"

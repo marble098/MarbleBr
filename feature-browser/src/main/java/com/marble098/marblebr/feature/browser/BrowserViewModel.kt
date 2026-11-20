@@ -1,5 +1,6 @@
 package com.marble098.marblebr.feature.browser
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.marble098.marblebr.core.database.BookmarkDao
@@ -28,6 +29,7 @@ import com.marble098.marblebr.core.preferences.BrowserPreferencesRepository
 import com.marble098.marblebr.core.preferences.SavedBrowserTabs
 import com.marble098.marblebr.engine.ContainerSessionManager
 import com.marble098.marblebr.engine.LightweightAdBlocker
+import com.marble098.marblebr.engine.PageContextTarget
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -36,6 +38,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -55,6 +58,7 @@ data class BrowserUiState(
     val findQuery: String = "",
     val bannerMessage: String? = null,
     val fallbackPromptDomain: String? = null,
+    val contextTarget: PageContextTarget? = null,
     /** حالت مطالعه روی تبِ فعال روشن است؟ */
     val isReaderModeOn: Boolean = false,
     /** متنِ در حال بلندخوانی (اگر بلندخوانی فعال باشد). */
@@ -109,6 +113,13 @@ class BrowserViewModel @Inject constructor(
     val downloads: StateFlow<List<DownloadItem>> = downloadDao.observeAll()
         .map { list -> list.map(DownloadEntity::toDomain) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val siteAccounts: StateFlow<List<WebAppContainer>> = combine(containerDao.observeAll(), uiState) { entries, state ->
+        val domain = state.activeContainer?.domain
+        if (domain == null || state.activeTab?.isPrivate == true) emptyList() else entries
+            .filter { it.domain == domain && !it.isPinnedPwa }
+            .map { it.toDomain() }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val containers = mutableMapOf<String, WebAppContainer>()
     private val pendingNavigation = mutableMapOf<String, Job>()
@@ -184,6 +195,42 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
+    /** Open another durable account in a new tab, keeping all other contexts untouched. */
+    fun createSiteAccount(name: String) {
+        val state = _uiState.value
+        val source = state.activeContainer ?: return
+        val tab = state.activeWebTab()?.takeUnless { it.isPrivate } ?: return
+        if (name.isBlank()) return
+        viewModelScope.launch {
+            val account = sessionManager.createAdditionalAccount(source, name)
+            val target = tab.url.takeIf { ContainerSessionManager.extractDomain(it) == source.domain }
+                ?: "https://${source.domain}/"
+            loadPage(createTab(isPrivate = false), target, account)
+        }
+    }
+
+    fun openSiteAccount(account: WebAppContainer) {
+        val state = _uiState.value
+        val source = state.activeContainer ?: return
+        val tab = state.activeWebTab()?.takeUnless { it.isPrivate } ?: return
+        if (account.domain != source.domain || account.isPinnedPwa) return
+        val existing = state.tabs.firstOrNull { !it.isPrivate && it.containerId == account.id }
+        if (existing != null) {
+            selectTab(existing.id)
+        } else {
+            val target = tab.url.takeIf { ContainerSessionManager.extractDomain(it) == account.domain }
+                ?: "https://${account.domain}/"
+            loadPage(createTab(isPrivate = false), target, account)
+        }
+    }
+
+    fun openLinkInNewTab(url: String) {
+        val source = _uiState.value.activeWebTab() ?: return
+        val current = containers[source.id]
+            ?.takeIf { !source.isPrivate && it.domain == ContainerSessionManager.extractDomain(url) }
+        loadPage(createTab(isPrivate = source.isPrivate, desktop = source.isDesktopMode), url, current)
+    }
+
     private fun createTab(isPrivate: Boolean, desktop: Boolean = false): BrowserTab {
         val tab = BrowserTab(
             id = UUID.randomUUID().toString(),
@@ -213,8 +260,8 @@ class BrowserViewModel @Inject constructor(
             try {
                 val target = urlResolver.resolveInputToUrl(input, preferencesRepository.preferencesFlow.first().searchEngineTemplate)
                 val domain = ContainerSessionManager.extractDomain(target)
-                val pinned = containers[tab.id]?.takeIf { it.isPinnedPwa && it.domain == domain }
-                val container = preferredContainer ?: pinned ?: if (tab.isPrivate) {
+                val current = containers[tab.id]?.takeIf { it.domain == domain }
+                val container = preferredContainer ?: current ?: if (tab.isPrivate) {
                     WebAppContainer(id = tab.id, domain = domain, displayName = "")
                 } else {
                     sessionManager.getOrCreateContainerForUrl(target)
@@ -270,6 +317,7 @@ class BrowserViewModel @Inject constructor(
                 activeTabId = tab?.id.orEmpty(),
                 activeContainer = tab?.id?.let(containers::get),
                 showHome = tab?.url.isNullOrBlank() && tab?.isLoading != true,
+                contextTarget = null,
             )
         }
     }
@@ -329,7 +377,14 @@ class BrowserViewModel @Inject constructor(
 
     private fun copyTab(source: BrowserTab) {
         val tab = createTab(source.isPrivate, desktop = source.isDesktopMode)
-        if (source.url.isNotBlank()) loadPage(tab, source.url, containers[source.id]?.takeUnless { source.isPrivate })
+        if (source.url.isNotBlank()) {
+            viewModelScope.launch {
+                val account = if (source.isPrivate) null else {
+                    containers[source.id] ?: containerDao.getById(source.containerId)?.toDomain()
+                }
+                if (uiState.value.tabs.any { it.id == tab.id }) loadPage(tab, source.url, account)
+            }
+        }
     }
 
     fun stopLoading() {
@@ -440,9 +495,17 @@ class BrowserViewModel @Inject constructor(
                 ?: containerDao.getById(tab.containerId)?.toDomain()
                 ?: return@launch
             sessionManager.signOutNow(container)
-            containers.remove(tab.id)
-            updateTab(tab.id) {
-                it.copy(healthStatus = SessionHealthStatus.DISABLED, canGoBack = false, canGoForward = false)
+            _uiState.update { state ->
+                state.copy(
+                    showHome = true,
+                    tabs = state.tabs.map {
+                        if (it.containerId == container.id) {
+                            it.copy(healthStatus = SessionHealthStatus.DISABLED, canGoBack = false, canGoForward = false)
+                        } else {
+                            it
+                        }
+                    },
+                )
             }
             showLocalizedBanner { it.feedbackSignedOut(container.domain) }
         }
@@ -495,6 +558,20 @@ class BrowserViewModel @Inject constructor(
 
     suspend fun refreshDownloads() {
         downloadLauncher.refreshDownloads()
+    }
+
+    fun onPageContextMenu(tabId: String, target: PageContextTarget) {
+        if (_uiState.value.activeWebTab()?.id == tabId) _uiState.update { it.copy(contextTarget = target) }
+    }
+
+    fun dismissPageContextMenu() {
+        _uiState.update { it.copy(contextTarget = null) }
+    }
+
+    fun savePageAsPdf(tabId: String, destination: Uri) {
+        sessionManager.savePageAsPdf(tabId, destination) { saved ->
+            showLocalizedBanner { if (saved) it.pdfSaved else it.pdfFailed }
+        }
     }
 
     fun onPageLocationChanged(tabId: String, url: String, isSecure: Boolean) {
