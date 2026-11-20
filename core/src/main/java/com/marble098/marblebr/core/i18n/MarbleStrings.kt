@@ -186,6 +186,32 @@ abstract class MarbleStrings {
     abstract fun manualSnapshotLabel(domain: String): String
     abstract fun pwaShortcutLongLabel(title: String): String
 
+    // --------------------------------------------------- صفحه‌ی خانه
+    abstract val homeTitle: String
+    abstract val homeIntro: String
+    abstract val homeSearchHint: String
+    abstract val homeRecentTitle: String
+    abstract val homeEmptyRecent: String
+    abstract val homeShortcutsTitle: String
+    abstract val homeEmptyShortcuts: String
+
+    // --------------------------------------------------- امتیاز‌دهی
+    abstract val rateTitle: String
+    abstract val rateMessage: String
+    abstract val rateNow: String
+    abstract val rateLater: String
+    abstract val rateDontAskAgain: String
+
+    // --------------------------------------------- تنظیمات صفحه‌ی خانه
+    abstract val homeScreenTitle: String
+    abstract val searchEngineTitle: String
+    abstract val searchEngineDescription: String
+    abstract val homeShortcutPositionTitle: String
+    abstract val shortcutPositionNone: String
+    abstract val shortcutPositionTop: String
+    abstract val shortcutPositionBottom: String
+    abstract val homeSeeAll: String
+
     // ------------------------------------------- برچسب‌های شمارشی
     fun themeModeLabel(mode: ThemeMode): String = when (mode) {
         ThemeMode.SYSTEM -> themeSystem
@@ -445,6 +471,32 @@ private object PersianStrings : MarbleStrings() {
     override fun manualSnapshotLabel(domain: String) = "نسخه دستی — $domain"
     override fun pwaShortcutLongLabel(title: String) = "$title (بدون خروج خودکار)"
 
+    override val homeTitle = "صفحه‌ی خانه"
+    override val homeIntro = "ابتدا را از اینجا آغاز کنید"
+    override val homeSearchHint = "جستجو یا آدرس سایت را بنویسید…"
+    override val homeRecentTitle = "بازدیدهای اخیر"
+    override val homeEmptyRecent = "هنوز بازدیدی ندارید"
+    override val homeShortcutsTitle = "میانبرهای شما"
+    override val homeEmptyShortcuts = "هنوز میانبری ندارید. سایت‌های مورد علاقه را از مرورگر ذخیره کنید."
+
+    override val rateTitle = "به MarbleBr استار بدهید"
+    override val rateMessage =
+        "اگر MarbleBr به شما مفید بوده است، لطفاً به ما استار بدهید تا بتوانیم برایتان بهتر شویم."
+    override val rateNow = "بله، با خوشحالی"
+    override val rateLater = "بعداً"
+    override val rateDontAskAgain = "نخواهم داد، دوباره نشان نده"
+
+    override val homeScreenTitle = "تنظیمات صفحه‌ی خانه"
+    override val searchEngineTitle = "موتور جستجو"
+    override val searchEngineDescription =
+        "موتور جستجوی پیش‌فرض برای نوار آدرس و صفحه‌ی خانه را انتخاب کنید."
+    override val homeShortcutPositionTitle = "محل دکمه‌ی میانبر صفحه‌ی خانه"
+    override val shortcutPositionNone = "هیچ‌کدام"
+    override val shortcutPositionTop = "بالا"
+    override val shortcutPositionBottom = "پایین"
+
+    override val homeSeeAll = "مشاهده همه »"
+
     override val dnsSystem = "خودکار"
     override val dnsCustom = "سفارشی"
     override val proxyNone = "بدون پروکسی"
@@ -635,6 +687,32 @@ private object EnglishStrings : MarbleStrings() {
     override fun autoSnapshotLabel(domain: String) = "Auto copy — $domain"
     override fun manualSnapshotLabel(domain: String) = "Manual copy — $domain"
     override fun pwaShortcutLongLabel(title: String) = "$title (stays signed in)"
+
+    override val homeTitle = "Home"
+    override val homeIntro = "Start browsing from here"
+    override val homeSearchHint = "Search or type a website address…"
+    override val homeRecentTitle = "Recent history"
+    override val homeEmptyRecent = "No recent visits yet"
+    override val homeShortcutsTitle = "Your shortcuts"
+    override val homeEmptyShortcuts = "No shortcuts yet. Save your favorite sites from the browser."
+
+    override val rateTitle = "Rate MarbleBr"
+    override val rateMessage =
+        "If you like MarbleBr, please give us a star so we can keep improving it for you."
+    override val rateNow = "Yes, with pleasure"
+    override val rateLater = "Later"
+    override val rateDontAskAgain = "I won't, don't ask again"
+
+    override val homeScreenTitle = "Home screen"
+    override val searchEngineTitle = "Search engine"
+    override val searchEngineDescription =
+        "Choose the default search engine for the address bar and home screen."
+    override val homeShortcutPositionTitle = "Home screen shortcut button position"
+    override val shortcutPositionNone = "None"
+    override val shortcutPositionTop = "Top"
+    override val shortcutPositionBottom = "Bottom"
+
+    override val homeSeeAll = "See all →"
 
     override val dnsSystem = "Automatic"
     override val dnsCustom = "Custom"

@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.marble098.marblebr.core.model.BookmarkItem
+import com.marble098.marblebr.core.model.BrowserTab
 import com.marble098.marblebr.core.model.DownloadItem
 import com.marble098.marblebr.core.model.DownloadState
 import com.marble098.marblebr.core.model.HistoryItem
@@ -169,6 +170,50 @@ data class DownloadEntity(
         destinationPath = destinationPath,
         createdAtEpochMillis = createdAtEpochMillis,
     )
+}
+
+@Entity(
+    tableName = "browser_tabs",
+    indices = [Index(value = ["positionIndex"]), Index(value = ["lastVisitedAtEpochMillis"])],
+)
+data class BrowserTabEntity(
+    @PrimaryKey val id: String,
+    val containerId: String,
+    val contextId: String,
+    val url: String,
+    val title: String,
+    val isPrivate: Boolean,
+    val isDesktopMode: Boolean,
+    val createdAtEpochMillis: Long,
+    val lastVisitedAtEpochMillis: Long,
+    val positionIndex: Int,
+) {
+    fun toDomain(): BrowserTab = BrowserTab(
+        id = id,
+        containerId = containerId,
+        contextId = contextId,
+        url = url,
+        title = title,
+        isPrivate = isPrivate,
+        isDesktopMode = isDesktopMode,
+        createdAtEpochMillis = createdAtEpochMillis,
+        lastVisitedAtEpochMillis = lastVisitedAtEpochMillis,
+    )
+
+    companion object {
+        fun fromDomain(tab: BrowserTab, positionIndex: Int): BrowserTabEntity = BrowserTabEntity(
+            id = tab.id,
+            containerId = tab.containerId,
+            contextId = tab.contextId,
+            url = tab.url,
+            title = tab.title,
+            isPrivate = tab.isPrivate,
+            isDesktopMode = tab.isDesktopMode,
+            createdAtEpochMillis = tab.createdAtEpochMillis,
+            lastVisitedAtEpochMillis = tab.lastVisitedAtEpochMillis,
+            positionIndex = positionIndex,
+        )
+    }
 }
 
 @Entity(tableName = "health_events", indices = [Index(value = ["containerId", "timestampEpochMillis"])])

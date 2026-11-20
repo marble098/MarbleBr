@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.room.Room
 import com.marble098.marblebr.core.database.BookmarkDao
+import com.marble098.marblebr.core.database.BrowserTabDao
 import com.marble098.marblebr.core.database.ContainerDao
 import com.marble098.marblebr.core.database.DownloadDao
 import com.marble098.marblebr.core.database.HealthEventDao
@@ -31,7 +32,12 @@ object CoreModule {
             context,
             MarbleBrDatabase::class.java,
             "marblebr_vault.db",
-        ).fallbackToDestructiveMigration(dropAllTables = true).build()
+        ).addMigrations(MarbleBrDatabase.MIGRATION_1_2)
+            .fallbackToDestructiveMigration(dropAllTables = true)
+            .build()
+
+    @Provides
+    fun provideBrowserTabDao(db: MarbleBrDatabase): BrowserTabDao = db.browserTabDao()
 
     @Provides
     fun provideContainerDao(db: MarbleBrDatabase): ContainerDao = db.containerDao()

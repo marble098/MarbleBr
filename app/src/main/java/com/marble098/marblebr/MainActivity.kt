@@ -2,6 +2,7 @@ package com.marble098.marblebr
 
 import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -25,6 +26,7 @@ import com.marble098.marblebr.core.preferences.BrowserPreferencesRepository
 import com.marble098.marblebr.engine.CredentialFallbackAuthenticator
 import com.marble098.marblebr.feature.browser.BrowserScreen
 import com.marble098.marblebr.feature.browser.BrowserViewModel
+import com.marble098.marblebr.feature.browser.RateAppDialog
 import com.marble098.marblebr.feature.settings.SettingsScreen
 import com.marble098.marblebr.feature.settings.SettingsViewModel
 import com.marble098.marblebr.feature.vault.VaultDashboardScreen
@@ -60,6 +62,46 @@ class MainActivity : AppCompatActivity() {
 
         setContent {
             val prefs by preferencesRepository.preferencesFlow.collectAsState(initial = BrowserPreferences())
+            val coroutineScope = rememberCoroutineScope()
+            var showRateDialog by remember { mutableStateOf(false) }
+
+            val rateLaunchThreshold = 3
+
+            LaunchedEffect(prefs.rateDialogShown, prefs.rateLaunchCount) {
+                if (!prefs.rateDialogShown && prefs.rateLaunchCount >= rateLaunchThreshold) {
+                    showRateDialog = true
+                }
+            }
+
+            // شمارش راه‌اندازی‌ها تا پنل امتیازدهیِ اولین ورود نمایش داده شود
+            LaunchedEffect(Unit) {
+                coroutineScope.launch {
+                    val current = preferencesRepository.preferencesFlow.first()
+                    if (!current.rateDialogShown) {
+                        preferencesRepository.setRateLaunchCount(current.rateLaunchCount + 1)
+                    }
+                }
+            }
+
+            if (showRateDialog) {
+                RateAppDialog(
+                    onRateNow = {
+                        showRateDialog = false
+                        coroutineScope.launch {
+                            preferencesRepository.setRateDialogShown(true)
+                        }
+                        openPlayStore()
+                    },
+                    onLater = { showRateDialog = false },
+                    onNever = {
+                        showRateDialog = false
+                        coroutineScope.launch {
+                            preferencesRepository.setRateDialogShown(true)
+                        }
+                    },
+                )
+            }
+
             MarbleBrTheme(
                 themeMode = prefs.themeMode,
                 dynamicColor = prefs.dynamicColorEnabled,
@@ -73,6 +115,21 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
+
+    private fun openPlayStore() {
+        val packageName = this.packageName
+        val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName")).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        if (marketIntent.resolveActivity(packageManager) != null) {
+            startActivity(marketIntent)
+            return
+        }
+        val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName")).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(Intent.createChooser(webIntent, null))
+    }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -124,6 +181,7 @@ fun MarbleBrAppNavHost(
                     }
                 },
                 renderGeckoWebView = renderGeckoWebView,
+                initialShowHome = initialUrlFromIntent.isNullOrBlank(),
             )
         }
 
