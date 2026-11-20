@@ -88,6 +88,20 @@ jobs:
             exit 1
           fi
 
+      - name: Summarize unit test failures
+        if: failure()
+        run: |
+          python3 - <<'PYDETAILS'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          for path in Path('.').glob('**/build/test-results/testDebugUnitTest/TEST-*.xml'):
+              for test in ET.parse(path).iter('testcase'):
+                  for failure in test.findall('failure') + test.findall('error'):
+                      message = failure.get('message', '') + ' ' + (failure.text or '').split('\n', 1)[0]
+                      message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                      print(f"::error title={test.get('classname', '')}.{test.get('name', '')}::{message[:4000]}")
+          PYDETAILS
+
       - name: Compile Android instrumentation tests
         run: |
           set -o pipefail

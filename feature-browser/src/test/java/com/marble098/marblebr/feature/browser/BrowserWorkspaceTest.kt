@@ -2,12 +2,14 @@ package com.marble098.marblebr.feature.browser
 
 import androidx.compose.ui.text.TextRange
 import com.marble098.marblebr.core.model.BrowserTab
+import com.marble098.marblebr.core.model.WebAppContainer
 import com.marble098.marblebr.core.preferences.AddressSelectionMode
 import com.marble098.marblebr.core.preferences.BrowserPreferences
 import com.marble098.marblebr.core.preferences.SavedBrowserTabs
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -38,6 +40,17 @@ class BrowserWorkspaceTest {
     @Test
     fun newTabsDoNotContactGoogleUnlessEnabled() {
         assertFalse(BrowserPreferences().openGoogleOnNewTab)
+    }
+
+    @Test
+    fun accountActionsFollowTheDisplayedSiteRatherThanAnOauthRedirect() {
+        val account = WebAppContainer("account", "my.mci.ir", "First")
+        val tab = BrowserTab("tab", account.id, account.contextId, "https://my.mci.ir/panel")
+        val state = BrowserUiState(tabs = listOf(tab), activeTabId = tab.id, activeContainer = account, showHome = false)
+        assertEquals(account, state.activeAccountForCurrentSite())
+        assertNull(state.copy(tabs = listOf(tab.copy(url = "https://oauth.example.org/login"))).activeAccountForCurrentSite())
+        assertNull(state.copy(tabs = listOf(tab.copy(isPrivate = true))).activeAccountForCurrentSite())
+        assertNull(state.copy(showHome = true).activeAccountForCurrentSite())
     }
 
     @Test

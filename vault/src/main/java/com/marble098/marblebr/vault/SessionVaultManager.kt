@@ -80,10 +80,8 @@ class SessionVaultManager @Inject constructor(
         )
 
         val domain = extractDomain(payload.origin)
-        val storageKeyCount =
-            normalizedPayload.localStorage.size +
-                normalizedPayload.sessionStorage.size +
-                normalizedPayload.indexedDbDump.size
+        // IndexedDB names/versions are metadata, not restorable keys.
+        val storageKeyCount = normalizedPayload.localStorage.size + normalizedPayload.sessionStorage.size
 
         val entity = SnapshotEntity(
             id = UUID.randomUUID().toString(),
@@ -223,7 +221,7 @@ class SessionVaultManager @Inject constructor(
     fun evaluatePayloadHealth(payload: SessionSnapshotPayload): Boolean {
         val hasAuthCookie = payload.cookies.any { it.isLikelyAuthCookie() && it.value.isNotBlank() }
         val hasNonEmptyCookies = payload.cookies.any { it.value.isNotBlank() }
-        val hasAuthStorageKey = (payload.localStorage.keys + payload.sessionStorage.keys + payload.indexedDbDump.keys)
+        val hasAuthStorageKey = (payload.localStorage.keys + payload.sessionStorage.keys)
             .any { key ->
                 val lower = key.lowercase()
                 lower.contains("token") ||

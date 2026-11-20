@@ -78,6 +78,20 @@ class VaultRestoreRoundTripTest {
     }
 
     @Test
+    fun `indexed database metadata alone is not a restorable healthy session`() = runTest {
+        val metadataOnly = payload().copy(
+            cookies = emptyList(),
+            localStorage = emptyMap(),
+            sessionStorage = emptyMap(),
+            indexedDbDump = mapOf("user_auth_database" to "1"),
+        )
+        assertTrue(!vaultManager.evaluatePayloadHealth(metadataOnly))
+        val snapshot = vaultManager.captureSnapshot(metadataOnly)
+        assertTrue(!snapshot.isHealthy)
+        assertEquals(0, snapshot.storageKeyCount)
+    }
+
+    @Test
     fun `latest healthy snapshot is the newest healthy one`() = runTest {
         vaultManager.captureSnapshot(payload = payload(cookieValue = "older"), label = "first")
         vaultManager.captureSnapshot(

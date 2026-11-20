@@ -257,9 +257,10 @@ fun BrowserScreen(
         domain = if (showHome) "" else activeTab?.url?.let(::siteDomain).orEmpty(),
         displayName = activeTab?.title.orEmpty(),
         isPrivate = activeTab?.isPrivate == true,
-        isProtected = !showHome && activeTab?.isPrivate != true && uiState.activeContainer?.neverSignOutEnabled == true,
+        isProtected = uiState.activeAccountForCurrentSite()?.neverSignOutEnabled == true,
         isDesktopMode = activeTab?.isDesktopMode == true,
         hasPage = hasPage && !showHome,
+        canManageSiteAccounts = uiState.activeAccountForCurrentSite() != null,
         downloadsCount = downloads.size,
     )
     val menuActions = BrowserMenuActions(
@@ -842,6 +843,7 @@ fun BrowserAddressField(
     // هر لمسِ تازهٔ نوار آدرس، یک «نشانهٔ انتخاب» می‌سازد؛ با تغییر آن، انتخاب و مکان‌نما
     // دوباره اعمال می‌شود. (پیش‌تر فقط اولین فوکوس انتخاب می‌کرد و لمس‌های بعدی کاری نمی‌کردند.)
     var tapSelectRequest by remember { mutableIntStateOf(0) }
+    var touchGeneration by remember { mutableIntStateOf(0) }
     val style = ChromeBarStyle.FLOATING
     val submitNow = rememberUpdatedState(onSubmit)
     val focusRequester = remember { FocusRequester() }
@@ -853,10 +855,11 @@ fun BrowserAddressField(
     // Focus can be acquired by accessibility/keyboard as well as a touch. Do not overwrite typing.
     LaunchedEffect(focused, tapSelectRequest, mode) {
         if (!focused) return@LaunchedEffect
-        val original = input
+        val originalText = input.text
+        val originalTouchGeneration = touchGeneration
         delay(100)
-        // Do not reselect if the user has already typed or moved the caret in the meantime.
-        if (focused && input == original) {
+        // Ignore focus's own cursor adjustment, but never override a later user touch or typing.
+        if (focused && input.text == originalText && touchGeneration == originalTouchGeneration) {
             input = input.copy(selection = addressSelection(input.text, input.selection.end, mode))
         }
     }
@@ -909,6 +912,7 @@ fun BrowserAddressField(
                         val slop = viewConfiguration.touchSlop
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                            touchGeneration++
                             val firstFocus = !focused
                             var moved = false
                             var released = false

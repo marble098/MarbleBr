@@ -78,6 +78,12 @@ data class BrowserUiState(
      * ابزارهایی مثل حالت مطالعه/بلندخوانی/دسترسی‌ها نباید روی صفحهٔ قبلی اجرا شوند.
      */
     fun activeWebTab(): BrowserTab? = if (showHome) null else activeTab?.takeIf { it.url.isNotBlank() }
+
+    /** A cross-site navigation remains in its original context (important for OAuth redirects). */
+    fun activeAccountForCurrentSite(): WebAppContainer? {
+        val tab = activeWebTab()?.takeUnless { it.isPrivate } ?: return null
+        return activeContainer?.takeIf { it.domain == ContainerSessionManager.extractDomain(tab.url) }
+    }
 }
 
 @HiltViewModel
@@ -115,8 +121,8 @@ class BrowserViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val siteAccounts: StateFlow<List<WebAppContainer>> = combine(containerDao.observeAll(), uiState) { entries, state ->
-        val domain = state.activeContainer?.domain
-        if (domain == null || state.activeTab?.isPrivate == true) {
+        val domain = state.activeAccountForCurrentSite()?.domain
+        if (domain == null) {
             emptyList()
         } else {
             entries
@@ -131,6 +137,31 @@ class BrowserViewModel @Inject constructor(
     private val restore = viewModelScope.launch { restoreTabs() }
 
     init {
+        viewModelScope.launch {
+            restore.join()
+            containerDao.observeAll().collect { entities ->
+                val freshById = entities.associate { it.id to it.toDomain() }
+                containers.toMap().forEach { (tabId, old) -> freshById[old.id]?.let { containers[tabId] = it } }
+                _uiState.update { state ->
+                    state.copy(
+                        activeContainer = containers[state.activeTabId],
+                        tabs = state.tabs.map { tab ->
+                            val current = containers[tab.id]
+                            if (tab.isPrivate || current == null) {
+                                tab
+                            } else {
+                                val status = when {
+                                    !current.neverSignOutEnabled -> SessionHealthStatus.DISABLED
+                                    tab.healthStatus == SessionHealthStatus.DISABLED -> SessionHealthStatus.PROTECTED_ACTIVE
+                                    else -> tab.healthStatus
+                                }
+                                tab.copy(healthStatus = status)
+                            }
+                        },
+                    )
+                }
+            }
+        }
         viewModelScope.launch {
             restore.join()
             uiState.map { SavedBrowserTabs.fromTabs(it.tabs, it.activeTabId, it.showHome) }
@@ -202,8 +233,8 @@ class BrowserViewModel @Inject constructor(
     /** Open another durable account in a new tab, keeping all other contexts untouched. */
     fun createSiteAccount(name: String) {
         val state = _uiState.value
-        val source = state.activeContainer ?: return
-        val tab = state.activeWebTab()?.takeUnless { it.isPrivate } ?: return
+        val source = state.activeAccountForCurrentSite() ?: return
+        val tab = state.activeWebTab() ?: return
         if (name.isBlank()) return
         viewModelScope.launch {
             val account = sessionManager.createAdditionalAccount(source, name)
@@ -215,10 +246,12 @@ class BrowserViewModel @Inject constructor(
 
     fun openSiteAccount(account: WebAppContainer) {
         val state = _uiState.value
-        val source = state.activeContainer ?: return
-        val tab = state.activeWebTab()?.takeUnless { it.isPrivate } ?: return
+        val source = state.activeAccountForCurrentSite() ?: return
+        val tab = state.activeWebTab() ?: return
         if (account.domain != source.domain || account.isPinnedPwa) return
-        val existing = state.tabs.firstOrNull { !it.isPrivate && it.containerId == account.id }
+        val existing = state.tabs.firstOrNull {
+            !it.isPrivate && it.containerId == account.id && ContainerSessionManager.extractDomain(it.url) == account.domain
+        }
         if (existing != null) {
             selectTab(existing.id)
         } else {

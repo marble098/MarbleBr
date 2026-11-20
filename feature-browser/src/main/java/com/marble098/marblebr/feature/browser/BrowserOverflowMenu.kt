@@ -87,6 +87,7 @@ internal data class BrowserMenuState(
     val isProtected: Boolean = false,
     val isDesktopMode: Boolean = false,
     val hasPage: Boolean = false,
+    val canManageSiteAccounts: Boolean = false,
     val downloadsCount: Int = 0,
 )
 
@@ -224,13 +225,15 @@ internal fun BrowserOverflowMenu(
 
                 if (state.hasPage && !state.isPrivate) {
                     MenuSectionTitle(strings.menuSectionProtection)
-                    MenuRow(
-                        icon = Icons.Default.People,
-                        title = strings.accountsTitle,
-                        subtitle = strings.accountsDescription,
-                        accent = colors.secondary,
-                        testTag = "menu_site_accounts",
-                    ) { onDismiss(); actions.onSiteAccounts() }
+                    if (state.canManageSiteAccounts) {
+                        MenuRow(
+                            icon = Icons.Default.People,
+                            title = strings.accountsTitle,
+                            subtitle = strings.accountsDescription,
+                            accent = colors.secondary,
+                            testTag = "menu_site_accounts",
+                        ) { onDismiss(); actions.onSiteAccounts() }
+                    }
                     MenuRow(
                         icon = Icons.Default.Shield,
                         title = strings.menuSaveState,
