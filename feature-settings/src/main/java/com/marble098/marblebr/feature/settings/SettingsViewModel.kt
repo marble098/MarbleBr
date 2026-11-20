@@ -7,6 +7,7 @@ import com.marble098.marblebr.core.i18n.AppLanguage
 import com.marble098.marblebr.core.i18n.LocalizationManager
 import com.marble098.marblebr.core.model.BackButtonBehavior
 import com.marble098.marblebr.core.model.ChromeBarStyle
+import com.marble098.marblebr.core.model.ColorPalette
 import com.marble098.marblebr.core.model.DnsMode
 import com.marble098.marblebr.core.model.HomeShortcutPosition
 import com.marble098.marblebr.core.model.ProxyDnsConfig
@@ -56,6 +57,13 @@ class SettingsViewModel @Inject constructor(
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch {
             preferencesRepository.setThemeMode(mode)
+        }
+    }
+
+    /** انتخاب پالت رنگی؛ از همین لحظه کل اپ با تمِ تازه بازترکیب می‌شود. */
+    fun setColorPalette(palette: ColorPalette) {
+        viewModelScope.launch {
+            preferencesRepository.setColorPalette(palette)
         }
     }
 

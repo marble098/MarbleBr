@@ -8,7 +8,11 @@ import com.marble098.marblebr.core.model.CookieRecord
 import com.marble098.marblebr.core.model.HealthGuardAction
 import com.marble098.marblebr.core.model.HealthReason
 import com.marble098.marblebr.core.model.ProxyDnsConfig
+import com.marble098.marblebr.core.model.PermissionState
 import com.marble098.marblebr.core.model.ProxyType
+import com.marble098.marblebr.core.model.ReaderTextEngine
+import com.marble098.marblebr.core.model.SitePermission
+import com.marble098.marblebr.core.model.SitePermissionProfile
 import com.marble098.marblebr.core.model.SessionHealthSignal
 import com.marble098.marblebr.core.model.SessionSnapshotMeta
 import com.marble098.marblebr.core.model.SessionSnapshotPayload
@@ -77,10 +81,22 @@ class ContainerSessionManager @Inject constructor(
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val activeSessions = ConcurrentHashMap<String, GeckoSession>()
 
+    /** پروفایلِ دسترسی‌های هر تب؛ delegate هر نشست همین را می‌خواند. */
+    private val permissionProfiles = ConcurrentHashMap<String, SitePermissionProfile>()
+
     // پورت‌ها از تردِ Gecko هم لمس می‌شوند؛ نگه‌داشتن آن‌ها در ConcurrentHashMap از
     // ConcurrentModificationException و نشتِ پورتِ بسته‌شده جلوگیری می‌کند.
     private val capturePorts = ConcurrentHashMap<GeckoSession, WebExtension.Port>()
     private val snapshotRequests = ConcurrentHashMap<GeckoSession, SnapshotRequest>()
+
+    /**
+     * درخواست‌های «اجرای اسکریپت» که منتظرِ پاسخِ صفحه هستند.
+     *
+     * GeckoView هیچ متدِ `evaluateJS` روی [GeckoSession] ندارد (برخلافِ WebView اندروید)؛ اجرای
+     * جاوااسکریپت فقط از مسیرِ افزونهٔ داخلی ممکن است. پس درخواست را با یک شناسه روی پورتِ
+     * همان صفحه می‌فرستیم و پاسخِ `JS_RESULT` را با همان شناسه تطبیق می‌دهیم.
+     */
+    private val scriptRequests = ConcurrentHashMap<String, CompletableDeferred<String?>>()
 
     /** پورتِ اسکریپت پس‌زمینهٔ افزونه؛ برای نوشتن کوکی‌های HttpOnly از سمت بومی لازم است. */
     @Volatile
@@ -219,6 +235,35 @@ class ContainerSessionManager @Inject constructor(
             }
         }
 
+        // تصمیمِ دسترسی‌ها: پخش خودکار همیشه از روی پروفایل پاسخ داده می‌شود (اگر کاربر
+        // اجازه نداده باشد بلاک است) و بقیه هم همان پروفایل را دنبال می‌کنند.
+        session.permissionDelegate = object : GeckoSession.PermissionDelegate {
+            override fun onContentPermissionRequest(
+                session: GeckoSession,
+                perm: GeckoSession.PermissionDelegate.ContentPermission,
+            ): GeckoResult<Int> = GeckoResult.fromValue(decisionFor(tabId, perm.permission))
+
+            override fun onMediaPermissionRequest(
+                session: GeckoSession,
+                uri: String,
+                video: Array<out GeckoSession.PermissionDelegate.MediaSource>?,
+                audio: Array<out GeckoSession.PermissionDelegate.MediaSource>?,
+                callback: GeckoSession.PermissionDelegate.MediaCallback,
+            ) {
+                val profile = permissionProfiles[tabId]
+                val videoAllowed = profile?.stateOf(SitePermission.CAMERA) == PermissionState.ALLOW
+                val audioAllowed = profile?.stateOf(SitePermission.MICROPHONE) == PermissionState.ALLOW
+                val videoSource = video?.firstOrNull()?.takeIf { videoAllowed }
+                val audioSource = audio?.firstOrNull()?.takeIf { audioAllowed }
+                if (videoSource == null && audioSource == null) {
+                    callback.reject()
+                } else {
+                    // API گکوویو `accept` ندارد؛ نامِ درست `grant(video, audio)` است.
+                    callback.grant(videoSource, audioSource)
+                }
+            }
+        }
+
         activeSessions[tabId] = session
         session.open(runtime)
         session.loadUri(initialUrl)
@@ -281,6 +326,111 @@ class ContainerSessionManager @Inject constructor(
 
     fun clearFindInPage(tabId: String) {
         activeSessions[tabId]?.finder?.clear()
+    }
+
+    /* ---------------------------------- حالت مطالعه و بلندخوانی ---------------------------------- */
+
+    /**
+     * روشن/خاموش کردنِ «حالت مطالعه».
+     *
+     * اسکریپت در همان صفحه اجرا می‌شود (بدون بارگذاری دوباره) و عناصر مزاحم را پنهان می‌کند.
+     * @return `true` اگر اسکریپت با موفقیت اجرا شد.
+     */
+    fun setReaderMode(tabId: String, enabled: Boolean, onResult: (Boolean) -> Unit = {}) {
+        val script = if (enabled) ReaderTextEngine.readerScript else ReaderTextEngine.readerResetScript
+        evaluateInPage(tabId, script) { result ->
+            // اسکریپتِ حالت مطالعه رشتهٔ «on»/«off» را برمی‌گرداند؛ هر پاسخِ غیرخالی یعنی
+            // اسکریپت واقعاً در صفحه اجرا شد.
+            onResult(!result.isNullOrBlank())
+        }
+    }
+
+    /**
+     * استخراج متنِ اصلیِ صفحه برای بلندخوانی.
+     *
+     * @param onText متنی که باید خوانده شود؛ رشتهٔ خالی یعنی صفحه متنی نداشت.
+     */
+    fun readPageText(tabId: String, onText: (String) -> Unit) {
+        evaluateInPage(tabId, ReaderTextEngine.extractReadableTextScript) { raw ->
+            val text = ReaderTextEngine.extractReadableText(raw)
+            onText(if (ReaderTextEngine.hasEnoughText(text)) text else "")
+        }
+    }
+
+    /**
+     * اجرای یک اسکریپت در صفحهٔ همان تب و برگرداندنِ نتیجه به‌صورت رشته.
+     *
+     * چرا از پورتِ افزونه؟ چون GeckoView متدِ `evaluateJS` ندارد؛ تنها راهِ پشتیبانی‌شده،
+     * فرستادنِ پیام به content script همان صفحه است (همان پورتی که اسنپ‌شات‌ها را می‌گیرد).
+     * اگر پیوندی برقرار نباشد (مثلاً صفحه‌ای که اسکریپتِ ما در آن اجرا نشده) نتیجه `null`
+     * است و لایهٔ بالاتر پیامِ «در دسترس نیست» را نشان می‌دهد.
+     */
+    private fun evaluateInPage(
+        tabId: String,
+        script: String,
+        timeoutMillis: Long = SCRIPT_TIMEOUT_MILLIS,
+        onResult: (String?) -> Unit,
+    ) {
+        val port = activeSessions[tabId]?.let { capturePorts[it] }
+        if (port == null) {
+            onResult(null)
+            return
+        }
+        val requestId = UUID.randomUUID().toString()
+        val response = CompletableDeferred<String?>()
+        scriptRequests[requestId] = response
+        engineScope.launch {
+            try {
+                port.postMessage(
+                    JSONObject()
+                        .put("type", "EVAL_JS")
+                        .put("requestId", requestId)
+                        .put("script", script),
+                )
+                onResult(withTimeoutOrNull(timeoutMillis) { response.await() })
+            } catch (_: Exception) {
+                onResult(null)
+            } finally {
+                scriptRequests.remove(requestId)
+            }
+        }
+    }
+
+    /**
+     * اعمالِ «دسترسی‌های سایت» روی نشست.
+     *
+     * - **جاوااسکریپت** با `session.settings.allowJavascript` روشن/خاموش می‌شود (همان راهی که
+     *   مرورگرهای بزرگ استفاده می‌کنند و بلافاصله اثر می‌گذارد).
+     * - **بقیهٔ دسترسی‌ها** (موقعیت، اعلان، دوربین/میکروفون، پخش خودکار) از طریق
+     *   [GeckoSession.PermissionDelegate] پاسخ داده می‌شوند؛ پروفایل فعالِ هر تب در
+     *   `permissionProfiles` نگه داشته می‌شود و delegate همان را می‌خواند.
+     */
+    fun applySitePermissions(tabId: String, profile: SitePermissionProfile) {
+        permissionProfiles[tabId] = profile
+        val session = activeSessions[tabId] ?: return
+        session.settings.allowJavascript = profile.javascriptAllowed()
+    }
+
+    /** پروفایلِ فعالِ دسترسی‌های یک تب (برای نمایش در پنل تنظیمات سایت). */
+    fun permissionProfileOf(tabId: String): SitePermissionProfile =
+        permissionProfiles[tabId] ?: SitePermissionProfile(domain = "")
+
+    /** تصمیمِ نهایی برای یک دسترسیِ محتوا؛ هم delegate و هم پنل از همین تابع استفاده می‌کنند. */
+    private fun decisionFor(tabId: String, permission: Int): Int {
+        val profile = permissionProfiles[tabId]
+        val state = when (permission) {
+            GeckoSession.PermissionDelegate.PERMISSION_GEOLOCATION -> profile?.stateOf(SitePermission.GEOLOCATION)
+            GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION -> profile?.stateOf(SitePermission.NOTIFICATIONS)
+            GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_AUDIBLE,
+            GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_INAUDIBLE,
+            -> profile?.stateOf(SitePermission.AUTOPLAY)
+            else -> null
+        } ?: PermissionState.ASK
+        return when (state) {
+            PermissionState.ALLOW -> GeckoSession.PermissionDelegate.ContentPermission.VALUE_ALLOW
+            PermissionState.BLOCK -> GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY
+            PermissionState.ASK -> GeckoSession.PermissionDelegate.ContentPermission.VALUE_PROMPT
+        }
     }
 
     /**
@@ -498,6 +648,11 @@ class ContainerSessionManager @Inject constructor(
                         override fun onPortMessage(message: Any, port: WebExtension.Port) {
                             if (capturePorts[session] !== port) return
                             val json = message as? JSONObject ?: return
+                            if (json.optString("event") == JS_RESULT_EVENT) {
+                                scriptRequests.remove(json.optString("requestId"))
+                                    ?.complete(json.optString("result"))
+                                return
+                            }
                             val request = snapshotRequests[session] ?: return
                             if (request.id != json.optString("requestId") || !sameOrigin(port.sender.url, json.optString("origin"))) return
                             engineScope.launch {
@@ -832,6 +987,12 @@ class ContainerSessionManager @Inject constructor(
 
         /** پیشوندِ origin اسکریپت پس‌زمینهٔ افزونه (پورتِ نوشتن کوکی). */
         const val EXTENSION_ORIGIN_PREFIX = "moz-extension://"
+
+        /** رویدادی که content script پس از اجرای اسکریپتِ بومی با نتیجه برمی‌گرداند. */
+        const val JS_RESULT_EVENT = "JS_RESULT"
+
+        /** مهلتِ پاسخِ صفحه به درخواستِ اجرای اسکریپت (حالت مطالعه/بلندخوانی). */
+        const val SCRIPT_TIMEOUT_MILLIS = 2_500L
 
         /**
          * پرچم‌های امن برای دکمه «پاک کردن کش»:

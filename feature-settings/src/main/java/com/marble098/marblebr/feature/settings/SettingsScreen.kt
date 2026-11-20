@@ -3,28 +3,32 @@ package com.marble098.marblebr.feature.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
@@ -50,25 +54,26 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
 import com.marble098.marblebr.core.designsystem.MarbleBackButton
 import com.marble098.marblebr.core.designsystem.MarbleSegmentedRow
+import com.marble098.marblebr.core.designsystem.SelectablePalettes
 import com.marble098.marblebr.core.designsystem.liquidGlass
-import com.marble098.marblebr.core.model.ChromeBarStyle
+import com.marble098.marblebr.core.designsystem.paletteColorScheme
 import com.marble098.marblebr.core.i18n.AppLanguage
 import com.marble098.marblebr.core.i18n.MarbleStrings
 import com.marble098.marblebr.core.model.BackButtonBehavior
+import com.marble098.marblebr.core.model.ChromeBarStyle
+import com.marble098.marblebr.core.model.ColorPalette
 import com.marble098.marblebr.core.model.DnsMode
 import com.marble098.marblebr.core.model.HomeShortcutPosition
 import com.marble098.marblebr.core.model.MarbleLinks
@@ -293,13 +298,30 @@ private fun LazyListScope.appearanceTab(
                 label = { strings.themeModeLabel(it) },
                 onSelect = viewModel::setThemeMode,
             )
-            Spacer(Modifier.height(8.dp))
-            SettingSwitch(
-                title = strings.dynamicColorTitle,
-                description = strings.dynamicColorDescription,
-                checked = prefs.dynamicColorEnabled,
-                onCheckedChange = viewModel::setDynamicColorEnabled,
+        }
+    }
+
+    // پالت‌های رنگی حرفه‌ای + پیش‌نمایش زنده.
+    item {
+        SettingsSection(
+            icon = Icons.Default.AutoAwesome,
+            title = strings.colorPaletteTitle,
+            description = strings.colorPaletteDescription,
+        ) {
+            PalettePicker(
+                selected = prefs.colorPalette,
+                strings = strings,
+                onSelect = viewModel::setColorPalette,
             )
+            if (prefs.colorPalette == ColorPalette.DYNAMIC) {
+                Text(
+                    text = strings.paletteDynamicHint,
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            ThemePreviewCard(strings = strings)
         }
     }
 
@@ -362,14 +384,23 @@ private fun LazyListScope.browserTab(
             )
             Spacer(Modifier.height(12.dp))
             SettingLabel(strings.homeShortcutPositionTitle)
+            Text(
+                text = strings.homeShortcutPositionDescription,
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             OptionChips(
-                options = HomeShortcutPosition.entries,
+                options = listOf(
+                    HomeShortcutPosition.BUILT_IN,
+                    HomeShortcutPosition.FLOATING,
+                    HomeShortcutPosition.NONE,
+                ),
                 selected = selectedHomeShortcut,
                 label = { position ->
                     when (position) {
+                        HomeShortcutPosition.BUILT_IN -> strings.shortcutPositionBuiltIn
+                        HomeShortcutPosition.FLOATING -> strings.shortcutPositionFloating
                         HomeShortcutPosition.NONE -> strings.shortcutPositionNone
-                        HomeShortcutPosition.TOP -> strings.shortcutPositionTop
-                        HomeShortcutPosition.BOTTOM -> strings.shortcutPositionBottom
                     }
                 },
                 onSelect = onSelectHomeShortcut,
@@ -772,6 +803,151 @@ private fun SettingSwitch(
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
+        )
+    }
+}
+
+/* --------------------------------------------- پالت رنگی و پیش‌نمایش --------------------------------------------- */
+
+/**
+ * انتخاب‌گرِ پالت رنگی.
+ *
+ * هر گزینه یک «کارتِ کوچکِ رنگ» است: دو رنگِ امضای همان پالت (اصلی + مکمل) در یک کپسولِ
+ * گرادیانی، به‌همراه نامِ پالت. برخلاف `FilterChip`های متنی، کاربر **پیش از انتخاب** می‌بیند
+ * تم چه رنگی است. حالتِ «رنگ‌های گوشی» با آیکنِ گوشی و بدون گرادیان نمایش داده می‌شود.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PalettePicker(
+    selected: ColorPalette,
+    strings: MarbleStrings,
+    onSelect: (ColorPalette) -> Unit,
+) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        // «رنگ‌های گوشی» همیشه اول است تا گزینهٔ پیش‌فرضِ Material You پیدا باشد.
+        // پالت‌های دیگر با سواچِ دو رنگِ امضا نمایش داده می‌شوند.
+        SelectablePalettes.forEach { palette ->
+            val scheme = if (palette == ColorPalette.DYNAMIC) null else paletteColorScheme(palette, dark = false)
+            PaletteChip(
+                label = strings.colorPaletteLabel(palette),
+                swatch = scheme?.let { it.primary to it.tertiary },
+                isSelected = selected == palette,
+                tag = palette.name.lowercase(),
+                onClick = { onSelect(palette) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun PaletteChip(
+    label: String,
+    swatch: Pair<androidx.compose.ui.graphics.Color, androidx.compose.ui.graphics.Color>?,
+    isSelected: Boolean,
+    tag: String,
+    onClick: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(
+                if (isSelected) colors.primary.copy(alpha = 0.16f) else colors.surface.copy(alpha = 0.6f),
+            )
+            .clickable(role = Role.RadioButton, onClick = onClick)
+            .padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
+            .testTag("palette_chip_$tag"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        if (swatch != null) {
+            Box(
+                modifier = Modifier
+                    .size(20.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Brush.linearGradient(listOf(swatch.first, swatch.second))),
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Default.PhoneAndroid,
+                contentDescription = null,
+                tint = if (isSelected) colors.primary else colors.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.5.sp),
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+            color = if (isSelected) colors.primary else colors.onSurface,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * پیش‌نمایش زندهٔ تم: چند بلوکِ کوچک با رنگ‌های فعلی برنامه.
+ *
+ * چرا؟ تغییر پالت در تنظیمات فوراً روی همین صفحه اعمال می‌شود؛ این کارت نشان می‌دهد رنگ
+ * دکمه، چیپ و کارت در تمِ تازه چه می‌شود تا کاربر بدون رفت‌وبرگشت تصمیم بگیرد.
+ */
+@Composable
+private fun ThemePreviewCard(strings: MarbleStrings) {
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(colors.surfaceContainerLow.copy(alpha = 0.75f))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = strings.themePreviewTitle,
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.5.sp),
+            fontWeight = FontWeight.Bold,
+            color = colors.primary,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(30.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Brush.linearGradient(listOf(colors.primary, colors.tertiary))),
+            )
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(30.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(colors.primaryContainer),
+            )
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(30.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(colors.secondaryContainer),
+            )
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(30.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(colors.surfaceContainerHighest),
+            )
+        }
+        Text(
+            text = strings.themePreviewBody,
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.5.sp),
+            color = colors.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

@@ -14,25 +14,26 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -85,6 +86,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -92,6 +94,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -105,6 +110,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -126,12 +133,13 @@ import com.marble098.marblebr.core.model.ChromeBarStyle
 import com.marble098.marblebr.core.model.DownloadItem
 import com.marble098.marblebr.core.model.DownloadState
 import com.marble098.marblebr.core.model.HistoryItem
+import com.marble098.marblebr.core.model.HomeShortcutPosition
+import com.marble098.marblebr.core.model.SitePermissionProfile
 import com.marble098.marblebr.core.model.MarbleLinks
 import com.marble098.marblebr.core.model.SessionHealthStatus
 import com.marble098.marblebr.core.model.WebAppContainer
 import com.marble098.marblebr.core.preferences.AddressSelectionMode
 import com.marble098.marblebr.core.preferences.BrowserPreferences
-import com.marble098.marblebr.core.model.HomeShortcutPosition
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import org.mozilla.geckoview.GeckoView
@@ -181,7 +189,9 @@ fun BrowserScreen(
     var pendingCloseTabId by remember { mutableStateOf<String?>(null) }
 
     val activeTab = uiState.activeTab
-    val hasHomeShortcut = showHome && prefs.homeShortcutPosition == HomeShortcutPosition.BOTTOM
+    // «میان‌بر صفحهٔ خانه» دیگر یک دکمهٔ مستقلِ شناور روی محتوا نیست؛ فقط کاربرانی که
+    // صریحاً حالت شناور را انتخاب کرده‌اند آن را می‌بینند (پیش‌فرض: داخل کاشی‌های میان‌بر).
+    val hasHomeShortcut = showHome && prefs.homeShortcutPosition == HomeShortcutPosition.FLOATING
     val hasPage = !activeTab?.url.isNullOrBlank()
     val focusManager = LocalFocusManager.current
     val clipboardContext = LocalContext.current
@@ -255,6 +265,9 @@ fun BrowserScreen(
         onOpenDownloads = { showDownloadsSheet = true },
         onFreeSpace = viewModel::clearCacheWithoutTouchingSessions,
         onOpenSettings = onOpenSettings,
+        onReadAloud = viewModel::startReadAloud,
+        onReaderMode = viewModel::toggleReaderMode,
+        onSitePermissions = { viewModel.toggleSitePermissionsPanel(true) },
     )
 
     Column(
@@ -294,6 +307,12 @@ fun BrowserScreen(
             onDismissBanner = viewModel::dismissBanner,
             onOpenVault = { onOpenVaultDashboard(activeTab?.containerId) },
         )
+
+        // نشانگر «حالت مطالعه روشن است»: یک نوار نازک با دکمهٔ خاموش‌کردن، تا کاربر بداند
+        // ظاهرِ سادهٔ صفحه عمدی است و بتواند با یک لمس به حالت عادی برگردد.
+        AnimatedVisibility(visible = uiState.isReaderModeOn) {
+            ReaderModeNotice(onTurnOff = viewModel::toggleReaderMode)
+        }
 
         Box(
             modifier = Modifier
@@ -337,6 +356,24 @@ fun BrowserScreen(
             onReloadOrStop = if (activeTab?.isLoading == true) viewModel::stopLoading else viewModel::reloadPage,
             onHome = viewModel::showHome,
             onTabs = { showTabsSheet = true },
+        )
+    }
+
+    // ---------- قابلیت‌های تازه: حالت مطالعه / بلندخوانی / دسترسی‌های سایت ----------
+    uiState.readAloudText?.let { readable ->
+        ReadAloudSheet(
+            text = readable,
+            onDismiss = viewModel::stopReadAloud,
+        )
+    }
+
+    if (uiState.showSitePermissions) {
+        SitePermissionsSheet(
+            profile = uiState.activePermissionProfile ?: SitePermissionProfile(domain = ""),
+            pageUrl = activeTab?.url.orEmpty(),
+            onCycle = viewModel::cycleSitePermission,
+            onReset = viewModel::resetSitePermissions,
+            onDismiss = { viewModel.toggleSitePermissionsPanel(false) },
         )
     }
 
@@ -744,17 +781,32 @@ private fun BrowserAddressField(
     val colors = MaterialTheme.colorScheme
     var focused by remember { mutableStateOf(false) }
     var input by remember { mutableStateOf(TextFieldValue(url)) }
+    // هر لمسِ تازهٔ نوار آدرس، یک «نشانهٔ انتخاب» می‌سازد؛ با تغییر آن، انتخاب و مکان‌نما
+    // دوباره اعمال می‌شود. (پیش‌تر فقط اولین فوکوس انتخاب می‌کرد و لمس‌های بعدی کاری نمی‌کردند.)
+    var tapSelectRequest by remember { mutableIntStateOf(0) }
     val style = ChromeBarStyle.FLOATING
-    val shape = RoundedCornerShape(24.dp)
     val submitNow = rememberUpdatedState(onSubmit)
+    val focusRequester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
 
     LaunchedEffect(url, focused) {
         if (!focused && input.text != url) input = TextFieldValue(url)
     }
-    LaunchedEffect(focused) {
-        if (focused && mode != AddressSelectionMode.CURSOR) {
-            input = input.copy(selection = addressSelection(input.text, input.selection.end, mode))
-        }
+    // خواستهٔ محصول: با کلیک روی نوار آدرس کل آدرس انتخاب شود و نشانگر در «آخرِ» آدرس باشد.
+    // چرا `selection = TextRange(text.length)` و نه `TextRange(0, length)`؟
+    // چون در Compose، «مکان‌نمای دیداری» در انتهای Selection قرار می‌گیرد؛ با انتخابِ کامل
+    // (0..length) خودِ آدرس آبی و انتخاب‌شده است و نشانگر هم در انتهای آن می‌نشیند. با این کار
+    // کاربر می‌تواند یک‌جا آدرس را پاک/جایگزین کند و مکان‌نما هم جایی است که انتظار دارد.
+    LaunchedEffect(focused, tapSelectRequest) {
+        if (!focused) return@LaunchedEffect
+        val current = input
+        input = current.copy(
+            selection = when (mode) {
+                AddressSelectionMode.SELECT_ALL -> TextRange(0, current.text.length)
+                AddressSelectionMode.CURSOR -> TextRange(current.text.length)
+                AddressSelectionMode.SELECT_PART -> addressSelection(current.text, current.text.length, mode)
+            },
+        )
     }
 
     Row(
@@ -762,6 +814,16 @@ private fun BrowserAddressField(
             .height(44.dp)
             .floatingGlassPill(style = style, emphasized = focused)
             .onFocusChanged { focused = it.isFocused }
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                role = Role.Button,
+            ) {
+                // لمسِ نوار (نه خودِ متن) → فوکوس، انتخاب کامل و مکان‌نمای انتها.
+                focusRequester.requestFocus()
+                keyboard?.show()
+                tapSelectRequest++
+            }
             .padding(start = 12.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -784,9 +846,14 @@ private fun BrowserAddressField(
             }
             BasicTextField(
                 value = input,
-                onValueChange = { input = it },
+                onValueChange = { updated ->
+                    // اگر کاربر بدون تایپ فقط جای مکان‌نما را عوض کند، همان را نگه می‌داریم؛
+                    // اما متنِ تازه همیشه پذیرفته می‌شود.
+                    input = updated
+                },
                 modifier = Modifier
                     .fillMaxWidth()
+                    .focusRequester(focusRequester)
                     .testTag("smart_address_bar")
                     .onPreviewKeyEvent { event ->
                         if (event.key != Key.Enter && event.key != Key.NumPadEnter) {
@@ -871,7 +938,7 @@ private fun LauncherContent(
                 modifier = Modifier,
                 bookmarks = bookmarks,
                 historyItems = historyItems,
-                shortcutPosition = prefs.homeShortcutPosition,
+                showNewTabTile = prefs.homeShortcutPosition != HomeShortcutPosition.NONE,
                 chromeBarStyle = prefs.chromeBarStyle,
                 blockedAdsCount = blockedAdsCount,
                 downloadsCount = downloadsCount,
@@ -911,24 +978,32 @@ private fun LauncherContent(
     }
 }
 
+/**
+ * دکمهٔ شناورِ «تبِ تازه» — فقط وقتی کاربر در تنظیمات حالت «شناور» را انتخاب کند.
+ *
+ * پیش‌فرضِ برنامه این دکمه را **نشان نمی‌دهد**؛ چون کاشی «تب تازه» در صفحهٔ خانه همین کار را
+ * می‌کند و کاربر گفته بود این دکمهٔ مستقل روی صفحه اضافه و آزاردهنده است. نسخهٔ شناور هم
+ * با سایهٔ نرم و اندازهٔ متعادل‌تر (۴۸dp) بازطراحی شد تا اگر کسی خواستش، زشت نباشد.
+ */
 @Composable
 private fun HomeShortcutButton(onClick: () -> Unit) {
     val strings = LocalMarbleStrings.current
     val colors = MaterialTheme.colorScheme
     Box(
         modifier = Modifier
-            .size(54.dp)
+            .size(48.dp)
+            .shadow(elevation = 8.dp, shape = CircleShape, ambientColor = colors.primary.copy(alpha = 0.4f), spotColor = Color.Black.copy(alpha = 0.35f))
             .clip(CircleShape)
             .background(Brush.linearGradient(listOf(colors.primary, colors.tertiary)))
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
             .testTag("home_shortcut_btn"),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector = Icons.Default.Add,
             contentDescription = strings.newTab,
-            tint = Color.White,
-            modifier = Modifier.size(24.dp),
+            tint = colors.onPrimary,
+            modifier = Modifier.size(22.dp),
         )
     }
 }

@@ -98,6 +98,18 @@
         restoreStorageSnapshot(message.payload);
         return;
       }
+      if (message.type === "EVAL_JS") {
+        // اجرای اسکریپتِ بومی (حالت مطالعه / استخراج متنِ بلندخوانی). GeckoView هیچ
+        // evaluateJS رویِ GeckoSession ندارد؛ تنها مسیرِ پشتیبانی‌شده همین پورت است.
+        let result = "";
+        try {
+          result = String(eval(message.script) ?? "");
+        } catch (e) {
+          result = "";
+        }
+        port.postMessage({ event: "JS_RESULT", requestId: message.requestId, result: result });
+        return;
+      }
       if (message.type !== "CAPTURE_PAGE") return;
       try {
         const snapshot = await collectStorageSnapshot();

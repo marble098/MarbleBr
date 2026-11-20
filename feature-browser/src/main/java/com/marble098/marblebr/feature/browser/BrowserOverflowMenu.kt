@@ -18,16 +18,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.ChromeReaderMode
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.InstallMobile
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -98,6 +101,9 @@ internal data class BrowserMenuActions(
     val onOpenDownloads: () -> Unit,
     val onFreeSpace: () -> Unit,
     val onOpenSettings: () -> Unit,
+    val onReadAloud: () -> Unit = {},
+    val onReaderMode: () -> Unit = {},
+    val onSitePermissions: () -> Unit = {},
 )
 
 @Composable
@@ -182,6 +188,28 @@ internal fun BrowserOverflowMenu(
                         accent = colors.tertiary,
                         testTag = "menu_desktop_mode",
                     ) { onDismiss(); actions.onToggleDesktop() }
+                    // سه ابزار «خواندن و دسترسی» که تازه اضافه شده‌اند.
+                    MenuRow(
+                        icon = Icons.Default.RecordVoiceOver,
+                        title = strings.menuReadAloud,
+                        subtitle = strings.readAloudDescription,
+                        accent = colors.secondary,
+                        testTag = "menu_read_aloud",
+                    ) { onDismiss(); actions.onReadAloud() }
+                    MenuRow(
+                        icon = Icons.Default.ChromeReaderMode,
+                        title = strings.menuReaderMode,
+                        subtitle = strings.readerModeDescription,
+                        accent = colors.primary,
+                        testTag = "menu_reader_mode",
+                    ) { onDismiss(); actions.onReaderMode() }
+                    MenuRow(
+                        icon = Icons.Default.Tune,
+                        title = strings.menuSitePermissions,
+                        subtitle = strings.sitePermissionsDescription,
+                        accent = colors.tertiary,
+                        testTag = "menu_site_permissions",
+                    ) { onDismiss(); actions.onSitePermissions() }
                 }
 
                 if (state.hasPage && !state.isPrivate) {

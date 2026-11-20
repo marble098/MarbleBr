@@ -2,6 +2,7 @@ package com.marble098.marblebr.core.i18n
 
 import com.marble098.marblebr.core.model.BackButtonBehavior
 import com.marble098.marblebr.core.model.ChromeBarStyle
+import com.marble098.marblebr.core.model.ColorPalette
 import com.marble098.marblebr.core.model.DnsMode
 import com.marble098.marblebr.core.model.HealthReason
 import com.marble098.marblebr.core.model.ProxyType
@@ -313,9 +314,10 @@ abstract class MarbleStrings {
     abstract val searchEngineTitle: String
     abstract val searchEngineDescription: String
     abstract val homeShortcutPositionTitle: String
+    abstract val homeShortcutPositionDescription: String
     abstract val shortcutPositionNone: String
-    abstract val shortcutPositionTop: String
-    abstract val shortcutPositionBottom: String
+    abstract val shortcutPositionFloating: String
+    abstract val shortcutPositionBuiltIn: String
     abstract val homeSeeAll: String
 
     // ------------------------------------------- تب بندی و نوارهای شیشه ای
@@ -324,6 +326,13 @@ abstract class MarbleStrings {
     abstract val settingsTabProtection: String
     abstract val settingsTabNetwork: String
     abstract val settingsTabAbout: String
+    abstract val colorPaletteTitle: String
+    abstract val colorPaletteDescription: String
+    abstract fun colorPaletteLabel(palette: ColorPalette): String
+    abstract val paletteDynamicHint: String
+    abstract val themePreviewTitle: String
+    abstract val themePreviewBody: String
+
     abstract val chromeBarStyleTitle: String
     abstract val chromeBarStyleDescription: String
     abstract val chromeSolid: String
@@ -370,6 +379,37 @@ abstract class MarbleStrings {
     abstract fun quickSiteSignedInFor(days: Int, minutes: Int): String
 
     // --------------------------------------------- پنل استار دادن به مخزن
+    // --------------------------------------- سه قابلیتِ تازه
+    abstract val readAloudTitle: String
+    abstract val readAloudDescription: String
+    abstract val readAloudStart: String
+    abstract val readAloudStop: String
+    abstract val readAloudUnavailable: String
+    abstract val readerModeTitle: String
+    abstract val readerModeDescription: String
+    abstract val readerModeOn: String
+    abstract val readerModeOff: String
+    abstract val readerModeUnavailable: String
+    abstract val sitePermissionsTitle: String
+    abstract val sitePermissionsDescription: String
+    abstract val permissionJavascript: String
+    abstract val permissionAutoplay: String
+    abstract val permissionGeolocation: String
+    abstract val permissionCamera: String
+    abstract val permissionMicrophone: String
+    abstract val permissionNotifications: String
+    abstract val permissionAllowed: String
+    abstract val permissionBlocked: String
+    abstract val permissionAsk: String
+    abstract val sitePermissionsSection: String
+    abstract val sitePermissionsReset: String
+    abstract val sitePermissionsResetDone: String
+    abstract val sitePermissionsSaved: String
+    abstract val menuReadAloud: String
+    abstract val menuReaderMode: String
+    abstract val menuSitePermissions: String
+    abstract val menuSmartRename: String
+
     abstract val starRepoBoldLine: String
     abstract val starRepoHeadline: String
     abstract val starRepoSubline: String
@@ -616,9 +656,9 @@ private object PersianStrings : MarbleStrings() {
     override val aboutTitle = "درباره"
 
     override val vaultTitle = "مراقبت از حساب ها"
-    override val vaultIntro = "اینجا می بینی MarbleBr از کدام سایت ها محافظت می کند و چه نسخه هایی ذخیره کرده است."
+    override val vaultIntro = "حساب‌هایت اینجا امن‌اند."
     override val vaultSecurityTitle = "همه چیز روی همین گوشی می ماند"
-    override val vaultSecurityBody = "نسخه های امن ورودت با کلید سخت افزاری گوشی رمز می شوند و جایی فرستاده نمی شوند."
+    override val vaultSecurityBody = "همه‌چیز با کلید گوشی رمز می‌شود و جایی نمی‌رود."
     override val unlockVault = "باز کردن با اثر انگشت"
     override val biometricPromptTitle = "قفل مراقبت از حساب ها"
     override val biometricPromptSubtitle = "برای دیدن نسخه های ذخیره شده، هویتت را تأیید کن"
@@ -627,15 +667,15 @@ private object PersianStrings : MarbleStrings() {
     override val reloginUnsupportedType = "این نوع ورود پشتیبانی نمی شود"
     override val reloginPromptSubtitle = "سایت نشستت را بست؛ با اثر انگشت دوباره وارد شو"
     override val sitesSectionTitle = "سایت ها"
-    override val sitesSectionBody = "هر سایت فضای جدا دارد؛ خروج از یکی به بقیه کاری ندارد."
+    override val sitesSectionBody = "هر سایت فضای جدا و امن خودش را دارد."
     override val protectThisSite = "مراقبت از این سایت"
     override val signOutNow = "کامل خارج شو"
     override val signOutConfirmTitle = "از این سایت خارج می شوی؟"
     override val signOutConfirmBody = "ورود فعلی و همه ی نسخه های ذخیره شده ی این سایت پاک می شوند. بقیه سایت ها دست نخورده می مانند."
     override val signOutConfirmAction = "بله، خارج شو"
     override val timeMachineTitle = "برگشت به عقب"
-    override val timeMachineBody = "یک نسخه را انتخاب کن تا ورودت به همان زمان برگردد."
-    override val emptySnapshots = "هنوز نسخه ای ساخته نشده. وقتی سایت باز کنی، خودکار ساخته می شود."
+    override val timeMachineBody = "به هر زمان که خواستی برگرد."
+    override val emptySnapshots = "هنوز نسخه‌ای نساخته‌ایم؛ با باز کردن سایت خودش ساخته می‌شود."
     override val emptySites = "هنوز سایتی اضافه نشده. کافی است یک آدرس باز کنی."
     override val backgroundSnapshotLabel = "نسخه پس زمینه"
     override val restore = "برگردان"
@@ -644,8 +684,8 @@ private object PersianStrings : MarbleStrings() {
     override val feedbackRestoreFailed = "نتوانستیم این نسخه را بخوانیم"
     override val gotIt = "باشه"
 
-    override val vaultHeroTitle = "همه حساب‌هایت، یک‌جا و در امان"
-    override val vaultHeroBody = "هر سایت فضای جدا و قفل‌شدهٔ خودش را دارد؛ نسخه‌های ورود فقط روی همین گوشی رمز می‌شوند."
+    override val vaultHeroTitle = "حساب‌هایت در امان‌اند"
+    override val vaultHeroBody = "ورودها فقط روی همین گوشی ذخیره می‌شوند."
     override val vaultStatSites = "سایت"
     override val vaultStatProtected = "مراقبت فعال"
     override val vaultStatSnapshots = "نسخه ذخیره‌شده"
@@ -657,7 +697,7 @@ private object PersianStrings : MarbleStrings() {
     override val vaultFilterUnprotected = "بدون مراقبت"
     override val vaultFilterPinned = "میانبری"
     override val vaultNoMatch = "سایتی با این جستجو پیدا نشد."
-    override val vaultProtectionOffBanner = "مراقبت از سایت‌های جدید در تنظیمات خاموش است؛ سایت‌های تازه محافظت نمی‌شوند."
+    override val vaultProtectionOffBanner = "محافظت از سایت‌های تازه خاموش است."
     override val vaultSectionSites = "سایت‌های تو"
     override val vaultSectionTimeline = "تاریخچهٔ نسخه‌ها"
     override val vaultSectionActivity = "گزارش محافظت"
@@ -677,7 +717,7 @@ private object PersianStrings : MarbleStrings() {
     override val vaultDeleteConfirmTitle = "این نسخه حذف شود؟"
     override val vaultDeleteConfirmBody = "این نسخهٔ ذخیره‌شده برای همیشه پاک می‌شود و برگشت‌پذیر نیست."
     override val vaultClose = "بستن"
-    override val vaultEmptyActivity = "هنوز اتفاق خاصی برای حساب‌هایت نیفتاده."
+    override val vaultEmptyActivity = "هنوز اتفاقی نیفتاده."
     override val vaultFilterEmpty = "بعد از تغییر وضعیت، سایت‌ها همین‌جا دسته‌بندی می‌شوند."
     override val vaultHealthHealthy = "همه چیز سالم است"
     override val vaultProtectAll = "مراقبت از همه"
@@ -748,10 +788,11 @@ private object PersianStrings : MarbleStrings() {
     override val searchEngineTitle = "موتور جستجو"
     override val searchEngineDescription =
         "موتور جستجوی پیش فرض برای نوار آدرس و صفحه ی خانه را انتخاب کنید."
-    override val homeShortcutPositionTitle = "محل دکمه ی میانبر صفحه ی خانه"
-    override val shortcutPositionNone = "هیچ کدام"
-    override val shortcutPositionTop = "بالا"
-    override val shortcutPositionBottom = "پایین"
+    override val homeShortcutPositionTitle = "دکمهٔ تبِ تازه در صفحهٔ خانه"
+    override val homeShortcutPositionDescription = "دکمهٔ تبِ تازه حالا داخل کاشی‌های میان‌بر است و دیگر جداگانه روی صفحه شناور نمی‌شود."
+    override val shortcutPositionNone = "پنهان باشد"
+    override val shortcutPositionFloating = "شناور (قدیمی)"
+    override val shortcutPositionBuiltIn = "همراه میان‌برها (پیشنهادی)"
 
     override val homeSeeAll = "مشاهده همه »"
 
@@ -760,6 +801,22 @@ private object PersianStrings : MarbleStrings() {
     override val settingsTabProtection = "محافظت"
     override val settingsTabNetwork = "شبکه"
     override val settingsTabAbout = "درباره"
+    override val colorPaletteTitle = "پالت رنگی"
+    override val colorPaletteDescription = "یکی از تم‌های آمادهٔ MarbleBr را انتخاب کن؛ همهٔ صفحه‌ها هماهنگ با همان رنگ می‌شوند."
+    override fun colorPaletteLabel(palette: ColorPalette) = when (palette) {
+        ColorPalette.DYNAMIC -> "رنگ‌های گوشی"
+        ColorPalette.OCEAN -> "اقیانوس"
+        ColorPalette.EMERALD -> "زمرد"
+        ColorPalette.SUNSET -> "غروب"
+        ColorPalette.ROYAL -> "شاهی"
+        ColorPalette.CANDY -> "آب‌نبات"
+        ColorPalette.GRAPHITE -> "گرافیت"
+        ColorPalette.SAND -> "شنی"
+    }
+    override val paletteDynamicHint = "روی اندروید ۱۲ و بالاتر، رنگ‌ها را از تصویر پس‌زمینهٔ گوشی می‌گیریم."
+    override val themePreviewTitle = "پیش‌نمایش زنده"
+    override val themePreviewBody = "همین حالا رنگ دکمه‌ها و کارت‌ها را با تمِ تازه ببین؛ لازم نیست جایی بروی."
+
     override val chromeBarStyleTitle = "شکل نوارهای بالا و پایین"
     override val chromeBarStyleDescription = "«شناور» یعنی نوارها کاملاً شیشه ای و بی پس زمینه اند و صفحه از پشتشان دیده می شود."
     override val chromeSolid = "ساده و مات"
@@ -805,6 +862,36 @@ private object PersianStrings : MarbleStrings() {
     override fun quickSiteSignedInFor(days: Int, minutes: Int) =
         "این سایت $days روز وارد می ماند · هر $minutes دقیقه بی صدا زنده می شود"
 
+    override val readAloudTitle = "بلندخوانی صفحه"
+    override val readAloudDescription = "متن صفحه را با صدای گوشی برایت می‌خوانیم."
+    override val readAloudStart = "بخوان"
+    override val readAloudStop = "ساکت شو"
+    override val readAloudUnavailable = "صفحهٔ فعلی چیزی برای خواندن ندارد."
+    override val readerModeTitle = "حالت مطالعه"
+    override val readerModeDescription = "تبلیغ‌ها و منوها را کنار می‌زنیم تا فقط متن بماند."
+    override val readerModeOn = "حالت مطالعه روشن شد"
+    override val readerModeOff = "حالت مطالعه خاموش شد"
+    override val readerModeUnavailable = "این صفحه حالت مطالعه ندارد."
+    override val sitePermissionsTitle = "دسترسی‌های این سایت"
+    override val sitePermissionsDescription = "هر سایت چه چیزی از گوشی‌ات بخواهد، تو تصمیم می‌گیری."
+    override val permissionJavascript = "اجرای جاوااسکریپت"
+    override val permissionAutoplay = "پخش خودکار ویدیو"
+    override val permissionGeolocation = "موقعیت مکانی"
+    override val permissionCamera = "دوربین"
+    override val permissionMicrophone = "میکروفون"
+    override val permissionNotifications = "اعلان‌ها"
+    override val permissionAllowed = "اجازه"
+    override val permissionBlocked = "بلاک"
+    override val permissionAsk = "بپرس"
+    override val sitePermissionsSection = "دسترسی‌ها"
+    override val sitePermissionsReset = "برگرد به پیش‌فرض"
+    override val sitePermissionsResetDone = "دسترسی‌ها به حالت پیش‌فرض برگشت."
+    override val sitePermissionsSaved = "دسترسی‌ها ذخیره شد."
+    override val menuReadAloud = "بلندخوانی صفحه"
+    override val menuReaderMode = "حالت مطالعه"
+    override val menuSitePermissions = "دسترسی‌های سایت"
+    override val menuSmartRename = "نام تازه برای این تب"
+
     override val starRepoBoldLine = "به MarbleBr استار بده ⭐"
     override val starRepoHeadline = "یک استار، هزار امید"
     override val starRepoSubline =
@@ -833,14 +920,14 @@ private object PersianStrings : MarbleStrings() {
     override val vaultGoldenHint = "نسخهٔ طلایی هیچ‌وقت خودکار پاک نمی‌شود."
 
     override val vaultExpiryTitle = "نگهبان انقضا"
-    override val vaultExpiryBody = "این حساب‌ها نزدیک انقضا هستند؛ با یک لمس تمدیدشان کن."
-    override val vaultExpiryAllFresh = "همهٔ ورودها تازه‌اند؛ چیزی برای تمدید نیست."
+    override val vaultExpiryBody = "این ورودها نزدیک انقضا هستند."
+    override val vaultExpiryAllFresh = "همه‌چیز تازه است."
     override val vaultExpiryExpired = "منقضی شده"
     override val vaultExpiryRenew = "تمدید"
     override val vaultExpiryRenewAll = "تمدید همه"
 
     override val vaultInsuranceTitle = "بیمهٔ نشست"
-    override val vaultInsuranceBody = "قبل از کارهای پرخطر از هر سایت محافظت‌شده یک نسخهٔ تازه گرفته می‌شود."
+    override val vaultInsuranceBody = "قبل از کارهای پرخطر، نسخهٔ تازه می‌سازیم."
     override val vaultInsuranceRun = "بیمهٔ فوری"
 
     override fun vaultGoldenPinnedDone(domain: String) = "نسخهٔ $domain طلایی و قفل شد."
@@ -1002,7 +1089,7 @@ private object EnglishStrings : MarbleStrings() {
     override val vaultTitle = "Looking after your accounts"
     override val vaultIntro = "See which sites MarbleBr protects and which copies it has saved."
     override val vaultSecurityTitle = "Everything stays on this phone"
-    override val vaultSecurityBody = "Saved logins are locked with your phone’s hardware key and never sent anywhere."
+    override val vaultSecurityBody = "Everything is locked with your phone key and never leaves it."
     override val unlockVault = "Unlock with fingerprint"
     override val biometricPromptTitle = "Account protection lock"
     override val biometricPromptSubtitle = "Confirm it’s you to see saved copies"
@@ -1011,25 +1098,25 @@ private object EnglishStrings : MarbleStrings() {
     override val reloginUnsupportedType = "This kind of sign-in isn’t supported"
     override val reloginPromptSubtitle = "The site ended your session — confirm with your fingerprint to get back in"
     override val sitesSectionTitle = "Sites"
-    override val sitesSectionBody = "Each site has its own space. Signing out of one won’t touch the others."
+    override val sitesSectionBody = "Every site has its own safe space."
     override val protectThisSite = "Protect this site"
     override val signOutNow = "Sign out completely"
     override val signOutConfirmTitle = "Sign out of this site?"
     override val signOutConfirmBody = "Your current login and every saved copy of this site will be deleted. Other sites stay untouched."
     override val signOutConfirmAction = "Yes, sign me out"
     override val timeMachineTitle = "Go back in time"
-    override val timeMachineBody = "Pick a copy to jump your login back to that moment."
-    override val emptySnapshots = "No copies yet. They’re created automatically while you browse."
+    override val timeMachineBody = "Jump back to any moment you like."
+    override val emptySnapshots = "No copies yet — we make them as you browse."
     override val emptySites = "No sites yet. Just open an address."
     override val backgroundSnapshotLabel = "Background copy"
     override val restore = "Restore"
     override val healthLogTitle = "What happened?"
-    override val healthLogBody = "Anything that affects your logins is listed here in plain words."
+    override val healthLogBody = "Anything that happens to a login shows up here."
     override val feedbackRestoreFailed = "We couldn’t read that copy"
     override val gotIt = "Got it"
 
-    override val vaultHeroTitle = "All your accounts, safe in one place"
-    override val vaultHeroBody = "Each site gets its own locked space; login copies are encrypted on this phone only."
+    override val vaultHeroTitle = "Your accounts are safe"
+    override val vaultHeroBody = "Logins are saved on this phone only."
     override val vaultStatSites = "Sites"
     override val vaultStatProtected = "Protected"
     override val vaultStatSnapshots = "Saved copies"
@@ -1041,7 +1128,7 @@ private object EnglishStrings : MarbleStrings() {
     override val vaultFilterUnprotected = "Unprotected"
     override val vaultFilterPinned = "Shortcut"
     override val vaultNoMatch = "No site matches this search."
-    override val vaultProtectionOffBanner = "Protection for new sites is off in Settings, so new sites won’t be guarded."
+    override val vaultProtectionOffBanner = "Protection for new sites is off."
     override val vaultSectionSites = "Your sites"
     override val vaultSectionTimeline = "Copy history"
     override val vaultSectionActivity = "Protection log"
@@ -1061,7 +1148,7 @@ private object EnglishStrings : MarbleStrings() {
     override val vaultDeleteConfirmTitle = "Delete this copy?"
     override val vaultDeleteConfirmBody = "This saved copy is removed for good and cannot be undone."
     override val vaultClose = "Close"
-    override val vaultEmptyActivity = "Nothing noteworthy has happened to your accounts yet."
+    override val vaultEmptyActivity = "Nothing has happened yet."
     override val vaultFilterEmpty = "Sites appear here once their protection changes."
     override val vaultHealthHealthy = "Everything is healthy"
     override val vaultProtectAll = "Protect all"
@@ -1132,10 +1219,11 @@ private object EnglishStrings : MarbleStrings() {
     override val searchEngineTitle = "Search engine"
     override val searchEngineDescription =
         "Choose the default search engine for the address bar and home screen."
-    override val homeShortcutPositionTitle = "Home screen shortcut button position"
-    override val shortcutPositionNone = "None"
-    override val shortcutPositionTop = "Top"
-    override val shortcutPositionBottom = "Bottom"
+    override val homeShortcutPositionTitle = "New-tab button on the home screen"
+    override val homeShortcutPositionDescription = "The new-tab button now lives inside the shortcut tiles instead of floating on top of the page."
+    override val shortcutPositionNone = "Hidden"
+    override val shortcutPositionFloating = "Floating (old)"
+    override val shortcutPositionBuiltIn = "With the shortcuts (recommended)"
 
     override val homeSeeAll = "See all →"
 
@@ -1144,6 +1232,22 @@ private object EnglishStrings : MarbleStrings() {
     override val settingsTabProtection = "Protection"
     override val settingsTabNetwork = "Network"
     override val settingsTabAbout = "About"
+    override val colorPaletteTitle = "Color palette"
+    override val colorPaletteDescription = "Pick one of MarbleBr’s ready-made themes; every screen follows the same colors."
+    override fun colorPaletteLabel(palette: ColorPalette) = when (palette) {
+        ColorPalette.DYNAMIC -> "Your phone’s colors"
+        ColorPalette.OCEAN -> "Ocean"
+        ColorPalette.EMERALD -> "Emerald"
+        ColorPalette.SUNSET -> "Sunset"
+        ColorPalette.ROYAL -> "Royal"
+        ColorPalette.CANDY -> "Candy"
+        ColorPalette.GRAPHITE -> "Graphite"
+        ColorPalette.SAND -> "Sand"
+    }
+    override val paletteDynamicHint = "On Android 12 and newer we take the colors from your phone wallpaper."
+    override val themePreviewTitle = "Live preview"
+    override val themePreviewBody = "See how buttons and cards look in the new theme right away."
+
     override val chromeBarStyleTitle = "Top and bottom bar style"
     override val chromeBarStyleDescription = "“Floating” means the bars are pure glass with no background, so the page shows through them."
     override val chromeSolid = "Plain and solid"
@@ -1189,6 +1293,36 @@ private object EnglishStrings : MarbleStrings() {
     override fun quickSiteSignedInFor(days: Int, minutes: Int) =
         "This site stays signed in for $days days · quiet check-in every $minutes min"
 
+    override val readAloudTitle = "Read the page aloud"
+    override val readAloudDescription = "We read the page text out loud with your phone’s voice."
+    override val readAloudStart = "Read"
+    override val readAloudStop = "Stop reading"
+    override val readAloudUnavailable = "There is nothing to read on this page."
+    override val readerModeTitle = "Reader mode"
+    override val readerModeDescription = "Ads and menus go away, leaving just the text."
+    override val readerModeOn = "Reader mode is on"
+    override val readerModeOff = "Reader mode is off"
+    override val readerModeUnavailable = "This page doesn’t support reader mode."
+    override val sitePermissionsTitle = "Permissions for this site"
+    override val sitePermissionsDescription = "You decide what a site may use on your phone."
+    override val permissionJavascript = "Run JavaScript"
+    override val permissionAutoplay = "Autoplay video"
+    override val permissionGeolocation = "Location"
+    override val permissionCamera = "Camera"
+    override val permissionMicrophone = "Microphone"
+    override val permissionNotifications = "Notifications"
+    override val permissionAllowed = "Allow"
+    override val permissionBlocked = "Block"
+    override val permissionAsk = "Ask"
+    override val sitePermissionsSection = "Permissions"
+    override val sitePermissionsReset = "Reset to defaults"
+    override val sitePermissionsResetDone = "Permissions are back to default."
+    override val sitePermissionsSaved = "Permissions saved."
+    override val menuReadAloud = "Read aloud"
+    override val menuReaderMode = "Reader mode"
+    override val menuSitePermissions = "Site permissions"
+    override val menuSmartRename = "Give this tab a name"
+
     override val starRepoBoldLine = "Star MarbleBr ⭐"
     override val starRepoHeadline = "One star, a thousand hopes"
     override val starRepoSubline =
@@ -1224,7 +1358,7 @@ private object EnglishStrings : MarbleStrings() {
     override val vaultExpiryRenewAll = "Renew all"
 
     override val vaultInsuranceTitle = "Session insurance"
-    override val vaultInsuranceBody = "Before risky actions we take a fresh copy of every protected site."
+    override val vaultInsuranceBody = "We take a fresh copy before risky actions."
     override val vaultInsuranceRun = "Insure now"
 
     override fun vaultGoldenPinnedDone(domain: String) = "The $domain version is now golden and locked."

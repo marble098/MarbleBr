@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -48,7 +47,6 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -86,7 +84,6 @@ import com.marble098.marblebr.core.i18n.MarbleStrings
 import com.marble098.marblebr.core.model.BookmarkItem
 import com.marble098.marblebr.core.model.ChromeBarStyle
 import com.marble098.marblebr.core.model.HistoryItem
-import com.marble098.marblebr.core.model.HomeShortcutPosition
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -109,7 +106,7 @@ import java.util.Locale
 internal fun HomeContent(
     bookmarks: List<BookmarkItem>,
     historyItems: List<HistoryItem>,
-    shortcutPosition: HomeShortcutPosition,
+    showNewTabTile: Boolean,
     chromeBarStyle: ChromeBarStyle,
     blockedAdsCount: Int,
     downloadsCount: Int,
@@ -172,14 +169,11 @@ internal fun HomeContent(
                 )
             }
 
-            if (shortcutPosition == HomeShortcutPosition.TOP) {
-                item(key = "top_tile") { HomePrimaryTile(strings = strings, onNewTab = onNewTab) }
-            }
-
             item(key = "quick_actions") {
                 HomeQuickActions(
                     strings = strings,
                     chromeBarStyle = chromeBarStyle,
+                    showNewTabTile = showNewTabTile,
                     downloadsCount = downloadsCount,
                     onNewTab = onNewTab,
                     onNewPrivateTab = onNewPrivateTab,
@@ -447,6 +441,7 @@ private fun HomeSearchBar(
 private fun HomeQuickActions(
     strings: MarbleStrings,
     chromeBarStyle: ChromeBarStyle,
+    showNewTabTile: Boolean,
     downloadsCount: Int,
     tabsCount: Int,
     onNewTab: () -> Unit,
@@ -463,12 +458,16 @@ private fun HomeQuickActions(
     // و فاصله‌ها همه از MarbleLayout می‌آیند تا هیچ ردیفی از ردیفِ دیگر جلو/عقب نزند.
     // (قبلاً ردیف دوم یک جای خالی داشت و ردیف‌ها ناهم‌تراز می‌شدند.)
     QuickRow {
+        // «تبِ تازه» دیگر یک دکمهٔ شناورِ مستقل روی صفحه نیست: کاشیِ اصلی و پُررنگِ همین
+        // شبکه است. همیشه اول دیده می‌شود و دقیقاً کنار بقیهٔ میانبرها می‌نشیند.
         QuickTile(
             modifier = Modifier.weight(1f),
             icon = Icons.Default.Add,
             label = strings.newTab,
             accent = colors.primary,
             chromeBarStyle = chromeBarStyle,
+            highlighted = true,
+            enabled = showNewTabTile,
             onClick = onNewTab,
             testTag = "home_new_tab_btn",
         )
@@ -564,6 +563,8 @@ private fun QuickTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     badge: Int = 0,
+    highlighted: Boolean = false,
+    enabled: Boolean = true,
     testTag: String? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -574,20 +575,35 @@ private fun QuickTile(
         label = "quick tile press",
     )
     val shape = RoundedCornerShape(MarbleLayout.TileCorner)
+    val scheme = MaterialTheme.colorScheme
+    // کاشیِ «اصلی» (تبِ تازه) یک بدنهٔ گرادیانیِ رنگی و خوانا می‌گیرد تا نقشِ دکمهٔ افزودن را
+    // همان‌جا و بدون یک عنصر شناورِ اضافه ایفا کند.
+    val tileBrush = if (highlighted) {
+        Brush.linearGradient(listOf(scheme.primary, scheme.tertiary))
+    } else {
+        Brush.linearGradient(listOf(scheme.surface.copy(alpha = 0.55f), scheme.surface.copy(alpha = 0.55f)))
+    }
+    val labelColor = if (highlighted) scheme.onPrimary else scheme.onSurface
     Column(
         modifier = modifier
             .height(MarbleLayout.TileHeight)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
+                alpha = if (enabled) 1f else 0.9f
             }
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f))
-            .border(0.9.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f), shape)
+            .background(tileBrush)
+            .border(
+                width = 0.9.dp,
+                color = if (highlighted) Color.Transparent else scheme.outlineVariant.copy(alpha = 0.45f),
+                shape = shape,
+            )
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
                 role = Role.Button,
+                enabled = enabled,
                 onClick = onClick,
             )
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
@@ -601,13 +617,20 @@ private fun QuickTile(
                     .size(36.dp)
                     .clip(RoundedCornerShape(13.dp))
                     .background(
-                        Brush.linearGradient(
-                            listOf(accent.copy(alpha = 0.26f), accent.copy(alpha = 0.12f)),
-                        ),
+                        if (highlighted) {
+                            Brush.linearGradient(listOf(Color.White.copy(alpha = 0.30f), Color.White.copy(alpha = 0.16f)))
+                        } else {
+                            Brush.linearGradient(listOf(accent.copy(alpha = 0.26f), accent.copy(alpha = 0.12f)))
+                        },
                     ),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(imageVector = icon, contentDescription = null, tint = accent, modifier = Modifier.size(19.dp))
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (highlighted) Color.White else accent,
+                    modifier = Modifier.size(19.dp),
+                )
             }
             if (badge > 0) {
                 Box(
@@ -629,7 +652,7 @@ private fun QuickTile(
         Text(
             text = label,
             style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.5.sp, lineHeight = 13.sp),
-            color = MaterialTheme.colorScheme.onSurface,
+            color = labelColor,
             textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -815,42 +838,6 @@ private fun HomeEmptyCard(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
-    }
-}
-
-@Composable
-private fun HomePrimaryTile(strings: MarbleStrings, onNewTab: () -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .clickable(onClick = onNewTab)
-            .testTag("home_shortcut_btn"),
-        shape = RoundedCornerShape(20.dp),
-        color = colors.primaryContainer.copy(alpha = 0.55f),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Icon(Icons.Default.Add, contentDescription = null, tint = colors.onPrimaryContainer, modifier = Modifier.size(20.dp))
-            Text(
-                text = strings.newTab,
-                style = MaterialTheme.typography.titleMedium,
-                color = colors.onPrimaryContainer,
-                modifier = Modifier.weight(1f),
-            )
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = null,
-                tint = colors.onPrimaryContainer,
-                modifier = Modifier.size(18.dp),
-            )
-        }
     }
 }
 

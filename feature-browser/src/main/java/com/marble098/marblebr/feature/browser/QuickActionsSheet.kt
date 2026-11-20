@@ -24,6 +24,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Add
@@ -211,6 +214,22 @@ internal fun QuickActionsSheet(
             item(key = "share") {
                 QuickTile(strings.quickShare, Icons.Default.Share, colors.tertiary) {
                     perform { onShareLink(pageUrl) }
+                }
+            }
+            // قابلیت‌های تازه: خواندنِ راحت‌تر و شنیدنِ صفحه، دقیقاً کنار کارهای «این صفحه».
+            item(key = "read_aloud") {
+                QuickTile(strings.menuReadAloud, Icons.Default.RecordVoiceOver, colors.secondary) {
+                    perform { viewModel.startReadAloud() }
+                }
+            }
+            item(key = "reader_mode") {
+                QuickTile(strings.menuReaderMode, Icons.AutoMirrored.Filled.MenuBook, colors.primary) {
+                    perform { viewModel.toggleReaderMode() }
+                }
+            }
+            item(key = "site_permissions") {
+                QuickTile(strings.menuSitePermissions, Icons.Default.Tune, colors.tertiary) {
+                    perform { viewModel.toggleSitePermissionsPanel(true) }
                 }
             }
             item(key = "find") {

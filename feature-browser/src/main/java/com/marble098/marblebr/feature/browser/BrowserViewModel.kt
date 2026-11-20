@@ -16,7 +16,12 @@ import com.marble098.marblebr.core.model.BrowserTab
 import com.marble098.marblebr.core.model.DownloadItem
 import com.marble098.marblebr.core.model.HealthReason
 import com.marble098.marblebr.core.model.HistoryItem
+import com.marble098.marblebr.core.model.PermissionState
 import com.marble098.marblebr.core.model.SessionHealthStatus
+import com.marble098.marblebr.core.model.SitePermission
+import com.marble098.marblebr.core.model.SitePermissionPolicy
+import com.marble098.marblebr.core.model.SitePermissionProfile
+import com.marble098.marblebr.core.model.TabTitleEngine
 import com.marble098.marblebr.core.model.WebAppContainer
 import com.marble098.marblebr.core.preferences.BrowserPreferences
 import com.marble098.marblebr.core.preferences.BrowserPreferencesRepository
@@ -50,9 +55,25 @@ data class BrowserUiState(
     val findQuery: String = "",
     val bannerMessage: String? = null,
     val fallbackPromptDomain: String? = null,
+    /** حالت مطالعه روی تبِ فعال روشن است؟ */
+    val isReaderModeOn: Boolean = false,
+    /** متنِ در حال بلندخوانی (اگر بلندخوانی فعال باشد). */
+    val readAloudText: String? = null,
+    /** پروفایلِ دسترسی‌های سایتِ تبِ فعال. */
+    val activePermissionProfile: SitePermissionProfile? = null,
+    /** بستهٔ دسترسی‌ها باز است؟ */
+    val showSitePermissions: Boolean = false,
 ) {
     val activeTab: BrowserTab?
         get() = tabs.firstOrNull { it.id == activeTabId } ?: tabs.firstOrNull()
+
+    /**
+     * تبِ فعال فقط اگر صفحه‌ای باز باشد.
+     *
+     * چرا این تابع لازم است؟ در حالت «خانه»، GeckoSession هنوز برای تبِ قبلی وجود دارد و
+     * ابزارهایی مثل حالت مطالعه/بلندخوانی/دسترسی‌ها نباید روی صفحهٔ قبلی اجرا شوند.
+     */
+    fun activeWebTab(): BrowserTab? = if (showHome) null else activeTab?.takeIf { it.url.isNotBlank() }
 }
 
 @HiltViewModel
@@ -68,6 +89,7 @@ class BrowserViewModel @Inject constructor(
     private val preferencesRepository: BrowserPreferencesRepository,
     private val localizationManager: LocalizationManager,
     val adBlocker: LightweightAdBlocker,
+    private val sitePermissionStore: com.marble098.marblebr.core.preferences.SitePermissionStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(BrowserUiState())
@@ -479,6 +501,14 @@ class BrowserViewModel @Inject constructor(
         if (!url.startsWith("https://", ignoreCase = true) && !url.startsWith("http://", ignoreCase = true)) return
         val tab = _uiState.value.tabs.firstOrNull { it.id == tabId } ?: return
         updateTab(tabId) { it.copy(url = url, isSecure = isSecure) }
+        // دسترسی‌های همان دامنه روی نشست اعمال می‌شوند (جاوااسکریپت/پخش خودکار/دیالوگ‌ها).
+        viewModelScope.launch {
+            val profile = sitePermissionStore.profileFor(url)
+            sessionManager.applySitePermissions(tabId, profile)
+            _uiState.update { state ->
+                if (state.activeTabId == tabId) state.copy(activePermissionProfile = profile) else state
+            }
+        }
         if (!tab.isPrivate) {
             viewModelScope.launch {
                 val now = System.currentTimeMillis()
@@ -494,7 +524,9 @@ class BrowserViewModel @Inject constructor(
     }
 
     fun onPageTitleChanged(tabId: String, title: String) {
-        updateTab(tabId) { it.copy(title = title) }
+        // نامِ هوشمند تب: عنوانِ طولانی/نویزی سایت پاک‌سازی می‌شود و در صورت خالی بودن،
+        // دامنهٔ سایت جایگزین می‌شود؛ بنابراین نوار تب‌ها هرگز عنوانِ خالی یا بریده ندارد.
+        updateTab(tabId) { it.copy(title = TabTitleEngine.smartTabTitle(title, it.url)) }
     }
 
     fun onPageProgressChanged(tabId: String, progress: Int, isLoading: Boolean) {
@@ -503,6 +535,96 @@ class BrowserViewModel @Inject constructor(
 
     fun onNavStateChanged(tabId: String, canGoBack: Boolean, canGoForward: Boolean) {
         updateTab(tabId) { it.copy(canGoBack = canGoBack, canGoForward = canGoForward) }
+    }
+
+    /* ------------------------------------ سه قابلیتِ تازه ------------------------------------ */
+
+    /** روشن/خاموش کردنِ «حالت مطالعه» برای تبِ فعال. */
+    fun toggleReaderMode() {
+        val tab = _uiState.value.activeWebTab()
+        if (tab == null || tab.url.isBlank()) {
+            showLocalizedBanner { it.readerModeUnavailable }
+            return
+        }
+        val next = !_uiState.value.isReaderModeOn
+        sessionManager.setReaderMode(tab.id, next) { applied ->
+            if (!applied) {
+                showLocalizedBanner { it.readerModeUnavailable }
+            } else {
+                _uiState.update { it.copy(isReaderModeOn = next) }
+                showLocalizedBanner { if (next) it.readerModeOn else it.readerModeOff }
+            }
+        }
+    }
+
+    /**
+     * «بلندخوانی صفحه»: متنِ اصلی از صفحه استخراج می‌شود و در state قرار می‌گیرد تا لایهٔ
+     * UI آن را به موتور گفتار گوشی بدهد (TextToSpeech). برای توقف، [stopReadAloud].
+     */
+    fun startReadAloud() {
+        val tab = _uiState.value.activeWebTab()
+        if (tab == null || tab.url.isBlank()) {
+            showLocalizedBanner { it.readAloudUnavailable }
+            return
+        }
+        sessionManager.readPageText(tab.id) { text ->
+            if (text.isBlank()) {
+                showLocalizedBanner { it.readAloudUnavailable }
+            } else {
+                _uiState.update { it.copy(readAloudText = text) }
+            }
+        }
+    }
+
+    fun stopReadAloud() {
+        _uiState.update { it.copy(readAloudText = null) }
+    }
+
+    /** باز/بسته کردنِ پنلِ «دسترسی‌های سایت». */
+    fun toggleSitePermissionsPanel(visible: Boolean = !_uiState.value.showSitePermissions) {
+        _uiState.update { it.copy(showSitePermissions = visible) }
+        if (visible) {
+            viewModelScope.launch {
+                val tab = _uiState.value.activeWebTab() ?: return@launch
+                val profile = sitePermissionStore.profileFor(tab.url)
+                _uiState.update { it.copy(activePermissionProfile = profile) }
+            }
+        }
+    }
+
+    /** تغییرِ وضعیتِ یک دسترسی و اعمالِ فوری روی نشست. */
+    fun setSitePermission(permission: SitePermission, state: PermissionState) {
+        viewModelScope.launch {
+            val tab = _uiState.value.activeWebTab() ?: return@launch
+            if (tab.url.isBlank()) return@launch
+            sitePermissionStore.setPermission(tab.url, permission, state)
+            val profile = sitePermissionStore.profileFor(tab.url)
+            sessionManager.applySitePermissions(tab.id, profile)
+            _uiState.update { it.copy(activePermissionProfile = profile) }
+        }
+    }
+
+    /** چرخهٔ سه‌حالتهٔ یک دسترسی (اجازه → بپرس → بلاک). */
+    fun cycleSitePermission(permission: SitePermission) {
+        val current = _uiState.value.activePermissionProfile?.stateOf(permission)
+            ?: SitePermissionPolicy.defaults[permission]
+            ?: PermissionState.ASK
+        setSitePermission(permission, SitePermissionPolicy.nextState(current))
+    }
+
+    /** برگشتِ همهٔ دسترسی‌های این سایت به پیش‌فرض. */
+    fun resetSitePermissions() {
+        viewModelScope.launch {
+            val tab = _uiState.value.activeWebTab() ?: return@launch
+            sitePermissionStore.reset(tab.url)
+            sessionManager.applySitePermissions(tab.id, SitePermissionProfile(domain = ""))
+            _uiState.update {
+                it.copy(
+                    activePermissionProfile = SitePermissionProfile(domain = ""),
+                )
+            }
+            showLocalizedBanner { it.sitePermissionsResetDone }
+        }
     }
 
     fun onHealthRestored(reason: HealthReason) {
