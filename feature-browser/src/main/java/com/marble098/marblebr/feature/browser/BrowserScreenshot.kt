@@ -20,8 +20,18 @@ import java.lang.ref.WeakReference
 internal object BrowserViewRegistry {
     private var activeView: WeakReference<GeckoView>? = null
 
-    fun register(view: GeckoView?) {
-        activeView = view?.let { WeakReference(it) }
+    fun register(view: GeckoView) {
+        activeView = WeakReference(view)
+    }
+
+    /**
+     * فقط اگر [view] همان نمای ثبت‌شده باشد پاک می‌کند.
+     *
+     * قبلاً نمای قدیمی هنگام جابه‌جایی صفحه، ثبت نمای جدید را با `null` بازنویسی می‌کرد؛
+     * در نتیجه بعد از رفتن به یک سایت دیگر، عکس‌برداری از صفحه بی‌دلیل ناموفق بود.
+     */
+    fun unregister(view: GeckoView) {
+        if (activeView?.get() === view) activeView = null
     }
 
     fun current(): GeckoView? = activeView?.get()

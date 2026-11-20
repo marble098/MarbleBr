@@ -14,6 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,7 +45,6 @@ import androidx.compose.material.icons.filled.ArrowRightAlt
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.ContentCopy
@@ -87,9 +87,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -208,7 +207,7 @@ fun BrowserScreen(
     // ارتفاع نوارها فاصلهٔ داخلی می‌گیرد تا صفحه واقعاً از پشت شیشه دیده شود.
     val floatingChrome = prefs.chromeBarStyle == ChromeBarStyle.FLOATING
     val floatingTopSpacer = if (floatingChrome) 104.dp else 0.dp
-    val floatingBottomSpacer = if (floatingChrome) 76.dp else 0.dp
+    val floatingBottomSpacer = if (floatingChrome) 84.dp else 0.dp
 
     Scaffold(
         modifier = Modifier.imePadding(),
@@ -267,6 +266,16 @@ fun BrowserScreen(
                         )
                     }
 
+                    IconButton(
+                        onClick = { showQuickActions = true },
+                        modifier = Modifier.testTag("quick_actions_btn"),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Bolt,
+                            contentDescription = strings.quickActionsTitle,
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                     Box {
                         IconButton(
                             onClick = { showOverflowMenu = true },
@@ -295,66 +304,6 @@ fun BrowserScreen(
                     }
                 }
 
-                // به‌جای پیامِ «مراقب این سایت هستیم»، دکمه‌های میانبرِ واقعی و کاربردی.
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    IconButton(onClick = viewModel::goBack, enabled = activeTab?.canGoBack == true) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = strings.goBack,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                    IconButton(onClick = viewModel::goForward, enabled = activeTab?.canGoForward == true) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = strings.goForward,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                    IconButton(
-                        onClick = if (activeTab?.isLoading == true) viewModel::stopLoading else viewModel::reloadPage,
-                        enabled = !showHome && (hasPage || activeTab?.isLoading == true),
-                    ) {
-                        val loading = activeTab?.isLoading == true
-                        Icon(
-                            if (loading) Icons.Default.Close else Icons.Default.Refresh,
-                            contentDescription = if (loading) strings.stopLoading else strings.reload,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-
-                    QuickShortcutChip(
-                        icon = Icons.Default.Bolt,
-                        label = strings.quickActionsTitle,
-                        style = prefs.chromeBarStyle,
-                        highlighted = true,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("quick_actions_btn"),
-                        onClick = { showQuickActions = true },
-                    )
-                    if (!showHome) {
-                        QuickShortcutChip(
-                            icon = Icons.Default.Fingerprint,
-                            label = strings.quickSaveLogin,
-                            style = prefs.chromeBarStyle,
-                            modifier = Modifier.weight(1f),
-                            enabled = activeTab?.isPrivate != true,
-                            onClick = viewModel::captureManualSnapshotNow,
-                        )
-                    }
-                    QuickShortcutChip(
-                        icon = Icons.Default.Tab,
-                        label = "${strings.quickTabs} ${uiState.tabs.size}",
-                        style = prefs.chromeBarStyle,
-                        modifier = Modifier.weight(1f),
-                        onClick = { showTabsSheet = true },
-                    )
-                }
                 AnimatedVisibility(
                     visible = showHome && blockedAdsCount > 0,
                     enter = fadeIn() + expandVertically(),
@@ -441,58 +390,21 @@ fun BrowserScreen(
             }
         },
         bottomBar = {
-            Box(
-                Modifier
-                    .padding(horizontal = 8.dp, vertical = 5.dp)
-                    .liquidGlass(prefs.chromeBarStyle),
-            ) {
-                NavigationBar(
-                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
-                ) {
-                    NavigationBarItem(
-                        selected = showHome,
-                        onClick = viewModel::showHome,
-                        icon = { Icon(Icons.Default.Home, contentDescription = strings.homeTitle) },
-                        label = { Text(strings.homeTitle) },
-                        modifier = Modifier.testTag("nav_home_btn"),
-                    )
-                    NavigationBarItem(
-                        selected = showTabsSheet,
-                        onClick = { showTabsSheet = true },
-                        icon = {
-                            BadgedBox(
-                                badge = { Badge { Text("${uiState.tabs.size}") } },
-                            ) {
-                                Icon(Icons.Default.Tab, contentDescription = strings.tabsLabel)
-                            }
-                        },
-                        label = { Text(strings.tabsLabel) },
-                        modifier = Modifier.testTag("nav_tabs_btn"),
-                    )
-                    NavigationBarItem(
-                        selected = false,
-                        onClick = { onOpenVaultDashboard(activeTab?.containerId) },
-                        icon = { Icon(Icons.Default.Shield, contentDescription = strings.protectionLabel) },
-                        label = { Text(strings.protectionLabel) },
-                        modifier = Modifier.testTag("nav_vault_btn"),
-                    )
-                    NavigationBarItem(
-                        selected = false,
-                        onClick = { showBookmarksHistorySheet = true },
-                        icon = { Icon(Icons.Default.Bookmark, contentDescription = strings.bookmarksLabel) },
-                        label = { Text(strings.bookmarksLabel) },
-                        modifier = Modifier.testTag("nav_bookmarks_btn"),
-                    )
-                    NavigationBarItem(
-                        selected = false,
-                        onClick = onOpenSettings,
-                        icon = { Icon(Icons.Default.Settings, contentDescription = strings.settingsLabel) },
-                        label = { Text(strings.settingsLabel) },
-                        modifier = Modifier.testTag("nav_settings_btn"),
-                    )
-                }
-            }
-        }
+            BrowserBottomBar(
+                style = prefs.chromeBarStyle,
+                canGoBack = activeTab?.canGoBack == true,
+                canGoForward = activeTab?.canGoForward == true,
+                isLoading = activeTab?.isLoading == true,
+                reloadEnabled = !showHome && (hasPage || activeTab?.isLoading == true),
+                isHomeSelected = showHome,
+                tabCount = uiState.tabs.size,
+                onBack = viewModel::goBack,
+                onForward = viewModel::goForward,
+                onReloadOrStop = if (activeTab?.isLoading == true) viewModel::stopLoading else viewModel::reloadPage,
+                onHome = viewModel::showHome,
+                onTabs = { showTabsSheet = true },
+            )
+        },
     ) { innerPadding ->
         Box(
             modifier = Modifier
@@ -753,10 +665,21 @@ private fun BrowserAddressField(
                 }
             },
         singleLine = true,
-        shape = MaterialTheme.shapes.extraLarge,
+        shape = RoundedCornerShape(24.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
+            unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ),
         textStyle = MaterialTheme.typography.bodyMedium,
         leadingIcon = {
-            Icon(if (secure) Icons.Default.Lock else Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+            Icon(
+                imageVector = if (secure) Icons.Default.Lock else Icons.Default.Search,
+                contentDescription = null,
+                tint = if (secure) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
         },
         trailingIcon = {
             if (focused) {
@@ -1139,7 +1062,6 @@ private fun GeckoSessionWebView(
         modifier = Modifier.fillMaxSize(),
         factory = { ctx ->
             GeckoView(ctx).apply {
-                BrowserViewRegistry.register(this)
                 val geckoSession = viewModel.sessionManager.getOrCreateGeckoSession(
                     tabId = tab.id,
                     container = container,
@@ -1155,13 +1077,15 @@ private fun GeckoSessionWebView(
                     onServerRevokedFallbackRequired = viewModel::onServerRevokedFallbackRequired,
                     onDownloadRequested = { url, _ -> if (!tab.isPrivate) viewModel.enqueueDownload(url) },
                 )
-                setSession(geckoSession)
+                GeckoSurfaceBinding.bind(this, geckoSession)
             }
         },
-        onRelease = {
-            BrowserViewRegistry.register(null)
-            it.releaseSession()
+        update = { view ->
+            // هر بازترکیب، نمای نمایش‌داده‌شده را به نشستِ فعلیِ همان تب وصل و فعال نگه می‌دارد.
+            // اگر نما هنگام جابه‌جایی صفحه از نشست جدا شده باشد، صفحه بدون نیاز به بازگشایی اپ دوباره دیده می‌شود.
+            viewModel.sessionManager.activeSession(tab.id)?.let { GeckoSurfaceBinding.bind(view, it) }
         },
+        onRelease = { GeckoSurfaceBinding.unbind(it) },
     )
 }
 
@@ -1538,42 +1462,6 @@ private fun DownloadsSheet(downloads: List<DownloadItem>) {
 /* ---------------------------- میانبرهای کاربردیِ نوار بالا ---------------------------- */
 
 /** دکمهٔ کپسولیِ کوچک برای میانبرهای نوار بالا (با همان شیشهٔ شناور). */
-@Composable
-private fun QuickShortcutChip(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    style: ChromeBarStyle,
-    modifier: Modifier = Modifier,
-    highlighted: Boolean = false,
-    enabled: Boolean = true,
-    onClick: () -> Unit,
-) {
-    val container = if (highlighted) {
-        MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (style == ChromeBarStyle.FLOATING) 0.55f else 0.95f)
-    } else {
-        androidx.compose.ui.graphics.Color.Transparent
-    }
-    FilledTonalButton(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = modifier.floatingGlassPill(style, radius = 18),
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-        colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
-            containerColor = container,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-        ),
-    ) {
-        Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(15.dp))
-        Spacer(Modifier.width(4.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
 /**
  * شیتِ «میانبرهای سریع»: به‌جای پیامِ بی‌فایدهٔ «مراقب این سایت هستیم»، همهٔ کارهای
  * پرکاربردِ مرورگر در یک صفحه و با آیکن و رنگ.
