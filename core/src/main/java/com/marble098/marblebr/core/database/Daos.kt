@@ -59,6 +59,13 @@ interface SnapshotDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(snapshot: SnapshotEntity)
 
+    @Query("SELECT * FROM session_snapshots WHERE containerId = :containerId AND isPinned = 1 ORDER BY capturedAtEpochMillis DESC")
+    suspend fun getPinnedForContainer(containerId: String): List<SnapshotEntity>
+
+    /** نسخهٔ طلایی: قفل‌کردن/بازکردنِ یک نسخه تا چرخشِ خودکار هرگز حذفش نکند. */
+    @Query("UPDATE session_snapshots SET isPinned = :pinned WHERE id = :snapshotId")
+    suspend fun setPinned(snapshotId: String, pinned: Boolean)
+
     @Query("DELETE FROM session_snapshots WHERE id = :snapshotId")
     suspend fun deleteById(snapshotId: String)
 

@@ -16,10 +16,12 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -43,6 +45,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
@@ -89,6 +92,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
 import com.marble098.marblebr.core.designsystem.MarbleBackButton
+import com.marble098.marblebr.core.designsystem.MarbleLayout
 import com.marble098.marblebr.core.designsystem.MarbleGlassIconButton
 import com.marble098.marblebr.core.designsystem.SiteBadgeLogo
 import com.marble098.marblebr.core.designsystem.liquidGlass
@@ -142,6 +146,7 @@ fun VaultDashboardScreen(
     val openSiteSnapshots by viewModel.openSiteSnapshots.collectAsState()
     val busyAction by viewModel.busyAction.collectAsState()
     val globalProtection by viewModel.globalProtectionEnabled.collectAsState()
+    val expiryWatch by viewModel.expiryWatch.collectAsState()
     val strings = LocalMarbleStrings.current
 
     var pendingSignOutContainer by remember { mutableStateOf<WebAppContainer?>(null) }
@@ -215,6 +220,19 @@ fun VaultDashboardScreen(
                 )
             }
 
+            item(key = "expiry_guardian") {
+                ExpiryGuardianCard(
+                    expiring = expiryWatch,
+                    strings = strings,
+                    busyAction = busyAction,
+                    onRenewSite = { containerId ->
+                        overview.allContainers.firstOrNull { it.id == containerId }?.let(viewModel::renewSiteLogin)
+                    },
+                    onRenewAll = viewModel::renewAllExpiringLogins,
+                    onInsureNow = viewModel::insureSessionsNow,
+                )
+            }
+
             item(key = "sites_header") {
                 SectionTitle(
                     icon = Icons.Default.Shield,
@@ -239,13 +257,19 @@ fun VaultDashboardScreen(
                 rows.forEachIndexed { index, rowContainers ->
                     item(key = "site_row_${rowContainers.joinToString("-") { it.id }}_$index") {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            // IntrinsicSize.Max: هر دو کارتِ یک ردیف دقیقاً هم‌ارتفاع می‌شوند،
+                            // حتی اگر یکی بج «میانبر» داشته باشد و دیگری نداشته باشد.
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(IntrinsicSize.Max),
+                            horizontalArrangement = Arrangement.spacedBy(MarbleLayout.Gap),
                         ) {
                             rowContainers.forEach { container ->
                                 SiteCard(
                                     container = container,
-                                    modifier = Modifier.weight(1f),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight(),
                                     snapshotCount = snapshots.count { it.containerId == container.id },
                                     onClick = { viewModel.openSiteDetails(container) },
                                 )
@@ -285,6 +309,7 @@ fun VaultDashboardScreen(
                             busyAction = busyAction,
                             onRollback = { snapshot -> viewModel.rollbackToSnapshot(snapshot) },
                             onDelete = { snapshot -> pendingDeleteSnapshot = snapshot },
+                            onTogglePin = viewModel::toggleSnapshotPinned,
                         )
                     }
                 }
@@ -345,6 +370,7 @@ fun VaultDashboardScreen(
                 onSaveNow = { viewModel.captureSnapshotNow(selected) },
                 onRollback = viewModel::rollbackToSnapshot,
                 onDeleteSnapshot = { pendingDeleteSnapshot = it },
+                onTogglePin = viewModel::toggleSnapshotPinned,
                 onSignOutNow = {
                     viewModel.closeSiteDetails()
                     pendingSignOutContainer = selected
@@ -804,7 +830,7 @@ private fun SiteCard(
     val strings = LocalMarbleStrings.current
     val colors = MaterialTheme.colorScheme
     val accent = remember(container.domain) { siteBadgeAccent(container.domain) }
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(MarbleLayout.CardCorner)
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -915,6 +941,7 @@ private fun SnapshotGroup(
     busyAction: String?,
     onRollback: (SessionSnapshotMeta) -> Unit,
     onDelete: (SessionSnapshotMeta) -> Unit,
+    onTogglePin: (SessionSnapshotMeta) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val accent = remember(domain) { siteBadgeAccent(domain) }
@@ -955,6 +982,7 @@ private fun SnapshotGroup(
                 isBusy = busyAction == "rollback-${snapshot.id}",
                 onRollback = { onRollback(snapshot) },
                 onDelete = { onDelete(snapshot) },
+                onTogglePin = { onTogglePin(snapshot) },
             )
         }
     }
@@ -968,6 +996,7 @@ private fun SnapshotRow(
     isBusy: Boolean,
     onRollback: () -> Unit,
     onDelete: () -> Unit,
+    onTogglePin: () -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     val rowShape = RoundedCornerShape(14.dp)
@@ -984,7 +1013,13 @@ private fun SnapshotRow(
             modifier = Modifier
                 .size(8.dp)
                 .clip(CircleShape)
-                .background(if (snapshot.isHealthy) accent else colors.outline),
+                .background(
+                    when {
+                        snapshot.isPinned -> colors.tertiary
+                        snapshot.isHealthy -> accent
+                        else -> colors.outline
+                    },
+                ),
         )
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -1004,6 +1039,19 @@ private fun SnapshotRow(
                 color = colors.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+        IconButton(
+            onClick = onTogglePin,
+            modifier = Modifier
+                .size(30.dp)
+                .testTag("pin_snapshot_${snapshot.id}"),
+        ) {
+            Icon(
+                imageVector = if (snapshot.isPinned) Icons.Default.Lock else Icons.Default.LockOpen,
+                contentDescription = if (snapshot.isPinned) strings.vaultGoldenUnpin else strings.vaultGoldenPin,
+                tint = if (snapshot.isPinned) colors.tertiary else colors.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.size(15.dp),
             )
         }
         IconButton(
@@ -1028,6 +1076,143 @@ private fun SnapshotRow(
                 modifier = Modifier.size(16.dp),
             )
         }
+    }
+}
+
+/* ------------------------- نگهبان انقضا و بیمهٔ نشست ------------------------- */
+
+/**
+ * کارتِ «نگهبان انقضا» + «بیمهٔ نشست».
+ *
+ * دو قابلیتِ تازهٔ نگه‌داشتنِ ورود در یک کارت جمع شده‌اند چون هر دو یک سؤال را جواب می‌دهند:
+ * «آیا ورودهای من الان در خطرند؟»
+ * - اگر ورودی نزدیک انقضا باشد، همین‌جا با یک لمس تمدید می‌شود (بدون باز کردن سایت).
+ * - دکمهٔ «بیمهٔ فوری» پیش از هر کار پرخطر از همهٔ سایت‌های محافظت‌شده نسخهٔ تازه می‌گیرد.
+ */
+@Composable
+private fun ExpiryGuardianCard(
+    expiring: List<ExpiringSite>,
+    strings: MarbleStrings,
+    busyAction: String?,
+    onRenewSite: (String) -> Unit,
+    onRenewAll: () -> Unit,
+    onInsureNow: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(MarbleLayout.CardCorner)
+    val accent = if (expiring.isEmpty()) colors.primary else colors.tertiary
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(colors.surface.copy(alpha = 0.55f))
+            .border(0.9.dp, accent.copy(alpha = 0.35f), shape)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(MarbleLayout.Inner),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(MarbleLayout.Inner),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Brush.linearGradient(listOf(accent.copy(alpha = 0.26f), accent.copy(alpha = 0.10f)))),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Default.VerifiedUser,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = strings.vaultExpiryTitle,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = if (expiring.isEmpty()) strings.vaultExpiryAllFresh else strings.vaultExpiryBody,
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.sp),
+                    color = colors.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
+        expiring.take(4).forEach { site ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("expiring_site_${site.containerId}"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(MarbleLayout.Inner),
+            ) {
+                SiteBadgeLogo(displayName = site.domain, domain = site.domain, size = 26.dp)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = site.domain,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = if (site.isExpired) {
+                            strings.vaultExpiryExpired
+                        } else {
+                            strings.vaultExpiryDaysLeft(site.daysLeft)
+                        },
+                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.sp),
+                        color = if (site.isExpired) colors.error else colors.tertiary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                TextButton(
+                    onClick = { onRenewSite(site.containerId) },
+                    enabled = busyAction == null,
+                ) {
+                    Text(strings.vaultExpiryRenew, style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(MarbleLayout.Inner),
+        ) {
+            if (expiring.isNotEmpty()) {
+                FilledTonalButton(
+                    onClick = onRenewAll,
+                    enabled = busyAction == null,
+                    modifier = Modifier.weight(1f).testTag("renew_all_logins_btn"),
+                ) {
+                    Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(strings.vaultExpiryRenewAll, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            FilledTonalButton(
+                onClick = onInsureNow,
+                enabled = busyAction == null,
+                modifier = Modifier.weight(1f).testTag("insure_sessions_btn"),
+            ) {
+                Icon(Icons.Default.Shield, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(strings.vaultInsuranceRun, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+
+        Text(
+            text = strings.vaultInsuranceBody,
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.sp),
+            color = colors.outline,
+        )
     }
 }
 
@@ -1107,6 +1292,7 @@ private fun SiteControlPanel(
     onSaveNow: () -> Unit,
     onRollback: (SessionSnapshotMeta) -> Unit,
     onDeleteSnapshot: (SessionSnapshotMeta) -> Unit,
+    onTogglePin: (SessionSnapshotMeta) -> Unit,
     onSignOutNow: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -1266,6 +1452,7 @@ private fun SiteControlPanel(
                     isBusy = busyAction == "rollback-${snapshot.id}",
                     onRollback = { onRollback(snapshot) },
                     onDelete = { onDeleteSnapshot(snapshot) },
+                    onTogglePin = { onTogglePin(snapshot) },
                 )
             }
         }

@@ -8,7 +8,11 @@ import com.marble098.marblebr.core.database.HealthEventDao
 import com.marble098.marblebr.core.database.HealthEventEntity
 import com.marble098.marblebr.core.i18n.LocalizationManager
 import com.marble098.marblebr.core.i18n.MarbleStrings
+import com.marble098.marblebr.core.model.SessionExpiryAssessment
+import com.marble098.marblebr.core.model.SessionExpiryGuard
+import com.marble098.marblebr.core.model.SessionInsurancePolicy
 import com.marble098.marblebr.core.model.SessionSnapshotMeta
+import com.marble098.marblebr.core.model.SiteInsuranceCandidate
 import com.marble098.marblebr.core.model.WebAppContainer
 import com.marble098.marblebr.engine.ContainerSessionManager
 import com.marble098.marblebr.engine.KeepAliveScheduler
@@ -49,6 +53,19 @@ data class VaultOverview(
     val latestSnapshotAt: Long? = null,
     val lastHealthEventAt: Long? = null,
 )
+
+/**
+ * یک سایتِ نزدیکِ انقضا در کارتِ «نگهبان انقضا».
+ */
+data class ExpiringSite(
+    val containerId: String,
+    val domain: String,
+    val daysLeft: Int,
+    val thresholdDays: Int,
+    val authCookieCount: Int,
+) {
+    val isExpired: Boolean get() = daysLeft <= 0
+}
 
 /**
  * ViewModel داشبورد «مراقبت از حساب‌ها» — بازنویسی‌شده.
@@ -104,6 +121,19 @@ class VaultDashboardViewModel @Inject constructor(
 
     private val _globalProtectionEnabled = MutableStateFlow(true)
     val globalProtectionEnabled: StateFlow<Boolean> = _globalProtectionEnabled.asStateFlow()
+
+    /** با هر تمدید/قفلِ نسخه، این شمارنده زیاد می‌شود تا «نگهبان انقضا» دوباره محاسبه شود. */
+    private val _expiryRefreshTick = MutableStateFlow(0)
+
+    /**
+     * «نگهبان انقضا»: سایت‌هایی که ورودشان به انقضا نزدیک است.
+     *
+     * محاسبه از تازه‌ترین نسخهٔ سالمِ هر سایت انجام می‌شود؛ اگر نسخه‌ای نباشد یا کوکیِ ورودِ
+     * زمان‌دار نداشته باشد، آن سایت در فهرست نمی‌آید (یعنی چیزی برای تمدید نیست).
+     */
+    val expiryWatch: StateFlow<List<ExpiringSite>> = combine(containers, _expiryRefreshTick) { list, tick -> list to tick }
+        .map { (list, _) -> buildExpiryWatch(list) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val overview: StateFlow<VaultOverview> = combine(
         containers,
@@ -289,6 +319,129 @@ class VaultDashboardViewModel @Inject constructor(
             sessionManager.signOutNow(container)
             refreshKeepAliveSchedule()
             notify { it.feedbackSignedOut(container.domain) }
+        }
+    }
+
+    /* ------------------------- قابلیت‌های تازهٔ نگه‌داشتنِ ورود ------------------------- */
+
+    /**
+     * «نسخهٔ طلایی»: قفل/آزادکردنِ یک نسخه.
+     * نسخهٔ قفل‌شده هرگز توسط چرخشِ خودکار حذف نمی‌شود و در بازیابیِ اضطراری اولویت دارد.
+     */
+    fun toggleSnapshotPinned(snapshot: SessionSnapshotMeta) {
+        runBusy("pin-${snapshot.id}") {
+            val targetPinned = !snapshot.isPinned
+            val result = runCatching { vaultManager.setSnapshotPinned(snapshot.id, targetPinned) }.getOrNull()
+            if (result == null) {
+                notify { it.snapshotUnavailable }
+            } else {
+                notify { strings ->
+                    if (targetPinned) {
+                        strings.vaultGoldenPinnedDone(snapshot.domain)
+                    } else {
+                        strings.vaultGoldenRemoved(snapshot.domain)
+                    }
+                }
+            }
+        }
+    }
+
+    /** «نگهبان انقضا»: تمدیدِ یک‌لمسیِ ورودِ یک سایت (بدون نیاز به باز بودنِ تب). */
+    fun renewSiteLogin(container: WebAppContainer) {
+        runBusy("renew-${container.id}") {
+            val renewed = runCatching {
+                vaultManager.renewSnapshotExpiry(
+                    containerId = container.id,
+                    targetExpirationDays = container.cookieExpirationDays,
+                )
+            }.getOrNull()
+            _expiryRefreshTick.update { it + 1 }
+            if (renewed == null) {
+                notify { it.snapshotUnavailable }
+            } else {
+                notify { it.vaultExpiryRenewed(container.domain) }
+            }
+        }
+    }
+
+    /** تمدیدِ گروهیِ همهٔ سایت‌هایی که در کارتِ «نگهبان انقضا» دیده می‌شوند. */
+    fun renewAllExpiringLogins() {
+        runBusy("renew-all") {
+            val byId = containers.value.associateBy { it.id }
+            val targets = expiryWatch.value
+            if (targets.isEmpty()) {
+                notify { it.vaultExpiryAllFresh }
+                return@runBusy
+            }
+            var renewed = 0
+            targets.forEach { site ->
+                val container = byId[site.containerId] ?: return@forEach
+                val meta = runCatching {
+                    vaultManager.renewSnapshotExpiry(
+                        containerId = container.id,
+                        targetExpirationDays = container.cookieExpirationDays,
+                    )
+                }.getOrNull()
+                if (meta != null) renewed++
+            }
+            _expiryRefreshTick.update { it + 1 }
+            notify { it.vaultExpiryRenewedCount(renewed) }
+        }
+    }
+
+    /**
+     * «بیمهٔ نشست»: پیش از کارهای پرخطر یک نسخهٔ تازه از همهٔ سایت‌های محافظت‌شدهٔ قدیمی گرفته می‌شود.
+     * فقط سایت‌هایی که تبی باز دارند موفق می‌شوند؛ بقیه بی‌صدا رد می‌شوند (fail-soft).
+     */
+    fun insureSessionsNow() {
+        runBusy("insure-all") {
+            val selected = SessionInsurancePolicy.selectSitesToInsure(
+                candidates = buildInsuranceCandidates(),
+                nowEpochMillis = System.currentTimeMillis(),
+            )
+            val byId = containers.value.associateBy { it.id }
+            var saved = 0
+            selected.forEach { candidate ->
+                val container = byId[candidate.containerId] ?: return@forEach
+                if (runCatching { sessionManager.captureSiteSnapshotNow(container) }.getOrDefault(false)) {
+                    saved++
+                }
+            }
+            notify { it.vaultInsuranceDone(saved) }
+        }
+    }
+
+    private suspend fun buildExpiryWatch(containerList: List<WebAppContainer>): List<ExpiringSite> =
+        containerList
+            .filter { it.neverSignOutEnabled }
+            .mapNotNull { container ->
+                val assessment: SessionExpiryAssessment = runCatching {
+                    vaultManager.assessExpiryForContainer(container.id)
+                }.getOrNull() ?: return@mapNotNull null
+                val daysLeft = assessment.daysUntilExpiry ?: return@mapNotNull null
+                val threshold = SessionExpiryGuard.renewalThresholdDays(container.cookieExpirationDays)
+                if (daysLeft > threshold) return@mapNotNull null
+                ExpiringSite(
+                    containerId = container.id,
+                    domain = container.domain,
+                    daysLeft = daysLeft,
+                    thresholdDays = threshold,
+                    authCookieCount = assessment.authCookieCount,
+                )
+            }
+            .sortedBy { it.daysLeft }
+
+    private fun buildInsuranceCandidates(): List<SiteInsuranceCandidate> {
+        val latestByContainer = snapshots.value
+            .groupBy { it.containerId }
+            .mapValues { (_, list) -> list.maxOf { it.capturedAtEpochMillis } }
+        return containers.value.map { container ->
+            SiteInsuranceCandidate(
+                containerId = container.id,
+                domain = container.domain,
+                isProtected = container.neverSignOutEnabled,
+                lastSnapshotAtEpochMillis = latestByContainer[container.id],
+            )
         }
     }
 

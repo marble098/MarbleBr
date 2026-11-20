@@ -12,7 +12,7 @@ import androidx.room.RoomDatabase
         DownloadEntity::class,
         HealthEventEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class MarbleBrDatabase : RoomDatabase() {

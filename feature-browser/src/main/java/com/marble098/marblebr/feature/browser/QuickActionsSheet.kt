@@ -8,7 +8,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -67,6 +70,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
+import com.marble098.marblebr.core.designsystem.MarbleLayout
 import com.marble098.marblebr.core.designsystem.SiteBadgeLogo
 import com.marble098.marblebr.core.designsystem.siteBadgeAccent
 import com.marble098.marblebr.core.i18n.MarbleStrings
@@ -129,9 +133,15 @@ internal fun QuickActionsSheet(
         modifier = Modifier
             .fillMaxWidth()
             .imePadding(),
-        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 28.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        // فاصله‌های شیت هم از ریتمِ مشترک می‌آید تا با صفحهٔ خانه و داشبورد یکی باشد.
+        contentPadding = PaddingValues(
+            start = MarbleLayout.Screen,
+            end = MarbleLayout.Screen,
+            top = 4.dp,
+            bottom = MarbleLayout.Screen + MarbleLayout.SectionGap,
+        ),
+        horizontalArrangement = Arrangement.spacedBy(MarbleLayout.Gap),
+        verticalArrangement = Arrangement.spacedBy(MarbleLayout.Gap),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }, key = "header") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -388,7 +398,7 @@ private fun SessionStatusCard(
     val protected = status == SessionHealthStatus.PROTECTED_ACTIVE ||
         status == SessionHealthStatus.HEALTHY ||
         status == SessionHealthStatus.RECOVERED_FROM_VAULT
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(MarbleLayout.CardCorner)
 
     Row(
         modifier = Modifier
@@ -515,10 +525,11 @@ private fun QuickTile(
     onClick: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(MarbleLayout.TileCorner)
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .height(MarbleLayout.QuickTileHeight)
             .clip(shape)
             .background(
                 if (active) accent.copy(alpha = 0.20f) else colors.surface.copy(alpha = 0.55f),
@@ -529,9 +540,9 @@ private fun QuickTile(
                 shape = shape,
             )
             .clickable(role = Role.Button, onClick = onClick)
-            .padding(vertical = 10.dp, horizontal = 5.dp),
+            .padding(vertical = 8.dp, horizontal = 5.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.Center,
     ) {
         Box {
             Box(
@@ -560,6 +571,7 @@ private fun QuickTile(
                 }
             }
         }
+        Spacer(Modifier.height(6.dp))
         Text(
             text = label,
             style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.5.sp, lineHeight = 13.sp),
@@ -567,6 +579,7 @@ private fun QuickTile(
             textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.heightIn(min = 26.dp),
         )
     }
 }

@@ -233,6 +233,37 @@ abstract class MarbleStrings {
     abstract fun vaultKeepAliveEveryMinutes(minutes: Int): String
     abstract fun vaultDeleteSnapshotDone(domain: String): String
 
+    // ----------------------- منوی تازه، نسخهٔ طلایی، نگهبان انقضا و بیمهٔ نشست
+    abstract val menuSectionPage: String
+    abstract val menuSectionProtection: String
+    abstract val menuSectionTools: String
+    abstract val menuSectionApp: String
+    abstract val menuProtectedChip: String
+    abstract val menuPrivateHint: String
+
+    abstract val vaultGoldenTitle: String
+    abstract val vaultGoldenPin: String
+    abstract val vaultGoldenUnpin: String
+    abstract val vaultGoldenHint: String
+
+    abstract val vaultExpiryTitle: String
+    abstract val vaultExpiryBody: String
+    abstract val vaultExpiryAllFresh: String
+    abstract val vaultExpiryExpired: String
+    abstract val vaultExpiryRenew: String
+    abstract val vaultExpiryRenewAll: String
+
+    abstract val vaultInsuranceTitle: String
+    abstract val vaultInsuranceBody: String
+    abstract val vaultInsuranceRun: String
+
+    abstract fun vaultGoldenPinnedDone(domain: String): String
+    abstract fun vaultGoldenRemoved(domain: String): String
+    abstract fun vaultExpiryDaysLeft(days: Int): String
+    abstract fun vaultExpiryRenewed(domain: String): String
+    abstract fun vaultExpiryRenewedCount(count: Int): String
+    abstract fun vaultInsuranceDone(count: Int): String
+
     // ----------------------------------------------------- فرمت ها
     abstract fun tabsCount(count: Int): String
     abstract fun adsBlocked(count: Int): String
@@ -789,6 +820,36 @@ private object PersianStrings : MarbleStrings() {
     override val starRepoBadgeFast = "سبک و سریع"
     override val starRepoBadgeBilingual = "دوزبانه"
 
+    override val menuSectionPage = "این صفحه"
+    override val menuSectionProtection = "محافظت از ورود"
+    override val menuSectionTools = "کتابخانه و ابزار"
+    override val menuSectionApp = "برنامه"
+    override val menuProtectedChip = "ورودت محافظت می‌شود"
+    override val menuPrivateHint = "حالت خصوصی؛ چیزی ذخیره نمی‌شود"
+
+    override val vaultGoldenTitle = "نسخهٔ طلایی"
+    override val vaultGoldenPin = "طلایی کن"
+    override val vaultGoldenUnpin = "برداشتن قفل"
+    override val vaultGoldenHint = "نسخهٔ طلایی هیچ‌وقت خودکار پاک نمی‌شود."
+
+    override val vaultExpiryTitle = "نگهبان انقضا"
+    override val vaultExpiryBody = "این حساب‌ها نزدیک انقضا هستند؛ با یک لمس تمدیدشان کن."
+    override val vaultExpiryAllFresh = "همهٔ ورودها تازه‌اند؛ چیزی برای تمدید نیست."
+    override val vaultExpiryExpired = "منقضی شده"
+    override val vaultExpiryRenew = "تمدید"
+    override val vaultExpiryRenewAll = "تمدید همه"
+
+    override val vaultInsuranceTitle = "بیمهٔ نشست"
+    override val vaultInsuranceBody = "قبل از کارهای پرخطر از هر سایت محافظت‌شده یک نسخهٔ تازه گرفته می‌شود."
+    override val vaultInsuranceRun = "بیمهٔ فوری"
+
+    override fun vaultGoldenPinnedDone(domain: String) = "نسخهٔ $domain طلایی و قفل شد."
+    override fun vaultGoldenRemoved(domain: String) = "قفل نسخهٔ $domain برداشته شد."
+    override fun vaultExpiryDaysLeft(days: Int) = "$days روز مانده"
+    override fun vaultExpiryRenewed(domain: String) = "ورود $domain برای یک دورهٔ تازه تمدید شد."
+    override fun vaultExpiryRenewedCount(count: Int) = "ورود $count سایت تمدید شد."
+    override fun vaultInsuranceDone(count: Int) = "از $count سایت نسخهٔ تازه گرفتیم."
+
     override val dnsSystem = "خودکار"
     override val dnsCustom = "سفارشی"
     override val proxyNone = "بدون پروکسی"
@@ -1142,6 +1203,36 @@ private object EnglishStrings : MarbleStrings() {
     override val starRepoBadgePrivate = "No trackers"
     override val starRepoBadgeFast = "Light & fast"
     override val starRepoBadgeBilingual = "Bilingual"
+
+    override val menuSectionPage = "This page"
+    override val menuSectionProtection = "Login protection"
+    override val menuSectionTools = "Library & tools"
+    override val menuSectionApp = "App"
+    override val menuProtectedChip = "Login protected"
+    override val menuPrivateHint = "Private mode — nothing is saved"
+
+    override val vaultGoldenTitle = "Golden version"
+    override val vaultGoldenPin = "Make golden"
+    override val vaultGoldenUnpin = "Remove lock"
+    override val vaultGoldenHint = "A golden version is never deleted automatically."
+
+    override val vaultExpiryTitle = "Expiry guardian"
+    override val vaultExpiryBody = "These logins are about to expire — renew them with one tap."
+    override val vaultExpiryAllFresh = "All logins are fresh — nothing to renew."
+    override val vaultExpiryExpired = "Expired"
+    override val vaultExpiryRenew = "Renew"
+    override val vaultExpiryRenewAll = "Renew all"
+
+    override val vaultInsuranceTitle = "Session insurance"
+    override val vaultInsuranceBody = "Before risky actions we take a fresh copy of every protected site."
+    override val vaultInsuranceRun = "Insure now"
+
+    override fun vaultGoldenPinnedDone(domain: String) = "The $domain version is now golden and locked."
+    override fun vaultGoldenRemoved(domain: String) = "The lock on the $domain version was removed."
+    override fun vaultExpiryDaysLeft(days: Int) = "$days days left"
+    override fun vaultExpiryRenewed(domain: String) = "The $domain login was renewed for a fresh period."
+    override fun vaultExpiryRenewedCount(count: Int) = "Renewed the login of $count sites."
+    override fun vaultInsuranceDone(count: Int) = "Took a fresh copy of $count sites."
 
     override val dnsSystem = "Automatic"
     override val dnsCustom = "Custom"

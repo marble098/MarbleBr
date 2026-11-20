@@ -166,6 +166,15 @@ class SessionHealthGuardTest {
         override suspend fun getById(snapshotId: String): SnapshotEntity? =
             items.firstOrNull { it.id == snapshotId }
 
+        override suspend fun getPinnedForContainer(containerId: String): List<SnapshotEntity> =
+            items.filter { it.containerId == containerId && it.isPinned }
+                .sortedByDescending { it.capturedAtEpochMillis }
+
+        override suspend fun setPinned(snapshotId: String, pinned: Boolean) {
+            val index = items.indexOfFirst { it.id == snapshotId }
+            if (index >= 0) items[index] = items[index].copy(isPinned = pinned)
+        }
+
         override suspend fun insert(snapshot: SnapshotEntity) {
             items.removeAll { it.id == snapshot.id }
             items.add(snapshot)

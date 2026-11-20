@@ -2,8 +2,12 @@ package com.marble098.marblebr.vault
 
 import com.marble098.marblebr.core.database.SnapshotDao
 import com.marble098.marblebr.core.database.SnapshotEntity
+import com.marble098.marblebr.core.model.SessionExpiryAssessment
+import com.marble098.marblebr.core.model.SessionExpiryGuard
 import com.marble098.marblebr.core.model.SessionSnapshotMeta
 import com.marble098.marblebr.core.model.SessionSnapshotPayload
+import com.marble098.marblebr.core.model.SnapshotRotationItem
+import com.marble098.marblebr.core.model.SnapshotRotationPlanner
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
@@ -14,10 +18,14 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * ویژگی‌های ۲ و ۳ Never Sign-out Engine:
+ * ویژگی‌های ۲، ۳، ۹، ۱۰ و ۱۱ Never Sign-out Engine:
  * - Session Vault: اسنپ‌شات دوره‌ای و رمزنگاری‌شده (AES-256-GCM) از کوکی‌ها، localStorage و IndexedDB هر سایت،
  *   همراه با بازیابی خودکار از آخرین اسنپ‌شات سالم.
  * - Session Time Machine: نگه‌داشتن تاریخچه چند اسنپ‌شات قبلی و امکان برگشت با یک لمس به هر نسخه دلخواه.
+ * - «نسخهٔ طلایی» (نسخهٔ ۱.۳): قفل‌کردنِ یک نسخهٔ سالم تا چرخشِ خودکار هرگز حذفش نکند و همیشه
+ *   اولین گزینه برای بازگردانی خودکار باشد.
+ * - «نگهبان انقضا»: سنجشِ نزدیک‌ترین انقضای کوکی‌های ورود و تمدیدِ یک‌لمسیِ خودِ نسخه (بدون
+ *   نیاز به باز بودنِ تب) تا ورود پیش از موعد از بین نرود.
  */
 @Singleton
 class SessionVaultManager @Inject constructor(
@@ -83,6 +91,7 @@ class SessionVaultManager @Inject constructor(
             isHealthy = isHealthy,
             triggerReason = triggerReason,
             label = label,
+            isPinned = false,
         )
 
         snapshotDao.insert(entity)
@@ -109,6 +118,21 @@ class SessionVaultManager @Inject constructor(
     }
 
     /**
+     * «نسخهٔ طلایی» — بازیابیِ نسخهٔ قفل‌شدهٔ کاربر (تازه‌ترین نسخهٔ طلاییِ سالم).
+     *
+     * تفاوتش با [restoreLatestHealthySnapshot] این است که اولویت را به انتخابِ صریحِ کاربر
+     * می‌دهد، نه به تازه‌ترین نسخه.
+     */
+    suspend fun restoreGoldenSnapshot(containerId: String): SessionSnapshotPayload? {
+        val pinned = snapshotDao.getPinnedForContainer(containerId)
+        for (candidate in pinned) {
+            val decrypted = runCatching { decryptEntity(candidate) }.getOrNull()
+            if (decrypted != null) return decrypted
+        }
+        return null
+    }
+
+    /**
      * Session Time Machine: بازگشت با یک لمس به یک اسنپ‌شات مشخص از تاریخچه.
      */
     suspend fun restoreSnapshotById(snapshotId: String): SessionSnapshotPayload? {
@@ -125,6 +149,65 @@ class SessionVaultManager @Inject constructor(
 
     suspend fun deleteSnapshot(snapshotId: String) {
         snapshotDao.deleteById(snapshotId)
+    }
+
+    /**
+     * «نسخهٔ طلایی» — قفل‌کردن یا آزادکردنِ یک نسخه.
+     *
+     * @return وضعیت تازهٔ قفل، یا `null` اگر نسخه پیدا نشد.
+     */
+    suspend fun setSnapshotPinned(snapshotId: String, pinned: Boolean): Boolean? {
+        snapshotDao.getById(snapshotId) ?: return null
+        snapshotDao.setPinned(snapshotId, pinned)
+        return pinned
+    }
+
+    /** نسخه‌های طلاییِ یک سایت (تازه‌ترین اول). */
+    suspend fun pinnedSnapshotsForContainer(containerId: String): List<SessionSnapshotMeta> =
+        snapshotDao.getPinnedForContainer(containerId).map(SnapshotEntity::toMeta)
+
+    /**
+     * «نگهبان انقضا» — سنجشِ نزدیک‌ترین انقضای کوکی‌های ورود در تازه‌ترین نسخهٔ سالمِ سایت.
+     * اگر نسخه‌ای موجود نباشد، ارزیابیِ خالی برمی‌گردد (یعنی چیزی برای تمدید نیست).
+     */
+    suspend fun assessExpiryForContainer(
+        containerId: String,
+        nowEpochMillis: Long = System.currentTimeMillis(),
+    ): SessionExpiryAssessment {
+        val payload = restoreLatestHealthySnapshot(containerId) ?: return SessionExpiryAssessment()
+        return SessionExpiryGuard.assess(payload.cookies, nowEpochMillis)
+    }
+
+    /**
+     * تمدیدِ یک‌لمسیِ ورود: همان نسخهٔ سالم با عمرِ تازه دوباره ذخیره می‌شود.
+     *
+     * چرا لازم است؟ بعضی سایت‌ها کوکیِ ورود را با عمر کوتاه می‌سازند؛ پیش از این تنها راهِ
+     * تمدید، بازکردنِ دستی سایت و انتظار برای زنده‌سازیِ پس‌زمینه بود. حالا خودِ نسخه (که
+     * مبنای بازگردانی است) با تاریخ انقضای تازه بازنویسی می‌شود.
+     */
+    suspend fun renewSnapshotExpiry(
+        containerId: String,
+        targetExpirationDays: Int,
+        triggerReason: String = "EXPIRY_GUARDIAN",
+        label: String = "",
+        nowEpochMillis: Long = System.currentTimeMillis(),
+    ): SessionSnapshotMeta? {
+        val payload = restoreLatestHealthySnapshot(containerId) ?: return null
+        if (payload.cookies.isEmpty() && payload.localStorage.isEmpty()) return null
+        val renewedPayload = payload.copy(
+            capturedAtEpochMillis = nowEpochMillis,
+            cookies = cookieConverter.promoteAll(
+                cookies = payload.cookies,
+                targetExpirationDays = targetExpirationDays,
+                nowEpochMillis = nowEpochMillis,
+            ),
+        )
+        return captureSnapshot(
+            payload = renewedPayload,
+            targetCookieExpirationDays = targetExpirationDays,
+            triggerReason = triggerReason,
+            label = label,
+        )
     }
 
     /**
@@ -157,14 +240,28 @@ class SessionVaultManager @Inject constructor(
         return json.decodeFromString<SessionSnapshotPayload>(plaintext)
     }
 
+    /**
+     * چرخشِ نسخه‌ها از [SnapshotRotationPlanner] استفاده می‌کند تا:
+     * - نسخه‌های طلاییِ قفل‌شده هرگز حذف نشوند،
+     * - اول نسخه‌های ناسالم حذف شوند (نسخهٔ ناسالم جای نسخهٔ سالم را نگیرد)،
+     * - دست‌کم یک نسخهٔ تازه همیشه بماند.
+     */
     private suspend fun pruneExcessSnapshots(containerId: String, maxSnapshotsToKeep: Int) {
-        val safeMax = maxSnapshotsToKeep.coerceAtLeast(1)
         val all = snapshotDao.getSnapshotsForContainer(containerId)
-            .sortedByDescending { it.capturedAtEpochMillis }
-        if (all.size <= safeMax) return
-        val toDelete = all.drop(safeMax)
-        for (old in toDelete) {
-            snapshotDao.deleteById(old.id)
+        if (all.size <= maxSnapshotsToKeep.coerceAtLeast(1)) return
+        val deletions = SnapshotRotationPlanner.planDeletions(
+            items = all.map { entity ->
+                SnapshotRotationItem(
+                    id = entity.id,
+                    capturedAtEpochMillis = entity.capturedAtEpochMillis,
+                    isHealthy = entity.isHealthy,
+                    isPinned = entity.isPinned,
+                )
+            },
+            maxKeep = maxSnapshotsToKeep,
+        )
+        for (snapshotId in deletions) {
+            snapshotDao.deleteById(snapshotId)
         }
     }
 
