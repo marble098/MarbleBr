@@ -130,6 +130,13 @@ def file_hash(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def verify_sdk_range(badging, name):
+    minimum = re.findall(r"^(?:minSdkVersion|sdkVersion):'([^']+)'$", badging, re.M)
+    maximum = re.findall(r"^maxSdkVersion:'([^']+)'$", badging, re.M)
+    require(minimum == [str(MIN_SDK)] and not maximum,
+            f"{name}: expected minSdk {MIN_SDK} with no upper limit, found min={minimum} max={maximum}")
+
+
 def verify(directory, version, code, tools, baselines):
     apks = output_apks(directory)
     signer = None
@@ -137,9 +144,7 @@ def verify(directory, version, code, tools, baselines):
     for abi, apk in apks.items():
         name, actual_code, cert, badging, tool = inspect_identity(apk, tools)
         require((name, actual_code) == (version, code), f"{apk.name}: wrong version {name}/{actual_code}")
-        require(f"sdkVersion:'{MIN_SDK}'" in badging.splitlines()
-                and not any(line.startswith("maxSdkVersion:") for line in badging.splitlines()),
-                f"{apk.name}: unexpected supported Android version range")
+        verify_sdk_range(badging, apk.name)
         manifest = tool("aapt2", "dump", "xmltree", str(apk), "--file", "AndroidManifest.xml")
         for attr in ("testOnly", "debuggable", "isSplitRequired"):
             require(not re.search(rf"A: android:{attr}(?:\([^)]*\))?=(?:\(type 0x12\))?(?:0xffffffff|true)\b",

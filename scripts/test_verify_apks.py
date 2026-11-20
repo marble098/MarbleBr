@@ -47,6 +47,13 @@ class ApkGateTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "expected one"):
             gate.signing_certificate(f"{line}\n{line}", "app.apk")
 
+    def test_aapt2_old_and_new_sdk_labels(self):
+        for label in ("sdkVersion", "minSdkVersion"):
+            gate.verify_sdk_range(f"{label}:'26'\ntargetSdkVersion:'36'", "app.apk")
+        for badging in ("minSdkVersion:'27'", "minSdkVersion:'26'\nmaxSdkVersion:'35'"):
+            with self.assertRaisesRegex(ValueError, "expected minSdk 26"):
+                gate.verify_sdk_range(badging, "app.apk")
+
     def test_exact_output_set(self):
         self.assertEqual(gate.output_apks(self.root), self.apks)
         (self.root / "stale-x86.apk").touch()
