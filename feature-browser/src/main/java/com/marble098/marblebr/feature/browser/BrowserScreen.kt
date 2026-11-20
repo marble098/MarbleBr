@@ -853,9 +853,10 @@ fun BrowserAddressField(
     // Focus can be acquired by accessibility/keyboard as well as a touch. Do not overwrite typing.
     LaunchedEffect(focused, tapSelectRequest, mode) {
         if (!focused) return@LaunchedEffect
-        val originalText = input.text
+        val original = input
         delay(100)
-        if (focused && input.text == originalText) {
+        // Do not reselect if the user has already typed or moved the caret in the meantime.
+        if (focused && input == original) {
             input = input.copy(selection = addressSelection(input.text, input.selection.end, mode))
         }
     }
@@ -863,6 +864,7 @@ fun BrowserAddressField(
     Row(
         modifier = modifier
             .height(44.dp)
+            .testTag("smart_address_frame")
             .floatingGlassPill(style = style, emphasized = focused)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },

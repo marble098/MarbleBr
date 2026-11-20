@@ -22,6 +22,11 @@ class CookieRequestPolicyTest {
             valid.copy(name = "wrong-path", path = "/admin"),
             valid.copy(name = "expired", expiresEpochMillis = 10),
             valid.copy(name = "bad-value", value = "x\r\nheader"),
+            valid.copy(name = "bad name"),
+            valid.copy(name = "null-byte", value = "value\u0000header"),
+            valid.copy(name = "__Host-token", isHostOnly = false),
+            valid.copy(name = "__Secure-token", isSecure = false),
+            valid.copy(name = "samesite-none", isSecure = false, sameSite = "None"),
         )
         assertEquals(listOf(valid), CookieRequestPolicy.cookiesForUrl(cookies, "https://my.mci.ir/panel/view", now = 100))
         assertEquals(emptyList<CookieRecord>(), CookieRequestPolicy.cookiesForUrl(listOf(valid), "http://my.mci.ir/panel", now = 100))
