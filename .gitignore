@@ -43,3 +43,7 @@ render.experimental.xml
 .DS_Store
 Thumbsumbs.db
 *~
+
+# Python bytecode
+__pycache__/
+*.py[cod]
