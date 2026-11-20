@@ -8,8 +8,10 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.marble098.marblebr.core.i18n.AppLanguage
 import com.marble098.marblebr.core.model.DnsMode
+import com.marble098.marblebr.core.model.HomeShortcutPosition
 import com.marble098.marblebr.core.model.ProxyDnsConfig
 import com.marble098.marblebr.core.model.ProxyType
+import com.marble098.marblebr.core.model.SearchEngine
 import com.marble098.marblebr.core.model.ThemeMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -29,6 +31,10 @@ data class BrowserPreferences(
     val language: AppLanguage = AppLanguage.SYSTEM,
     val proxyDnsConfig: ProxyDnsConfig = ProxyDnsConfig(),
     val searchEngineTemplate: String = "https://www.google.com/search?q=%s",
+    val selectedSearchEngineId: String = SearchEngine.DEFAULT.id,
+    val homeShortcutPosition: HomeShortcutPosition = HomeShortcutPosition.BOTTOM,
+    val rateDialogShown: Boolean = false,
+    val rateLaunchCount: Int = 0,
 )
 
 @Singleton
@@ -52,6 +58,10 @@ class BrowserPreferencesRepository @Inject constructor(
         val PROXY_HOST = stringPreferencesKey("proxy_host")
         val PROXY_PORT = intPreferencesKey("proxy_port")
         val SEARCH_ENGINE = stringPreferencesKey("search_engine")
+        val SELECTED_SEARCH_ENGINE_ID = stringPreferencesKey("selected_search_engine_id")
+        val HOME_SHORTCUT_POSITION = stringPreferencesKey("home_shortcut_position")
+        val RATE_DIALOG_SHOWN = booleanPreferencesKey("rate_dialog_shown")
+        val RATE_LAUNCH_COUNT = intPreferencesKey("rate_launch_count")
     }
 
     val preferencesFlow: Flow<BrowserPreferences> = dataStore.data.map { prefs ->
@@ -90,6 +100,12 @@ class BrowserPreferencesRepository @Inject constructor(
                 proxyPort = prefs[Keys.PROXY_PORT] ?: 1080,
             ),
             searchEngineTemplate = prefs[Keys.SEARCH_ENGINE] ?: "https://www.google.com/search?q=%s",
+            selectedSearchEngineId = prefs[Keys.SELECTED_SEARCH_ENGINE_ID] ?: SearchEngine.DEFAULT.id,
+            homeShortcutPosition = prefs[Keys.HOME_SHORTCUT_POSITION]?.let {
+                runCatching { HomeShortcutPosition.valueOf(it) }.getOrNull()
+            } ?: HomeShortcutPosition.BOTTOM,
+            rateDialogShown = prefs[Keys.RATE_DIALOG_SHOWN] ?: false,
+            rateLaunchCount = prefs[Keys.RATE_LAUNCH_COUNT] ?: 0,
         )
     }
 
@@ -141,5 +157,28 @@ class BrowserPreferencesRepository @Inject constructor(
             it[Keys.PROXY_HOST] = config.proxyHost
             it[Keys.PROXY_PORT] = config.proxyPort
         }
+    }
+
+    suspend fun setSelectedSearchEngineId(engineId: String) {
+        dataStore.edit { it[Keys.SELECTED_SEARCH_ENGINE_ID] = engineId }
+    }
+
+    suspend fun setSearchEngine(engine: SearchEngine) {
+        dataStore.edit {
+            it[Keys.SELECTED_SEARCH_ENGINE_ID] = engine.id
+            it[Keys.SEARCH_ENGINE] = engine.searchUrlTemplate
+        }
+    }
+
+    suspend fun setHomeShortcutPosition(position: HomeShortcutPosition) {
+        dataStore.edit { it[Keys.HOME_SHORTCUT_POSITION] = position.name }
+    }
+
+    suspend fun setRateDialogShown(shown: Boolean) {
+        dataStore.edit { it[Keys.RATE_DIALOG_SHOWN] = shown }
+    }
+
+    suspend fun setRateLaunchCount(count: Int) {
+        dataStore.edit { it[Keys.RATE_LAUNCH_COUNT] = count.coerceIn(0, 100) }
     }
 }

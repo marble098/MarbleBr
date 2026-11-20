@@ -89,8 +89,14 @@ interface HistoryDao {
     @Query("SELECT * FROM history_items WHERE title LIKE '%' || :query || '%' OR url LIKE '%' || :query || '%' ORDER BY visitedAtEpochMillis DESC LIMIT 50")
     suspend fun search(query: String): List<HistoryEntity>
 
+    @Query("SELECT * FROM history_items WHERE url = :url ORDER BY visitedAtEpochMillis DESC LIMIT 1")
+    suspend fun getLatestByUrl(url: String): HistoryEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(item: HistoryEntity)
+
+    @Query("UPDATE history_items SET title = :title, visitedAtEpochMillis = :visitedAtEpochMillis WHERE id = :id")
+    suspend fun updateVisit(id: String, title: String, visitedAtEpochMillis: Long)
 
     @Query("DELETE FROM history_items")
     suspend fun clearAll()

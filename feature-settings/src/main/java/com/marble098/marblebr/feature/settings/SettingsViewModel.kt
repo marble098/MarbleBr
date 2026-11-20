@@ -6,8 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.marble098.marblebr.core.i18n.AppLanguage
 import com.marble098.marblebr.core.i18n.LocalizationManager
 import com.marble098.marblebr.core.model.DnsMode
+import com.marble098.marblebr.core.model.HomeShortcutPosition
 import com.marble098.marblebr.core.model.ProxyDnsConfig
 import com.marble098.marblebr.core.model.ProxyType
+import com.marble098.marblebr.core.model.SearchEngine
 import com.marble098.marblebr.core.model.ThemeMode
 import com.marble098.marblebr.core.preferences.BrowserPreferences
 import com.marble098.marblebr.core.preferences.BrowserPreferencesRepository
@@ -92,6 +94,18 @@ class SettingsViewModel @Inject constructor(
     fun setAdBlockEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setAdBlockEnabled(enabled)
+        }
+    }
+
+    fun selectSearchEngine(engine: SearchEngine) {
+        viewModelScope.launch {
+            preferencesRepository.setSearchEngine(engine)
+        }
+    }
+
+    fun setHomeShortcutPosition(position: HomeShortcutPosition) {
+        viewModelScope.launch {
+            preferencesRepository.setHomeShortcutPosition(position)
         }
     }
 

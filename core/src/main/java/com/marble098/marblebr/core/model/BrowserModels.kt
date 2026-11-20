@@ -299,6 +299,43 @@ enum class ThemeMode {
     DARK,
 }
 
+/**
+ * موتورهای جستجوی پیش‌فرضی که کاربر می‌تواند در صفحه‌ی خانه و نوار آدرس از بین آن‌ها انتخاب کند.
+ */
+@Serializable
+data class SearchEngine(
+    val id: String,
+    val name: String,
+    val searchUrlTemplate: String,
+) {
+    /** چند موتور جستجوی معروف برای انتخاب در تنظیمات و صفحه‌ی خانه. */
+    companion object {
+        val DEFAULT = SearchEngine("google", "Google", "https://www.google.com/search?q=%s")
+
+        val all: List<SearchEngine> = listOf(
+            DEFAULT,
+            SearchEngine("bing", "Bing", "https://www.bing.com/search?q=%s"),
+            SearchEngine("duckduckgo", "DuckDuckGo", "https://duckduckgo.com/?q=%s"),
+            SearchEngine("yahoo", "Yahoo", "https://search.yahoo.com/search?p=%s"),
+            SearchEngine("brave", "Brave Search", "https://search.brave.com/search?q=%s"),
+            SearchEngine("ecosia", "Ecosia", "https://www.ecosia.org/search?q=%s"),
+        )
+
+        fun findById(id: String): SearchEngine =
+            all.firstOrNull { it.id == id } ?: DEFAULT
+    }
+}
+
+/**
+ * محل دکمه‌ی میانبر صفحه‌ی خانه: بالا، پایین یا هیچ‌کدام (بسته به انتخاب کاربر در تنظیمات).
+ */
+@Serializable
+enum class HomeShortcutPosition {
+    NONE,
+    TOP,
+    BOTTOM,
+}
+
 @Serializable
 data class PwaManifestInfo(
     val name: String,

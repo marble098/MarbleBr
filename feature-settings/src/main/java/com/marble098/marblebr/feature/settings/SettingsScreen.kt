@@ -1,5 +1,6 @@
 package com.marble098.marblebr.feature.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -21,6 +22,8 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -30,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -49,11 +53,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
 import com.marble098.marblebr.core.i18n.AppLanguage
 import com.marble098.marblebr.core.model.DnsMode
+import com.marble098.marblebr.core.model.HomeShortcutPosition
 import com.marble098.marblebr.core.model.ProxyType
+import com.marble098.marblebr.core.model.SearchEngine
 import com.marble098.marblebr.core.model.ThemeMode
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -81,6 +88,12 @@ fun SettingsScreen(
     }
     var selectedProxyType by remember(prefs.proxyDnsConfig.proxyType) {
         mutableStateOf(prefs.proxyDnsConfig.proxyType)
+    }
+    var selectedEngineId by remember(prefs.selectedSearchEngineId) {
+        mutableStateOf(prefs.selectedSearchEngineId)
+    }
+    var selectedHomeShortcut by remember(prefs.homeShortcutPosition) {
+        mutableStateOf(prefs.homeShortcutPosition)
     }
     var proxyHost by remember(prefs.proxyDnsConfig.proxyHost) {
         mutableStateOf(prefs.proxyDnsConfig.proxyHost)
@@ -282,6 +295,80 @@ fun SettingsScreen(
                     ) {
                         Text(strings.saveNetwork)
                     }
+                }
+            }
+
+            // 4.5) موتور جستجو
+            item {
+                SettingsSection(
+                    icon = Icons.Default.Search,
+                    title = strings.searchEngineTitle,
+                    description = strings.searchEngineDescription,
+                ) {
+                    SearchEngine.all.forEach { engine ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(
+                                    onClick = {
+                                        selectedEngineId = engine.id
+                                        viewModel.selectSearchEngine(engine)
+                                    },
+                                ),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = selectedEngineId == engine.id,
+                                onClick = {
+                                    selectedEngineId = engine.id
+                                    viewModel.selectSearchEngine(engine)
+                                },
+                            )
+                            Column(modifier = Modifier.weight(1f).padding(horizontal = 8.dp)) {
+                                Text(
+                                    text = engine.name,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                                Text(
+                                    text = engine.searchUrlTemplate,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4.6) صفحه‌ی خانه
+            item {
+                SettingsSection(
+                    icon = Icons.Default.Home,
+                    title = strings.homeScreenTitle,
+                    description = strings.homeShortcutPositionTitle,
+                ) {
+                    Text(
+                        text = strings.homeShortcutPositionTitle,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    OptionChips(
+                        options = HomeShortcutPosition.entries,
+                        selected = selectedHomeShortcut,
+                        label = { position ->
+                            when (position) {
+                                HomeShortcutPosition.NONE -> strings.shortcutPositionNone
+                                HomeShortcutPosition.TOP -> strings.shortcutPositionTop
+                                HomeShortcutPosition.BOTTOM -> strings.shortcutPositionBottom
+                            }
+                        },
+                        onSelect = { position ->
+                            selectedHomeShortcut = position
+                            viewModel.setHomeShortcutPosition(position)
+                        },
+                    )
                 }
             }
 

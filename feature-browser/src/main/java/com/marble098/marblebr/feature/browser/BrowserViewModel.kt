@@ -20,6 +20,7 @@ import com.marble098.marblebr.core.model.HistoryItem
 import com.marble098.marblebr.core.model.SessionHealthStatus
 import com.marble098.marblebr.core.model.SessionSnapshotPayload
 import com.marble098.marblebr.core.model.WebAppContainer
+import com.marble098.marblebr.core.preferences.BrowserPreferences
 import com.marble098.marblebr.core.preferences.BrowserPreferencesRepository
 import com.marble098.marblebr.engine.ContainerSessionManager
 import com.marble098.marblebr.engine.LightweightAdBlocker
@@ -70,6 +71,9 @@ class BrowserViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(BrowserUiState())
     val uiState: StateFlow<BrowserUiState> = _uiState.asStateFlow()
 
+    val preferences: StateFlow<BrowserPreferences> = preferencesRepository.preferencesFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BrowserPreferences())
+
     val bookmarks: StateFlow<List<BookmarkItem>> = bookmarkDao.observeAll()
         .map { list -> list.map(BookmarkEntity::toDomain) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -83,7 +87,9 @@ class BrowserViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     init {
-        openNewTab(initialUrl = "https://github.com", isPrivate = false)
+        viewModelScope.launch {
+            openNewTab(initialUrl = "https://github.com", isPrivate = false)
+        }
     }
 
     fun onAddressBarChanged(input: String) {
@@ -117,15 +123,21 @@ class BrowserViewModel @Inject constructor(
             }
 
             if (!currentTab.isPrivate) {
-                historyDao.insert(
-                    HistoryEntity(
-                        id = UUID.randomUUID().toString(),
-                        title = container.displayName,
-                        url = targetUrl,
-                        containerId = container.id,
-                        visitedAtEpochMillis = System.currentTimeMillis(),
-                    ),
-                )
+                val now = System.currentTimeMillis()
+                val existing = historyDao.getLatestByUrl(targetUrl)
+                if (existing != null) {
+                    historyDao.updateVisit(existing.id, container.displayName, now)
+                } else {
+                    historyDao.insert(
+                        HistoryEntity(
+                            id = UUID.randomUUID().toString(),
+                            title = container.displayName,
+                            url = targetUrl,
+                            containerId = container.id,
+                            visitedAtEpochMillis = now,
+                        ),
+                    )
+                }
             }
         }
     }

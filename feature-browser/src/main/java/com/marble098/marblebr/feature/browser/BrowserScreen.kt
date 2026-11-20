@@ -3,7 +3,6 @@ package com.marble098.marblebr.feature.browser
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -23,7 +22,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -38,6 +36,7 @@ import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -85,10 +84,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -100,9 +99,13 @@ import com.marble098.marblebr.core.model.BookmarkItem
 import com.marble098.marblebr.core.model.BrowserTab
 import com.marble098.marblebr.core.model.DownloadItem
 import com.marble098.marblebr.core.model.HistoryItem
+import com.marble098.marblebr.core.model.HomeShortcutPosition
 import com.marble098.marblebr.core.model.SessionHealthStatus
 import com.marble098.marblebr.core.model.WebAppContainer
 import org.mozilla.geckoview.GeckoView
+
+const val HOME_BOTTOM_INDEX = 0
+const val TABS_BOTTOM_INDEX = 1
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,14 +115,19 @@ fun BrowserScreen(
     onOpenSettings: () -> Unit,
     onTriggerBiometricPasskeyRelogin: (domain: String) -> Unit,
     renderGeckoWebView: Boolean = true,
+    initialShowHome: Boolean = true,
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val prefs by viewModel.preferences.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState()
     val historyItems by viewModel.historyItems.collectAsState()
     val downloads by viewModel.downloads.collectAsState()
     val blockedAdsCount by viewModel.adBlocker.blockedCount.collectAsState()
     val strings = LocalMarbleStrings.current
+    val keyboardController = LocalSoftwareKeyboardController.current
 
+    var showHome by remember { mutableStateOf(initialShowHome) }
+    var bottomBarIndex by remember { mutableStateOf(if (initialShowHome) HOME_BOTTOM_INDEX else TABS_BOTTOM_INDEX) }
     var showTabsSheet by remember { mutableStateOf(false) }
     var showBookmarksHistorySheet by remember { mutableStateOf(false) }
     var showDownloadsSheet by remember { mutableStateOf(false) }
@@ -136,19 +144,17 @@ fun BrowserScreen(
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surface)
                     .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     FilledTonalIconButton(
                         onClick = { onOpenVaultDashboard(activeTab?.containerId) },
-                        modifier = Modifier
-                            .size(44.dp)
-                            .testTag("never_signout_shield_btn"),
+                        modifier = Modifier.size(40.dp).testTag("never_signout_shield_btn"),
                     ) {
                         Icon(
                             imageVector = if (activeTab?.isPrivate == true) {
@@ -165,15 +171,14 @@ fun BrowserScreen(
                                 SessionHealthStatus.SERVER_REVOKED_FALLBACK -> MaterialTheme.colorScheme.error
                                 else -> MaterialTheme.colorScheme.outline
                             },
+                            modifier = Modifier.size(18.dp),
                         )
                     }
 
                     OutlinedTextField(
                         value = uiState.addressBarInput,
                         onValueChange = viewModel::onAddressBarChanged,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("smart_address_bar"),
+                        modifier = Modifier.weight(1f).testTag("smart_address_bar"),
                         singleLine = true,
                         shape = MaterialTheme.shapes.large,
                         textStyle = MaterialTheme.typography.bodyLarge,
@@ -202,7 +207,11 @@ fun BrowserScreen(
                             )
                         },
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                        keyboardActions = KeyboardActions(onGo = { viewModel.navigateToInput() }),
+                        keyboardActions = KeyboardActions(onGo = {
+                            viewModel.navigateToInput()
+                            keyboardController?.hide()
+                            showHome = false
+                        }),
                     )
 
                     Box {
@@ -239,18 +248,18 @@ fun BrowserScreen(
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = strings.goBack,
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(18.dp),
                         )
                     }
                     IconButton(onClick = viewModel::goForward, enabled = activeTab?.canGoForward == true) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowForward,
                             contentDescription = strings.goForward,
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(18.dp),
                         )
                     }
                     IconButton(onClick = viewModel::reloadPage) {
-                        Icon(Icons.Default.Refresh, contentDescription = strings.reload, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Refresh, contentDescription = strings.reload, modifier = Modifier.size(18.dp))
                     }
 
                     AssistChip(
@@ -301,16 +310,17 @@ fun BrowserScreen(
                 }
 
                 if (activeTab?.isLoading == true) {
+                    val progress = (activeTab.progress / 100f).coerceIn(0f, 1f)
                     LinearProgressIndicator(
-                        progress = { (activeTab.progress / 100f).coerceIn(0.05f, 1f) },
+                        progress = { progress },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(CircleShape)
-                            .height(4.dp),
+                            .height(3.dp),
+                        trackColor = MaterialTheme.colorScheme.outlineVariant,
                     )
                 }
 
-                AnimatedVisibility(visible = uiState.isFindInPageVisible) {
+                if (uiState.isFindInPageVisible) {
                     FindInPageBar(
                         query = uiState.findQuery,
                         matchIndex = activeTab?.findMatchIndex ?: 0,
@@ -322,7 +332,7 @@ fun BrowserScreen(
                     )
                 }
 
-                AnimatedVisibility(visible = uiState.bannerMessage != null) {
+                if (uiState.bannerMessage != null) {
                     Card(
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -357,59 +367,109 @@ fun BrowserScreen(
             }
         },
         bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
-                NavigationBarItem(
-                    selected = false,
-                    onClick = { showTabsSheet = true },
-                    icon = {
-                        BadgedBox(
-                            badge = {
-                                Badge { Text("${uiState.tabs.size}") }
-                            },
-                        ) {
-                            Icon(Icons.Default.Tab, contentDescription = strings.tabsLabel)
-                        }
-                    },
-                    label = { Text(strings.tabsLabel) },
-                    modifier = Modifier.testTag("nav_tabs_btn"),
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = { onOpenVaultDashboard(activeTab?.containerId) },
-                    icon = { Icon(Icons.Default.Shield, contentDescription = strings.protectionLabel) },
-                    label = { Text(strings.protectionLabel) },
-                    modifier = Modifier.testTag("nav_vault_btn"),
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = { showBookmarksHistorySheet = true },
-                    icon = { Icon(Icons.Default.Bookmark, contentDescription = strings.bookmarksLabel) },
-                    label = { Text(strings.bookmarksLabel) },
-                    modifier = Modifier.testTag("nav_bookmarks_btn"),
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onOpenSettings,
-                    icon = { Icon(Icons.Default.Settings, contentDescription = strings.settingsLabel) },
-                    label = { Text(strings.settingsLabel) },
-                    modifier = Modifier.testTag("nav_settings_btn"),
-                )
+            if (!showHome) {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                ) {
+                    NavigationBarItem(
+                        selected = bottomBarIndex == HOME_BOTTOM_INDEX,
+                        onClick = { showHome = true; bottomBarIndex = HOME_BOTTOM_INDEX },
+                        icon = { Icon(Icons.Default.Home, contentDescription = strings.homeTitle) },
+                        label = { Text(strings.homeTitle) },
+                        modifier = Modifier.testTag("nav_home_btn"),
+                    )
+                    NavigationBarItem(
+                        selected = bottomBarIndex == TABS_BOTTOM_INDEX,
+                        onClick = {
+                            showHome = false
+                            bottomBarIndex = TABS_BOTTOM_INDEX
+                            showTabsSheet = true
+                        },
+                        icon = {
+                            BadgedBox(
+                                badge = { Badge { Text("${uiState.tabs.size}") } },
+                            ) {
+                                Icon(Icons.Default.Tab, contentDescription = strings.tabsLabel)
+                            }
+                        },
+                        label = { Text(strings.tabsLabel) },
+                        modifier = Modifier.testTag("nav_tabs_btn"),
+                    )
+                    NavigationBarItem(
+                        selected = false,
+                        onClick = { onOpenVaultDashboard(activeTab?.containerId) },
+                        icon = { Icon(Icons.Default.Shield, contentDescription = strings.protectionLabel) },
+                        label = { Text(strings.protectionLabel) },
+                        modifier = Modifier.testTag("nav_vault_btn"),
+                    )
+                    NavigationBarItem(
+                        selected = false,
+                        onClick = { showBookmarksHistorySheet = true },
+                        icon = { Icon(Icons.Default.Bookmark, contentDescription = strings.bookmarksLabel) },
+                        label = { Text(strings.bookmarksLabel) },
+                        modifier = Modifier.testTag("nav_bookmarks_btn"),
+                    )
+                    NavigationBarItem(
+                        selected = false,
+                        onClick = onOpenSettings,
+                        icon = { Icon(Icons.Default.Settings, contentDescription = strings.settingsLabel) },
+                        label = { Text(strings.settingsLabel) },
+                        modifier = Modifier.testTag("nav_settings_btn"),
+                    )
+                }
             }
-        },
+        }
     ) { innerPadding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
+                .padding(innerPadding)
+                .padding(if (showHome && prefs.homeShortcutPosition == HomeShortcutPosition.BOTTOM) PaddingValues(bottom = 86.dp) else PaddingValues(0.dp)),
         ) {
             val isInspection = LocalInspectionMode.current
             val container = uiState.activeContainer
-            if (activeTab != null && renderGeckoWebView && !isInspection && container != null) {
-                GeckoSessionWebView(
-                    tab = activeTab,
-                    container = container,
-                    viewModel = viewModel,
+
+            if (showHome) {
+                HomeContent(
+                    strings = strings,
+                    bookmarks = bookmarks,
+                    historyItems = historyItems,
+                    shortcutPosition = prefs.homeShortcutPosition,
+                    onSearch = { query ->
+                        viewModel.navigateToInput(query)
+                        keyboardController?.hide()
+                        showHome = false
+                        bottomBarIndex = TABS_BOTTOM_INDEX
+                    },
+                    onNewTab = {
+                        viewModel.openNewTab(isPrivate = false)
+                        showHome = false
+                        bottomBarIndex = TABS_BOTTOM_INDEX
+                    },
+                    onNewPrivateTab = {
+                        viewModel.openNewTab(isPrivate = true)
+                        showHome = false
+                        bottomBarIndex = TABS_BOTTOM_INDEX
+                    },
+                    onOpenBookmarksHistory = { showBookmarksHistorySheet = true },
+                    onOpenSettings = onOpenSettings,
                 )
+            } else if (activeTab != null && renderGeckoWebView && !isInspection && container != null) {
+                val tab = activeTab
+                val activeContainer = uiState.activeContainer
+                if (activeContainer != null) {
+                    GeckoSessionWebView(
+                        tab = tab,
+                        container = activeContainer,
+                        viewModel = viewModel,
+                    )
+                } else {
+                    ReadyCard(
+                        tab = tab,
+                        onCaptureSnapshot = viewModel::captureManualSnapshotNow,
+                        onOpenVault = { onOpenVaultDashboard(tab.containerId) },
+                    )
+                }
             } else {
                 ReadyCard(
                     tab = activeTab,
@@ -417,28 +477,21 @@ fun BrowserScreen(
                     onOpenVault = { onOpenVaultDashboard(activeTab?.containerId) },
                 )
             }
-        }
-    }
 
-    if (showTabsSheet) {
-        ModalBottomSheet(onDismissRequest = { showTabsSheet = false }) {
-            TabsSwitcherSheet(
-                tabs = uiState.tabs,
-                activeTabId = uiState.activeTabId,
-                onSelectTab = {
-                    viewModel.selectTab(it)
-                    showTabsSheet = false
-                },
-                onCloseTab = viewModel::closeTab,
-                onNewNormalTab = {
-                    viewModel.openNewTab(isPrivate = false)
-                    showTabsSheet = false
-                },
-                onNewPrivateTab = {
-                    viewModel.openNewTab(isPrivate = true)
-                    showTabsSheet = false
-                },
-            )
+            if (showHome && prefs.homeShortcutPosition == HomeShortcutPosition.BOTTOM) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().align(Alignment.BottomEnd),
+                    contentAlignment = Alignment.BottomEnd,
+                ) {
+                    HomeShortcutButton(
+                        onClick = {
+                            viewModel.openNewTab(isPrivate = false)
+                            showHome = false
+                            bottomBarIndex = TABS_BOTTOM_INDEX
+                        },
+                    )
+                }
+            }
         }
     }
 
@@ -450,6 +503,8 @@ fun BrowserScreen(
                 onSelectUrl = { url ->
                     showBookmarksHistorySheet = false
                     viewModel.navigateToInput(url)
+                    showHome = false
+                    bottomBarIndex = TABS_BOTTOM_INDEX
                 },
                 onClearHistory = viewModel::clearBrowsingHistory,
             )
@@ -459,6 +514,34 @@ fun BrowserScreen(
     if (showDownloadsSheet) {
         ModalBottomSheet(onDismissRequest = { showDownloadsSheet = false }) {
             DownloadsSheet(downloads = downloads)
+        }
+    }
+
+    if (showTabsSheet) {
+        ModalBottomSheet(onDismissRequest = { showTabsSheet = false }) {
+            TabsSwitcherSheet(
+                tabs = uiState.tabs,
+                activeTabId = uiState.activeTabId,
+                onSelectTab = {
+                    viewModel.selectTab(it)
+                    showTabsSheet = false
+                    showHome = false
+                    bottomBarIndex = TABS_BOTTOM_INDEX
+                },
+                onCloseTab = viewModel::closeTab,
+                onNewNormalTab = {
+                    viewModel.openNewTab(isPrivate = false)
+                    showTabsSheet = false
+                    showHome = false
+                    bottomBarIndex = TABS_BOTTOM_INDEX
+                },
+                onNewPrivateTab = {
+                    viewModel.openNewTab(isPrivate = true)
+                    showTabsSheet = false
+                    showHome = false
+                    bottomBarIndex = TABS_BOTTOM_INDEX
+                },
+            )
         }
     }
 
@@ -486,6 +569,230 @@ fun BrowserScreen(
         )
     }
 }
+
+@Composable
+private fun HomeShortcutButton(onClick: () -> Unit) {
+    val strings = LocalMarbleStrings.current
+    FilledTonalIconButton(
+        onClick = onClick,
+        modifier = Modifier.size(52.dp).testTag("home_shortcut_btn"),
+    ) {
+        Icon(
+            imageVector = Icons.Default.Add,
+            contentDescription = strings.newTab,
+            modifier = Modifier.size(22.dp),
+        )
+    }
+}
+
+@Composable
+private fun HomeContent(
+    strings: com.marble098.marblebr.core.i18n.MarbleStrings,
+    bookmarks: List<BookmarkItem>,
+    historyItems: List<HistoryItem>,
+    shortcutPosition: HomeShortcutPosition,
+    onSearch: (String) -> Unit,
+    onNewTab: () -> Unit,
+    onNewPrivateTab: () -> Unit,
+    onOpenBookmarksHistory: () -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    val showTopShortcut = shortcutPosition == HomeShortcutPosition.TOP
+    var homeSearch by remember { mutableStateOf("") }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(if (showTopShortcut) PaddingValues(top = 72.dp, bottom = 16.dp) else PaddingValues(16.dp)),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            text = strings.homeTitle,
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = strings.homeIntro,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        OutlinedTextField(
+            value = homeSearch,
+            onValueChange = { homeSearch = it },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            shape = MaterialTheme.shapes.large,
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary) },
+            trailingIcon = {
+                if (homeSearch.isNotBlank()) {
+                    IconButton(onClick = { homeSearch = "" }) {
+                        Icon(Icons.Default.Close, contentDescription = strings.dismiss, modifier = Modifier.size(18.dp))
+                    }
+                }
+            },
+            placeholder = { Text(text = strings.homeSearchHint) },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+            keyboardActions = KeyboardActions(onGo = {
+                if (homeSearch.isNotBlank()) {
+                    onSearch(homeSearch)
+                    homeSearch = ""
+                }
+            }),
+        )
+
+        if (showTopShortcut) {
+            HomeShortcutActionRow(onNewTab = onNewTab)
+        }
+
+        SectionHeader(strings = strings, title = strings.homeShortcutsTitle, action = onOpenBookmarksHistory)
+        if (bookmarks.isEmpty()) {
+            EmptyState(icon = Icons.Default.BookmarkBorder, text = strings.homeEmptyShortcuts)
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(bookmarks.take(6), key = { it.id }) { bm ->
+                    LinkCard(
+                        title = bm.title.ifBlank { bm.url },
+                        subtitle = bm.url,
+                        icon = Icons.Default.Bookmark,
+                        onClick = { onSearch(bm.url) },
+                    )
+                }
+            }
+        }
+
+        SectionHeader(strings = strings, title = strings.homeRecentTitle, action = { onOpenBookmarksHistory() })
+        if (historyItems.isEmpty()) {
+            EmptyState(icon = Icons.Default.History, text = strings.homeEmptyRecent)
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(historyItems.take(8), key = { it.id }) { item ->
+                    LinkCard(
+                        title = item.title.ifBlank { item.url },
+                        subtitle = item.url,
+                        icon = Icons.Default.History,
+                        onClick = { onSearch(item.url) },
+                    )
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            QuickActionButton(icon = Icons.Default.Add, label = strings.newTab, onClick = onNewTab)
+            QuickActionButton(icon = Icons.Default.VisibilityOff, label = strings.newPrivateTab, onClick = onNewPrivateTab)
+            QuickActionButton(icon = Icons.Default.Bookmark, label = strings.bookmarksLabel, onClick = onOpenBookmarksHistory)
+            QuickActionButton(icon = Icons.Default.Settings, label = strings.settingsLabel, onClick = onOpenSettings)
+        }
+
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun SectionHeader(
+    strings: com.marble098.marblebr.core.i18n.MarbleStrings,
+    title: String,
+    action: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        TextButton(onClick = action) { Text(text = strings.homeSeeAll) }
+    }
+}
+
+@Composable
+private fun HomeShortcutActionRow(onNewTab: () -> Unit) {
+    val strings = LocalMarbleStrings.current
+    FilledTonalButton(
+        onClick = onNewTab,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(20.dp))
+            Text(text = strings.newTab, style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+@Composable
+private fun EmptyState(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.size(40.dp))
+        Text(text = text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun LinkCard(
+    title: String,
+    subtitle: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickActionButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    FilledTonalIconButton(onClick = onClick, modifier = Modifier.size(52.dp)) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(22.dp))
+            Text(text = label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+        }
+    }
+}
+
+/* ---------------- existing browser sub-components (kept) ---------------- */
 
 @Composable
 private fun BrowserOverflowMenu(
@@ -646,9 +953,7 @@ private fun GeckoSessionWebView(
                     },
                     onHealthRestored = viewModel::onHealthRestored,
                     onServerRevokedFallbackRequired = viewModel::onServerRevokedFallbackRequired,
-                    onDownloadRequested = { url, _ ->
-                        viewModel.enqueueDownload(url)
-                    },
+                    onDownloadRequested = { url, _ -> viewModel.enqueueDownload(url) },
                 )
                 setSession(geckoSession)
                 geckoSession.loadUri(tab.url)
@@ -689,9 +994,7 @@ private fun FindInPageBar(
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChanged,
-            modifier = Modifier
-                .weight(1f)
-                .testTag("find_in_page_input"),
+            modifier = Modifier.weight(1f).testTag("find_in_page_input"),
             singleLine = true,
             shape = MaterialTheme.shapes.large,
             placeholder = { Text(strings.findInPagePlaceholder) },
@@ -728,7 +1031,7 @@ private fun ReadyCard(
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
                         MaterialTheme.colorScheme.background,
                     ),
                 ),
@@ -940,8 +1243,8 @@ private fun LinkRow(title: String, url: String, onClick: () -> Unit) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(MaterialTheme.shapes.medium)
             .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
