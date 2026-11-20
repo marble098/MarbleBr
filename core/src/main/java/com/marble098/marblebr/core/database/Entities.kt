@@ -186,7 +186,7 @@ data class BrowserTabEntity(
     val createdAtEpochMillis: Long,
     val lastVisitedAtEpochMillis: Long,
     val positionIndex: Int,
-}
+)
 
 @Entity(tableName = "health_events", indices = [Index(value = ["containerId", "timestampEpochMillis"])])
 data class HealthEventEntity(
