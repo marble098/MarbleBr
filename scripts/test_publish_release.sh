@@ -7,39 +7,52 @@ export MOCK_DIR="$tmp"
 cat > "$tmp/gh" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "$1 $2" == "release view" ]]; then
-    if [[ ! -f "$MOCK_DIR/edited" ]]; then
-        cat "$MOCK_DIR/draft.json"
-    elif [[ "$(cat "$MOCK_DIR/edited")" == "latest" ]]; then
-        echo '{"isDraft":false,"isPrerelease":false}'
-    else
-        echo '{"isDraft":false,"isPrerelease":true}'
-    fi
-elif [[ "$1 $2" == "release edit" ]]; then
-    printf '%s\n' "$*" >> "$MOCK_DIR/calls"
-    if [[ "$*" == *'--latest=true'* ]]; then echo latest > "$MOCK_DIR/edited"; else echo prerelease > "$MOCK_DIR/edited"; fi
-elif [[ "$1" == "api" ]]; then
-    echo v2.0.0
-else
-    exit 1
-fi
+case "$1 $2" in
+    'api --paginate') cat "$MOCK_DIR/releases.json" ;;
+    'release download') cp "$MOCK_DIR/SHA256SUMS" "${@: -1}/SHA256SUMS" ;;
+    'release view')
+        if [[ "$(cat "$MOCK_DIR/edited")" == "latest" ]]; then
+            echo '{"isDraft":false,"isPrerelease":false}'
+        else
+            echo '{"isDraft":false,"isPrerelease":true}'
+        fi ;;
+    'release edit')
+        printf '%s\n' "$*" >> "$MOCK_DIR/calls"
+        if [[ "$*" == *'--latest=true'* ]]; then echo latest > "$MOCK_DIR/edited"; else echo prerelease > "$MOCK_DIR/edited"; fi ;;
+    *) [[ "$1" == api ]] && echo v2.0.0 ;;
+esac
 MOCK
 chmod +x "$tmp/gh"
 export PATH="$tmp:$PATH"
-cat > "$tmp/draft.json" <<'JSON'
-{"isDraft":true,"isPrerelease":false,"assets":[{"name":"MarbleBr-v2.0.0-arm64-v8a.apk"},{"name":"MarbleBr-v2.0.0-armeabi-v7a.apk"},{"name":"MarbleBr-v2.0.0-x86.apk"},{"name":"MarbleBr-v2.0.0-x86_64.apk"},{"name":"MarbleBr-v2.0.0-universal.apk"}]}
-JSON
+for abi in arm64-v8a armeabi-v7a x86_64 universal; do
+    digest="$(printf '%s' "$abi" | sha256sum | cut -d' ' -f1)"
+    printf '%s  MarbleBr-v2.0.0-%s.apk\n' "$digest" "$abi"
+done > "$tmp/SHA256SUMS"
+sha="$(sha256sum "$tmp/SHA256SUMS" | cut -d' ' -f1)"
+jq -Rn --arg sha "$sha" '
+    [{draft:true,prerelease:false,tag_name:"v2.0.0",assets:
+      ([inputs | split("  ") | {name:.[1],digest:("sha256:" + .[0]),state:"uploaded",size:1}]
+       + [{name:"SHA256SUMS",digest:("sha256:" + $sha),state:"uploaded",size:1}])}]
+' < "$tmp/SHA256SUMS" > "$tmp/good.json"
+cp "$tmp/good.json" "$tmp/releases.json"
 "$root/scripts/publish_release.sh" v2.0.0 latest
 grep -q -- '--draft=false --prerelease=false --latest=true' "$tmp/calls"
-rm "$tmp/edited"
 "$root/scripts/publish_release.sh" v2.0.0 prerelease
 grep -q -- '--draft=false --prerelease=true --latest=false' "$tmp/calls"
-rm "$tmp/edited"
-jq 'del(.assets[0])' "$tmp/draft.json" > "$tmp/incomplete.json"
-mv "$tmp/incomplete.json" "$tmp/draft.json"
-if "$root/scripts/publish_release.sh" v2.0.0 latest; then
-    echo 'Incomplete releases must not be published' >&2; exit 1
-fi
+
+reject() {
+    jq "$1" "$tmp/good.json" > "$tmp/releases.json"
+    rm -f "$tmp/calls"
+    if "$root/scripts/publish_release.sh" v2.0.0 latest || [[ -e "$tmp/calls" ]]; then
+        echo "Unsafe draft was not rejected: $1" >&2; exit 1
+    fi
+}
+reject 'del(.[0].assets[0])'
+reject '.[0].assets[0].digest = "sha256:bad"'
+reject '.[0].assets[0].state = "starter"'
+reject '.[0].assets += [{name:"MarbleBr-v2.0.0-x86.apk",digest:"sha256:bad",state:"uploaded",size:1}]'
+reject '. += [{draft:false,prerelease:true,tag_name:"v2.10.0",assets:[]}]'
+reject '.[0].draft = false'
 if "$root/scripts/publish_release.sh" 'v2.0.0;bad' latest; then
     echo 'Invalid tags must be rejected' >&2; exit 1
 fi

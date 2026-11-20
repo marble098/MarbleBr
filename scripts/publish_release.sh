@@ -8,17 +8,21 @@ if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "$channel" != "latest" && "
     exit 1
 fi
 
-release="$(gh release view "$tag" --json isDraft,isPrerelease,assets)"
-if [[ "$(jq -r '.isDraft' <<< "$release")" != "true" ]]; then
-    echo "Release $tag is not a draft; refusing to change a published release." >&2
+source "$(dirname "$0")/release_assets.sh"
+releases="$(list_releases)"
+release="$(jq -ce --arg tag "$tag" '.[] | select(.tag_name == $tag and .draft)' <<< "$releases")" || {
+    echo "Release $tag is not a draft; refusing to publish." >&2
+    exit 1
+}
+newest="$( { printf '%s\n' "$tag"; public_baselines <<< "$releases"; } | sort -V | tail -1)"
+if [[ "$newest" != "$tag" ]]; then
+    echo "Draft $tag is older than published $newest; publishing it could offer users a downgrade." >&2
     exit 1
 fi
-for abi in arm64-v8a armeabi-v7a x86 x86_64 universal; do
-    if ! jq -e --arg name "MarbleBr-${tag}-${abi}.apk" '.assets | any(.name == $name)' <<< "$release" >/dev/null; then
-        echo "Draft $tag is missing the $abi APK; refusing to publish." >&2
-        exit 1
-    fi
-done
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+gh release download "$tag" --pattern SHA256SUMS --dir "$tmp"
+verify_release_assets "$release" "$tag" "$tmp/SHA256SUMS"
 
 if [[ "$channel" == "latest" ]]; then
     gh release edit "$tag" --draft=false --prerelease=false --latest=true

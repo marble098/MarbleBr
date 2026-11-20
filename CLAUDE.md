@@ -26,7 +26,7 @@
    - `versionCode` همیشه صعودی است.
 
 3. **خروجی‌های الزامی Release در هر Merge به `main`:**
-   - ۵ فایل APK مجزا: `arm64-v8a`، `armeabi-v7a`، `x86`، `x86_64` و `universal`.
+   - ۴ فایل APK مجزا: `arm64-v8a`، `armeabi-v7a`، `x86_64` و `universal`.
    - امضاشده با Keystore از GitHub Secrets و پیوست‌شده به GitHub Release همراه با متن فارسی آخرین نسخه از `CHANGELOG.md`.
 
 4. **معماری ماژولار:**

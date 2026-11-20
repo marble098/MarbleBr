@@ -9,13 +9,12 @@
 با هر Merge یا Push به شاخه `main` (و در بررسی‌های Pull Request):
 
 1. **ساخت APK برای تمامی معماری‌ها (ABI Splits + Universal):**
-   - بیلد ریلیز باید دقیقاً ۵ فایل APK تولید کند:
+   - بیلد ریلیز باید دقیقاً ۴ فایل APK تولید کند:
      - `arm64-v8a`
      - `armeabi-v7a`
-     - `x86`
      - `x86_64`
      - `universal` (شامل تمام معماری‌ها)
-   - تمامی APKها باید با Keystore تعریف‌شده در **GitHub Secrets** (`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`) امضا شوند.
+   - در شاخهٔ انتشار، تمام APKها باید با Keystore تعریف‌شده در **GitHub Secrets** (`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`) امضا شوند. PRها با کلید موقت بررسی می‌شوند و APK آن‌ها برای نصب روی نسخهٔ رسمی نیست.
 
 2. **ثبت الزامی تغییرات در `CHANGELOG.md`:**
    - برای هر نسخه یا PR، یک ورودی جدید به زبان **فارسی**، خلاصه و دقیق در بالای فایل `CHANGELOG.md` ثبت شود.
@@ -35,7 +34,7 @@
      - **`versionCode`**: بیشینه شماره اجرای CI (`GITHUB_RUN_NUMBER`)، تعداد کل کامیت‌ها، و `previousVersionCode + 1` (همواره اکیداً صعودی).
 
 4. **پیش‌نویس خودکار در GitHub Releases:**
-   - هر ۵ فایل APK امضاشده به GitHub Release متناظر با تگ نسخه (`vX.Y.Z`) پیوست می‌شوند و انتشار نهایی پس از بازبینی مالک مخزن دستی است.
+   - هر ۴ فایل APK امضاشده به همراه `SHA256SUMS` به GitHub Release متناظر با تگ نسخه (`vX.Y.Z`) پیوست می‌شوند و انتشار نهایی پس از بازبینی مالک مخزن دستی است.
    - متن Release دقیقاً از آخرین بخش ثبت‌شده در `CHANGELOG.md` استخراج می‌شود.
 
 5. **آپدیت یکپارچه وابستگی‌ها (تک‌منبع واحد):**
