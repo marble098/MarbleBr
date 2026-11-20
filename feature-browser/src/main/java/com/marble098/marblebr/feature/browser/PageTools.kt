@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -150,6 +151,7 @@ private fun speakChunks(engine: TextToSpeech?, text: String) {
  * طراحی ساده و آرام است: یک آیکنِ گرادیانی، یک جملهٔ کوتاه و دو دکمه. هیچ گزینهٔ فنی‌ای
  * نمایش داده نمی‌شود تا برای همه قابل فهم باشد.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ReadAloudSheet(
     text: String,
@@ -235,6 +237,7 @@ internal fun ReadAloudSheet(
  * برای هر دسترسی یک ردیف با نام، توضیح و قرصِ سه‌حالته (اجازه / بپرس / بلاک) نمایش داده
  * می‌شود. لمسِ قرص، وضعیت را می‌چرخاند و بلافاصله روی همان نشست اعمال می‌شود.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SitePermissionsSheet(
     profile: SitePermissionProfile,

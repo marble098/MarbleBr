@@ -434,6 +434,17 @@ class ContainerSessionManager @Inject constructor(
     }
 
     /**
+     * ویژگی ۷ Never Sign-out Engine:
+     * دکمه «پاک کردن کش» فقط و فقط کش شبکه و تصاویر (`ALL_CACHES`) را پاک می‌کند
+     * و هرگز به کوکی‌ها (`COOKIES`)، حافظه محلی (`DOM_STORAGES`) یا نشست‌ها (`AUTH_SESSIONS`) دست نمی‌زند.
+     */
+    fun clearCachesOnly(): Long {
+        val flags = SAFE_CACHE_ONLY_CLEAR_FLAGS
+        geckoRuntime?.storageController?.clearData(flags)
+        return flags
+    }
+
+    /**
      * خروج دستی واقعی («Sign out now») به درخواست صریح کاربر برای یک کانتینر/سایت مشخص:
      * ۱. پاک‌سازی کامل داده‌های contextId آن کانتینر در GeckoView.
      * ۲. پاک‌سازی کوکی‌ها و DOM Storage آن دامنه.
