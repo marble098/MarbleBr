@@ -203,6 +203,9 @@ class ContainerSessionManager @Inject constructor(
         activeSessions[tabId]?.loadUri(url)
     }
 
+    /** نشستِ بازِ فعلیِ یک تب؛ برای اتصالِ دوبارهٔ نما هنگام بازترکیب (recomposition) استفاده می‌شود. */
+    fun activeSession(tabId: String): GeckoSession? = activeSessions[tabId]
+
     fun stopLoading(tabId: String) {
         activeSessions[tabId]?.stop()
     }
