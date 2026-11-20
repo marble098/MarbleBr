@@ -372,7 +372,9 @@ fun BrowserScreen(
                 }
             }
         },
-        bottomBar = if (showHome) null else {
+        bottomBar = if (showHome) {
+            null
+        } else {
             NavigationBar(
                 containerColor = MaterialTheme.colorScheme.surfaceContainer,
             ) {
@@ -422,7 +424,8 @@ fun BrowserScreen(
                     modifier = Modifier.testTag("nav_settings_btn"),
                 )
             }
-        },
+        }
+    },
     ) { innerPadding ->
         Box(
             modifier = Modifier
