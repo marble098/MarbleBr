@@ -79,9 +79,14 @@ class SessionVaultFeaturesTest {
     @Test
     fun `unpinning releases the version again`() = runTest {
         val meta = vaultManager.captureSnapshot(payload = payload())
+
+        // setSnapshotPinned وضعیتِ تازه را برمی‌گرداند: true برای قفل، false برای بازکردن.
         assertEquals(true, vaultManager.setSnapshotPinned(meta.id, true))
-        assertEquals(true, vaultManager.setSnapshotPinned(meta.id, false))
+        assertTrue(dao.getBySnapshotId(meta.id)?.isPinned == true)
+
+        assertEquals(false, vaultManager.setSnapshotPinned(meta.id, false))
         assertFalse(dao.getBySnapshotId(meta.id)?.isPinned == true)
+
         assertNull(vaultManager.setSnapshotPinned("missing-id", true))
     }
 
