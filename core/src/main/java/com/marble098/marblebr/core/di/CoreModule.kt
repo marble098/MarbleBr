@@ -6,6 +6,9 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.room.Room
+import androidx.room.migration.Migration
+import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.execSQL
 import com.marble098.marblebr.core.database.BookmarkDao
 import com.marble098.marblebr.core.database.ContainerDao
 import com.marble098.marblebr.core.database.DownloadDao
@@ -24,6 +27,22 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object CoreModule {
 
+    /**
+     * مهاجرتِ ۱ → ۲: افزودنِ ستونِ «نسخهٔ طلایی» (`isPinned`) بدون پاک‌کردنِ داده‌ها.
+     *
+     * چرا مهم است؟ مرورگری که تمام ارزشش «نگه‌داشتنِ ورود» است، نباید با یک آپدیت نسخه‌های
+     * ذخیره‌شده و کانتینرها را از دست بدهد. پیش از این، ارتقای نسخهٔ دیتابیس به
+     * `fallbackToDestructiveMigration` می‌رسید و همهٔ جدول‌ها پاک می‌شدند؛ حالا این مهاجرت
+     * داده‌های موجود را دست‌نخورده نگه می‌دارد و فقط ستون تازه را با مقدار پیش‌فرض ۰ می‌سازد.
+     */
+    private val MIGRATION_1_2 = object : Migration(1, 2) {
+        override fun migrate(connection: SQLiteConnection) {
+            connection.execSQL(
+                "ALTER TABLE session_snapshots ADD COLUMN isPinned INTEGER NOT NULL DEFAULT 0",
+            )
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): MarbleBrDatabase =
@@ -31,7 +50,11 @@ object CoreModule {
             context,
             MarbleBrDatabase::class.java,
             "marblebr_vault.db",
-        ).fallbackToDestructiveMigration(dropAllTables = true).build()
+        )
+            .addMigrations(MIGRATION_1_2)
+            // آخرین سدِ دفاعی برای نسخه‌های نامعلوم/آینده؛ مسیر عادی همین مهاجرت است.
+            .fallbackToDestructiveMigration(dropAllTables = true)
+            .build()
 
     @Provides
     fun provideContainerDao(db: MarbleBrDatabase): ContainerDao = db.containerDao()
