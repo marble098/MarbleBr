@@ -27,6 +27,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.calculateBottomPadding
+import androidx.compose.foundation.layout.calculateTopPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -203,6 +205,12 @@ fun BrowserScreen(
         }
     }
     val isBookmarked = activeTab != null && bookmarks.any { it.url == activeTab.url }
+
+    // در حالت شیشه‌ای شناور، نوارها روی محتوا می‌نشینند؛ پس خودِ محتوا فقط به اندازهٔ
+    // ارتفاع نوارها فاصلهٔ داخلی می‌گیرد تا صفحه واقعاً از پشت شیشه دیده شود.
+    val floatingChrome = prefs.chromeBarStyle == ChromeBarStyle.FLOATING
+    val floatingTopSpacer = if (floatingChrome) 104.dp else 0.dp
+    val floatingBottomSpacer = if (floatingChrome) 76.dp else 0.dp
 
     Scaffold(
         modifier = Modifier.imePadding(),
@@ -491,7 +499,10 @@ fun BrowserScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(
+                    top = if (floatingChrome) floatingTopSpacer else innerPadding.calculateTopPadding(),
+                    bottom = if (floatingChrome) floatingBottomSpacer else innerPadding.calculateBottomPadding(),
+                )
                 .padding(bottom = if (hasHomeShortcut) 58.dp else 0.dp),
         ) {
             // با عوض شدن صفحه یا تب، پرسشِ بازگشتِ بی‌ربط بسته می‌شود.
