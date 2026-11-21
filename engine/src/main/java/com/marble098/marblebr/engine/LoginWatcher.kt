@@ -121,5 +121,4 @@ class LoginWatcher @Inject constructor(
         lastObserved.remove(tabId)
         siteEngine.forgetTab(tabId)
     }
-
 }

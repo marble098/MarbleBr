@@ -309,7 +309,6 @@ abstract class MarbleStrings {
     abstract fun vaultExpiryRenewedCount(count: Int): String
     abstract fun vaultInsuranceDone(count: Int): String
 
-
     // ---------------------------------------- افزودن هر سایتی
     abstract val addAnySiteTitle: String
     abstract val addAnySiteDescription: String
