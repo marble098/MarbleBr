@@ -760,7 +760,7 @@ class ContainerSessionManager @Inject constructor(
                                         } else {
                                             false
                                         }
-                                        if (manual) request?.response?.complete(saved)
+                                        if (manual) request.response.complete(saved)
                                     }
                                 }
 
