@@ -6,7 +6,6 @@ import com.marble098.marblebr.core.database.ContainerDao
 import com.marble098.marblebr.core.database.ContainerEntity
 import com.marble098.marblebr.core.database.HealthEventDao
 import com.marble098.marblebr.core.database.HealthEventEntity
-import com.marble098.marblebr.core.database.HistoryEntity
 import com.marble098.marblebr.core.i18n.LocalizationManager
 import com.marble098.marblebr.core.i18n.MarbleStrings
 import com.marble098.marblebr.core.model.SessionExpiryAssessment

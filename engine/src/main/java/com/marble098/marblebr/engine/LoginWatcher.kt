@@ -44,11 +44,16 @@ class LoginWatcher @Inject constructor(
             )
             sessionManager.evaluateInPageForLogin(tabId, LoginObservationProbe.OBSERVE_SCRIPT) { raw ->
                 siteEngine.onPageLoaded(tabId, url, raw)
-                siteEngine.passwordStudio.onPageObserved(
-                    tabId = tabId,
-                    pageUrl = url,
-                    observationRaw = raw,
-                )
+                // فراخوانیِ suspend از کال‌بکِ همگامِ پورت مجاز نیست؛ در همان scope ادامه می‌یابد.
+                scope.launch {
+                    runCatching {
+                        siteEngine.passwordStudio.onPageObserved(
+                            tabId = tabId,
+                            pageUrl = url,
+                            observationRaw = raw,
+                        )
+                    }
+                }
             }
         }
     }
@@ -105,7 +110,7 @@ class LoginWatcher @Inject constructor(
      * فقط مقادیرِ فیلدها خوانده می‌شود تا کارتِ ذخیره ساخته شود؛ چیزی ذخیره نمی‌شود.
      */
     fun captureCurrentForm(tabId: String, url: String) {
-        sessionManager.evaluateInPageForLogin(tabId, LoginObservationProbe.CAPTURE_SUBMIT_SCRIPT) { raw ->
+        runInPage(tabId, LoginObservationProbe.CAPTURE_SUBMIT_SCRIPT) { raw ->
             val submitted = LoginObservationProbe.parseSubmitted(raw) ?: return@runInPage
             captureSubmitted(
                 tabId = tabId,
