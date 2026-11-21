@@ -50,7 +50,7 @@ import javax.inject.Inject
 import javax.inject.Provider
 import javax.inject.Singleton
 
-data class PageContextTarget(val linkUrl: String?, val imageUrl: String?)
+data class PageContextTarget(val linkUrl: String?, val imageUrl: String?, val text: String? = null)
 
 /** Restore stage only; never include cookie contents in diagnostic state. */
 enum class CookieRestoreStatus {
@@ -588,7 +588,7 @@ class ContainerSessionManager @Inject constructor(
             session.isOpen && sessionContainers[session] == container.id && extractDomain(port.sender.url) == container.domain
         } ?: return false
         val tabId = activeSessions.entries.firstOrNull { it.value === match.key }?.key ?: return false
-        return capturePageSnapshot(tabId, match.value.sender.url)
+        return capturePageSnapshot(tabId, match.value.sender.url, manual = true)
     }
 
     /** Restore only into an open tab of the exact account and origin, never into a global cookie jar. */
@@ -658,18 +658,26 @@ class ContainerSessionManager @Inject constructor(
      * با بازهٔ ثابت ۳۰ دقیقه اجرا می‌شد؛ پس تغییر بازه یا خاموش‌کردنِ محافظت در داشبورد هیچ اثری
      * روی کارِ زمان‌بندی‌شده نداشت (باگ عملکردی). حالا بازه از تنظیماتِ سایت‌ها محاسبه می‌شود.
      */
-    suspend fun capturePageSnapshot(tabId: String, pageUrl: String): Boolean {
-        val session = activeSessions[tabId] ?: return false
-        val port = capturePorts[session] ?: return false
-        if (!sameOrigin(port.sender.url, pageUrl) || snapshotRequests.containsKey(session)) return false
-        val request = SnapshotRequest(UUID.randomUUID().toString(), CompletableDeferred())
-        snapshotRequests[session] = request
-        return try {
-            port.postMessage(JSONObject().put("type", "CAPTURE_PAGE").put("requestId", request.id))
-            withTimeoutOrNull(4_000) { request.response.await() } ?: false
-        } finally {
-            snapshotRequests.remove(session)
+    suspend fun capturePageSnapshot(tabId: String, pageUrl: String, manual: Boolean = false): Boolean {
+        val maxAttempts = if (manual) 2 else 1
+        for (attempt in 1..maxAttempts) {
+            val session = activeSessions[tabId] ?: return false
+            val port = capturePorts[session] ?: return false
+            if (!sameOrigin(port.sender.url, pageUrl) || snapshotRequests.containsKey(session)) return false
+            val request = SnapshotRequest(UUID.randomUUID().toString(), CompletableDeferred())
+            snapshotRequests[session] = request
+            try {
+                port.postMessage(JSONObject().put("type", "CAPTURE_PAGE").put("requestId", request.id))
+                val result = withTimeoutOrNull(if (manual) MANUAL_SNAPSHOT_TIMEOUT_MILLIS else AUTO_SNAPSHOT_TIMEOUT_MILLIS) {
+                    request.response.await()
+                }
+                if (result != null) return result
+                if (attempt < maxAttempts) delay(MANUAL_SNAPSHOT_RETRY_DELAY_MILLIS)
+            } finally {
+                snapshotRequests.remove(session)
+            }
         }
+        return false
     }
 
     private fun sameOrigin(first: String, second: String): Boolean = runCatching {
@@ -1023,7 +1031,12 @@ class ContainerSessionManager @Inject constructor(
                 val link = element.linkUri?.takeIf(::isHttpUrl)
                 val image = element.srcUri?.takeIf { element.type == GeckoSession.ContentDelegate.ContextElement.TYPE_IMAGE }
                     ?.takeIf(::isHttpUrl)
-                if (link != null || image != null) onContextMenu(PageContextTarget(link, image))
+                // Long-pressing anywhere opens the context menu ("keep holding your finger on
+                // the page content"): links and images offer their actions, plain content offers
+                // the page-level ones. (`altText`/`title` are the text-ish properties available
+                // on the session context element across GeckoView builds.)
+                val text = (element.altText ?: element.title)?.trim()?.takeIf { it.isNotEmpty() }
+                onContextMenu(PageContextTarget(link, image, text))
             }
 
             override fun onTitleChange(session: GeckoSession, title: String?) {
@@ -1075,8 +1088,12 @@ class ContainerSessionManager @Inject constructor(
         val array = json.optJSONArray("cookies") ?: JSONArray()
         val observed = (0 until array.length()).mapNotNull { index ->
             val item = array.optJSONObject(index) ?: return@mapNotNull null
-            val domain = item.optString("domain").removePrefix(".").lowercase()
-            val hostOnly = item.optBoolean("isHostOnly", true)
+            // A blank domain means the cookie came from the page's own document.cookie (the
+            // document.cookie fallback in the extension): default it to the page host instead
+            // of guessing. (For jar cookies the background always fills in a domain.)
+            val rawDomain = item.optString("domain").removePrefix(".").lowercase()
+            val hostOnly = if (rawDomain.isBlank()) true else item.optBoolean("isHostOnly", true)
+            val domain = rawDomain.ifBlank { host }
             if (domain.isBlank() || (hostOnly && domain != host) ||
                 (!hostOnly && domain != host && !host.endsWith(".$domain"))
             ) {
@@ -1143,6 +1160,9 @@ class ContainerSessionManager @Inject constructor(
 
     companion object {
         private const val EXTENSION_START_TIMEOUT_MILLIS = 10_000L
+        private const val AUTO_SNAPSHOT_TIMEOUT_MILLIS = 4_000L
+        private const val MANUAL_SNAPSHOT_TIMEOUT_MILLIS = 9_000L
+        private const val MANUAL_SNAPSHOT_RETRY_DELAY_MILLIS = 500L
         const val EXTENSION_ASSET_URI = "resource://android/assets/extensions/never_signout/"
         const val EXTENSION_ID = "never_signout@marblebr.marble098.com"
         const val NATIVE_BRIDGE_APP_ID = "marble_never_signout"

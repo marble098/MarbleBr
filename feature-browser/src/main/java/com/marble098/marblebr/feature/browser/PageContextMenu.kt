@@ -12,6 +12,10 @@ import androidx.compose.ui.unit.dp
 import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
 import com.marble098.marblebr.engine.PageContextTarget
 
+/**
+ * پیوند و تصویر روی صفحه را نشان می‌دهد؛ با همان منو، وقتی روی هر بخشی از صفحه
+ * نگه داشتید، گزینه‌های مختلف (کپی متن، به اشتراک‌گذاشتن صفحه، نشان کردن در نشان‌ها و…).
+ */
 @Composable
 internal fun PageContextMenu(
     target: PageContextTarget,
@@ -21,6 +25,9 @@ internal fun PageContextMenu(
     onShare: (String) -> Unit,
     onDownload: (String) -> Unit,
     onSavePdf: () -> Unit,
+    onSharePage: () -> Unit,
+    onBookmarkPage: () -> Unit,
+    onCopyText: () -> Unit,
 ) {
     val strings = LocalMarbleStrings.current
     Column(Modifier.fillMaxWidth().padding(20.dp)) {
@@ -35,6 +42,11 @@ internal fun PageContextMenu(
             TextButton(onClick = { onCopy(image) }) { Text(strings.contextCopyImage) }
             if (canDownload) TextButton(onClick = { onDownload(image) }) { Text(strings.contextSaveImage) }
         }
+        if (!target.text.isNullOrBlank()) {
+            TextButton(onClick = onCopyText) { Text(strings.contextCopyText) }
+        }
+        TextButton(onClick = onSharePage) { Text(strings.menuSharePage) }
+        TextButton(onClick = onBookmarkPage) { Text(strings.bookmarkToggle) }
         TextButton(onClick = onSavePdf) { Text(strings.contextSavePdf) }
     }
 }

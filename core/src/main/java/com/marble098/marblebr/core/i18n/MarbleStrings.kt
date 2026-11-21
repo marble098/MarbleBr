@@ -56,6 +56,8 @@ abstract class MarbleStrings {
     abstract val contextCopyImage: String
     abstract val contextShareText: String
     abstract val contextSavePdf: String
+    abstract val contextCopyText: String
+    abstract val menuSharePage: String
     abstract val pdfSaved: String
     abstract val pdfFailed: String
     abstract val credentialUnlock: String
@@ -710,7 +712,7 @@ private object PersianStrings : MarbleStrings() {
     override val credentialCopyUser = "کپی نام کاربری"
     override val credentialCopyPassword = "کپی گذرواژه"
     override val credentialCopied = "کپی شد؛ پس از ۳۰ ثانیه پاک می‌شود."
-    override val contextTitle = "گزینه‌های پیوند و تصویر"
+    override val contextTitle = "گزینه‌های صفحه"
     override val contextOpenTab = "باز کردن پیوند در تب تازه"
     override val contextCopyLink = "کپی پیوند"
     override val contextShareLink = "اشتراک پیوند"
@@ -718,6 +720,8 @@ private object PersianStrings : MarbleStrings() {
     override val contextCopyImage = "کپی آدرس تصویر"
     override val contextShareText = "اشتراک متن"
     override val contextSavePdf = "ذخیره صفحه به صورت PDF"
+    override val contextCopyText = "کپی متن"
+    override val menuSharePage = "به اشتراک گذاشتن صفحه"
     override val pdfSaved = "صفحه به صورت PDF ذخیره شد."
     override val pdfFailed = "ذخیره صفحه ممکن نشد."
     override val credentialUnlock = "باز کردن مخزن"
@@ -1291,7 +1295,7 @@ private object EnglishStrings : MarbleStrings() {
     override val credentialCopyUser = "Copy username"
     override val credentialCopyPassword = "Copy password"
     override val credentialCopied = "Copied; cleared after 30 seconds."
-    override val contextTitle = "Link and image actions"
+    override val contextTitle = "Page options"
     override val contextOpenTab = "Open link in new tab"
     override val contextCopyLink = "Copy link"
     override val contextShareLink = "Share link"
@@ -1299,6 +1303,8 @@ private object EnglishStrings : MarbleStrings() {
     override val contextCopyImage = "Copy image address"
     override val contextShareText = "Share text"
     override val contextSavePdf = "Save page as PDF"
+    override val contextCopyText = "Copy text"
+    override val menuSharePage = "Share page"
     override val pdfSaved = "Page saved as PDF."
     override val pdfFailed = "Could not save the page."
     override val credentialUnlock = "Unlock vault"
