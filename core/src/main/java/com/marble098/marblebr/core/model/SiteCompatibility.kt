@@ -296,9 +296,12 @@ object UrlVariantResolver {
         val mobileBase = MOBILE_PREFIXES.firstOrNull { canonical.startsWith(it) }
         val mobileHost = when {
             mobileBase != null -> null
+
             canonical.isBlank() -> null
+
             // سایت‌های تک‌برچسبی مثل localhost نسخهٔ موبایل ندارند.
             !canonical.contains('.') -> null
+
             else -> "https://m.$canonical$path"
         }
         val canonicalHost = if (host != canonical) "https://$canonical$path" else null

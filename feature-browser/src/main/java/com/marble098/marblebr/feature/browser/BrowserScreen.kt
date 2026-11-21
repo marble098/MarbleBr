@@ -950,7 +950,9 @@ private fun BrowserTopBar(
                     SessionHealthStatus.HEALTHY,
                     SessionHealthStatus.RECOVERED_FROM_VAULT,
                     -> colors.primary
+
                     SessionHealthStatus.SERVER_REVOKED_FALLBACK -> colors.error
+
                     else -> colors.outline
                 },
                 size = 42.dp,

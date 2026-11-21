@@ -216,7 +216,9 @@ class CredentialVault @Inject constructor(
             val withScheme = if (trimmed.contains("://")) trimmed else "https://$trimmed"
             return runCatching {
                 val uri = URI(withScheme)
-                if (uri.host.isNullOrBlank()) withScheme else {
+                if (uri.host.isNullOrBlank()) {
+                    withScheme
+                } else {
                     val scheme = uri.scheme.lowercase()
                     val path = uri.rawPath.orEmpty()
                     val query = uri.rawQuery?.let { "?$it" }.orEmpty()

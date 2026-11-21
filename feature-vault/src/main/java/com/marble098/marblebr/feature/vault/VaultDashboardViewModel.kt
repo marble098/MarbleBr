@@ -212,6 +212,7 @@ class VaultDashboardViewModel @Inject constructor(
                         _pendingBackup.value = PendingBackup(text = outcome.text, fileName = outcome.fileName)
                         notify { it.backupSavedTo }
                     }
+
                     is BackupOutcome.Failure -> notify { strings ->
                         when (outcome.problem) {
                             com.marble098.marblebr.core.model.BackupProblem.EMPTY_BACKUP -> strings.backupEmpty
@@ -272,10 +273,12 @@ class VaultDashboardViewModel @Inject constructor(
                             )
                         }
                     }
+
                     is RestoreOutcome.Failure -> {
                         _restorePreview.value = null
                         notify { strings -> restoreProblemMessage(strings, outcome.problem) }
                     }
+
                     is RestoreOutcome.Success -> _restorePreview.value = outcome.preview
                 }
             } finally {
@@ -335,11 +338,15 @@ class VaultDashboardViewModel @Inject constructor(
     private fun restoreProblemMessage(strings: MarbleStrings, problem: com.marble098.marblebr.core.model.BackupProblem): String =
         when (problem) {
             com.marble098.marblebr.core.model.BackupProblem.WRONG_PASSWORD -> strings.backupWrongPassword
+
             com.marble098.marblebr.core.model.BackupProblem.NOT_A_BACKUP,
             com.marble098.marblebr.core.model.BackupProblem.UNSUPPORTED_VERSION,
             -> strings.backupNotABackup
+
             com.marble098.marblebr.core.model.BackupProblem.EMPTY_BACKUP -> strings.backupEmpty
+
             com.marble098.marblebr.core.model.BackupProblem.EMPTY_PASSWORD -> strings.backupPasswordTooShort
+
             com.marble098.marblebr.core.model.BackupProblem.CORRUPTED -> strings.backupFailed
         }
 
@@ -447,9 +454,12 @@ class VaultDashboardViewModel @Inject constructor(
             val outcome = sessionManager.restoreSnapshotOnOpenTab(snapshot)
             when {
                 outcome.payloadUnavailable -> notify { it.feedbackRestoreFailed }
+
                 outcome.openTabMissing -> notify { it.vaultRestoreNeedsOpenTab }
+
                 outcome.cookiesRestored == 0 && outcome.storageKeysRestored == 0 ->
                     notify { it.feedbackRestoreEmpty }
+
                 else -> notify {
                     it.feedbackRestored(
                         snapshot.domain.ifBlank { it.restore },

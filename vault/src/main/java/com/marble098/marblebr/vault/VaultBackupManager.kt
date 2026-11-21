@@ -100,6 +100,7 @@ class VaultBackupManager @Inject constructor(
         ignoreUnknownKeys = true
         encodeDefaults = true
     }
+
     /** آخرین بستهٔ تأییدشده برای مرحلهٔ دوم؛ فقط در حافظه و فقط تا نوشتن. */
     private var pendingPayload: VaultBackupPayload? = null
 

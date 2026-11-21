@@ -51,7 +51,11 @@ class FlatJson private constructor(private val values: Map<String, Any>) {
                 val valueResult = readValue(trimmed, index, end) ?: skipUntilSeparator(trimmed, index, end) ?: return null
                 values[keyResult.first] = valueResult.first
                 index = skipWhitespace(trimmed, valueResult.second, end)
-                if (index < end && trimmed[index] == ',') index++ else if (index < end) return null
+                if (index < end && trimmed[index] == ',') {
+                    index++
+                } else if (index < end) {
+                    return null
+                }
             }
             return FlatJson(values)
         }
@@ -70,25 +74,34 @@ class FlatJson private constructor(private val values: Map<String, Any>) {
                 val char = text[index]
                 when {
                     char == '"' -> return builder.toString() to index + 1
+
                     char == '\\' -> {
                         if (index + 1 >= end) return null
                         when (val escape = text[index + 1]) {
                             '"' -> builder.append('"')
+
                             '\\' -> builder.append('\\')
+
                             '/' -> builder.append('/')
+
                             'n' -> builder.append('\n')
+
                             'r' -> builder.append('\r')
+
                             't' -> builder.append('\t')
+
                             'u' -> {
                                 if (index + 5 >= end) return null
                                 val code = text.substring(index + 2, index + 6).toIntOrNull(16) ?: return null
                                 builder.append(code.toChar())
                                 index += 4
                             }
+
                             else -> builder.append(escape)
                         }
                         index += 2
                     }
+
                     else -> {
                         builder.append(char)
                         index++
@@ -107,13 +120,17 @@ class FlatJson private constructor(private val values: Map<String, Any>) {
                 val char = text[index]
                 when {
                     inString && char == '\\' -> index++
+
                     char == '"' -> inString = !inString
+
                     !inString && (char == '{' || char == '[') -> depth++
+
                     !inString && (char == '}' || char == ']') -> {
                         if (depth == 0) return null
                         depth--
                         if (depth == 0) return "" to index + 1
                     }
+
                     !inString && char == ',' && depth == 0 -> return "" to index
                 }
                 index++

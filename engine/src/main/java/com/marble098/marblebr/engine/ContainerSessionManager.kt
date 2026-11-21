@@ -181,8 +181,10 @@ class ContainerSessionManager @Inject constructor(
         val occupied = containerDao.getById(defaultId)
         val id = when {
             isPinnedPwa -> "${defaultId}_pwa_${UUID.randomUUID()}"
+
             occupied != null && occupied.domain != domain ->
                 "${defaultId}_default_${UUID.nameUUIDFromBytes(domain.toByteArray())}"
+
             else -> defaultId
         }
         if (!isPinnedPwa) {
@@ -516,10 +518,13 @@ class ContainerSessionManager @Inject constructor(
         val profile = permissionProfiles[tabId]
         val state = when (permission) {
             GeckoSession.PermissionDelegate.PERMISSION_GEOLOCATION -> profile?.stateOf(SitePermission.GEOLOCATION)
+
             GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION -> profile?.stateOf(SitePermission.NOTIFICATIONS)
+
             GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_AUDIBLE,
             GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_INAUDIBLE,
             -> profile?.stateOf(SitePermission.AUTOPLAY)
+
             else -> null
         } ?: PermissionState.ASK
         return when (state) {
@@ -726,6 +731,7 @@ class ContainerSessionManager @Inject constructor(
                             when (json.optString("event")) {
                                 JS_RESULT_EVENT -> scriptRequests.remove(json.optString("requestId"))
                                     ?.complete(json.optString("result"))
+
                                 "RESTORE_RESULT" -> {
                                     val request = restoreRequests[session] ?: return
                                     if (request.id == json.optString("requestId")) {
@@ -740,6 +746,7 @@ class ContainerSessionManager @Inject constructor(
                                         )
                                     }
                                 }
+
                                 "STORAGE_SNAPSHOT" -> {
                                     if (!sameOrigin(port.sender.url, json.optString("origin"))) return
                                     val request = snapshotRequests[session]
@@ -756,6 +763,7 @@ class ContainerSessionManager @Inject constructor(
                                         if (manual) request?.response?.complete(saved)
                                     }
                                 }
+
                                 "HTTP_UNAUTHORIZED" -> {
                                     if (!sameOrigin(port.sender.url, json.optString("url"))) return
                                     engineScope.launch {
@@ -765,6 +773,7 @@ class ContainerSessionManager @Inject constructor(
                                         )
                                     }
                                 }
+
                                 // «ذخیرهٔ هوشمندِ ورود»: لحظهٔ ارسالِ فرم. مقادیر فقط در حافظه
                                 // به PasswordStudio می‌روند و تصمیمِ ذخیره با کاربر است.
                                 LOGIN_SUBMIT_EVENT -> {
@@ -1048,9 +1057,11 @@ class ContainerSessionManager @Inject constructor(
                     }
                 }
             }
+
             HealthGuardAction.ESCALATE_TO_CREDENTIAL_FALLBACK -> {
                 onServerRevokedFallbackRequired(container.domain)
             }
+
             HealthGuardAction.NONE -> Unit
         }
     }
@@ -1108,6 +1119,7 @@ class ContainerSessionManager @Inject constructor(
                     appendLine("  network.proxy.ssl: \"${config.proxyHost}\"")
                     appendLine("  network.proxy.ssl_port: ${config.proxyPort}")
                 }
+
                 ProxyType.SOCKS5 -> {
                     appendLine("  network.proxy.type: 1")
                     appendLine("  network.proxy.socks: \"${config.proxyHost}\"")
@@ -1115,6 +1127,7 @@ class ContainerSessionManager @Inject constructor(
                     appendLine("  network.proxy.socks_version: 5")
                     appendLine("  network.proxy.socks_remote_dns: true")
                 }
+
                 ProxyType.NONE -> {
                     appendLine("  network.proxy.type: 5")
                 }

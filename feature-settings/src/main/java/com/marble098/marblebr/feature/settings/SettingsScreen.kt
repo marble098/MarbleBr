@@ -211,6 +211,7 @@ fun SettingsScreen(
                     }
                     when (tabs[selectedTabIndex]) {
                         SettingsTab.APPEARANCE -> appearanceTab(strings, prefs, viewModel)
+
                         SettingsTab.BROWSER -> browserTab(
                             strings = strings,
                             prefs = prefs,
@@ -226,7 +227,9 @@ fun SettingsScreen(
                                 viewModel.setHomeShortcutPosition(position)
                             },
                         )
+
                         SettingsTab.PROTECTION -> protectionTab(strings, prefs, viewModel)
+
                         SettingsTab.NETWORK -> networkTab(
                             strings = strings,
                             viewModel = viewModel,
@@ -241,6 +244,7 @@ fun SettingsScreen(
                             proxyPortText = proxyPortText,
                             onProxyPortText = { proxyPortText = it },
                         )
+
                         SettingsTab.ABOUT -> aboutTab(strings, viewModel.appVersionName)
                     }
                 }

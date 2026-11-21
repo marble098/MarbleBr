@@ -78,10 +78,12 @@ class PasswordStudio @Inject constructor(
                     hasStoredPassword = true,
                 )
             }
+
             is CaptureAction.PhishingWarning -> {
                 _notice.value = PasswordNotice.PhishingWarning(action.verdict.host, action.verdict.impersonated)
                 null
             }
+
             else -> null
         }
     }
@@ -134,9 +136,11 @@ class PasswordStudio @Inject constructor(
                     strength = action.strength,
                 )
             }
+
             is CaptureAction.WarnWeakerPassword -> {
                 _notice.value = PasswordNotice.WeakerPassword(action.site, action.strength)
             }
+
             else -> Unit
         }
         action
