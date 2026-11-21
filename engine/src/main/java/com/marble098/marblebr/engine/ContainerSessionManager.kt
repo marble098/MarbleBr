@@ -47,6 +47,7 @@ import java.net.URI
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
+import javax.inject.Provider
 import javax.inject.Singleton
 
 data class PageContextTarget(val linkUrl: String?, val imageUrl: String?)
@@ -99,10 +100,19 @@ class ContainerSessionManager @Inject constructor(
     private val adBlocker: LightweightAdBlocker,
     private val localizationManager: LocalizationManager,
     private val preferencesRepository: com.marble098.marblebr.core.preferences.BrowserPreferencesRepository,
+    /**
+     * پلِ «افزودن هر سایتی» و «ذخیرهٔ هوشمند گذرواژه».
+     * Provider است تا وابستگیِ چرخه‌ای نسازد و آخرین پارامتر مانده تا فراخوانی‌های موجود
+     * (از جمله تست‌های ابزاری) بدونِ تغییر معتبر بمانند.
+     */
+    private val loginWatcher: Provider<LoginWatcher> = Provider { throw UnsupportedOperationException("LoginWatcher not wired") },
 ) {
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val activeSessions = ConcurrentHashMap<String, GeckoSession>()
     private val sessionContainers = ConcurrentHashMap<GeckoSession, String>()
+
+    /** آخرین آدرسِ دیده‌شدهٔ هر نشست؛ برای کاوشِ صفحهٔ ورود در پایانِ بارگذاری. */
+    private val lastKnownUrls = ConcurrentHashMap<GeckoSession, String>()
     private val containerMutex = Mutex()
 
     /** پروفایلِ دسترسی‌های هر تب؛ delegate هر نشست همین را می‌خواند. */
@@ -175,8 +185,10 @@ class ContainerSessionManager @Inject constructor(
         val occupied = containerDao.getById(defaultId)
         val id = when {
             isPinnedPwa -> "${defaultId}_pwa_${UUID.randomUUID()}"
+
             occupied != null && occupied.domain != domain ->
                 "${defaultId}_default_${UUID.nameUUIDFromBytes(domain.toByteArray())}"
+
             else -> defaultId
         }
         if (!isPinnedPwa) {
@@ -449,6 +461,12 @@ class ContainerSessionManager @Inject constructor(
      * اگر پیوندی برقرار نباشد (مثلاً صفحه‌ای که اسکریپتِ ما در آن اجرا نشده) نتیجه `null`
      * است و لایهٔ بالاتر پیامِ «در دسترس نیست» را نشان می‌دهد.
      */
+    internal fun evaluateInPageForLogin(
+        tabId: String,
+        script: String,
+        onResult: (String?) -> Unit,
+    ) = evaluateInPage(tabId, script, SCRIPT_TIMEOUT_MILLIS, onResult)
+
     private fun evaluateInPage(
         tabId: String,
         script: String,
@@ -504,10 +522,13 @@ class ContainerSessionManager @Inject constructor(
         val profile = permissionProfiles[tabId]
         val state = when (permission) {
             GeckoSession.PermissionDelegate.PERMISSION_GEOLOCATION -> profile?.stateOf(SitePermission.GEOLOCATION)
+
             GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION -> profile?.stateOf(SitePermission.NOTIFICATIONS)
+
             GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_AUDIBLE,
             GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_INAUDIBLE,
             -> profile?.stateOf(SitePermission.AUTOPLAY)
+
             else -> null
         } ?: PermissionState.ASK
         return when (state) {
@@ -546,8 +567,10 @@ class ContainerSessionManager @Inject constructor(
 
     fun closeTabSession(tabId: String) {
         pendingInitialLoads.remove(tabId)
+        runCatching { loginWatcher.get().forget(tabId) }
         val session = activeSessions.remove(tabId) ?: return
         sessionContainers.remove(session)
+        lastKnownUrls.remove(session)
         capturePorts.remove(session)?.disconnect()
         snapshotRequests.remove(session)?.response?.complete(false)
         restoreRequests.remove(session)?.response?.complete(VaultRestoreOutcome())
@@ -712,6 +735,7 @@ class ContainerSessionManager @Inject constructor(
                             when (json.optString("event")) {
                                 JS_RESULT_EVENT -> scriptRequests.remove(json.optString("requestId"))
                                     ?.complete(json.optString("result"))
+
                                 "RESTORE_RESULT" -> {
                                     val request = restoreRequests[session] ?: return
                                     if (request.id == json.optString("requestId")) {
@@ -726,6 +750,7 @@ class ContainerSessionManager @Inject constructor(
                                         )
                                     }
                                 }
+
                                 "STORAGE_SNAPSHOT" -> {
                                     if (!sameOrigin(port.sender.url, json.optString("origin"))) return
                                     val request = snapshotRequests[session]
@@ -739,9 +764,10 @@ class ContainerSessionManager @Inject constructor(
                                         } else {
                                             false
                                         }
-                                        if (manual) request?.response?.complete(saved)
+                                        if (manual) request.response.complete(saved)
                                     }
                                 }
+
                                 "HTTP_UNAUTHORIZED" -> {
                                     if (!sameOrigin(port.sender.url, json.optString("url"))) return
                                     engineScope.launch {
@@ -749,6 +775,27 @@ class ContainerSessionManager @Inject constructor(
                                             json, "HTTP_UNAUTHORIZED", session, container,
                                             onHealthRestored, onServerRevokedFallbackRequired,
                                         )
+                                    }
+                                }
+
+                                // «ذخیرهٔ هوشمندِ ورود»: لحظهٔ ارسالِ فرم. مقادیر فقط در حافظه
+                                // به PasswordStudio می‌روند و تصمیمِ ذخیره با کاربر است.
+                                LOGIN_SUBMIT_EVENT -> {
+                                    if (!sameOrigin(port.sender.url, json.optString("url"))) return
+                                    val tabId = activeSessions.entries.firstOrNull {
+                                        it.value === session
+                                    }?.key ?: return
+                                    val pageUrl = json.optString("url")
+                                    engineScope.launch {
+                                        runCatching {
+                                            loginWatcher.get().captureSubmitted(
+                                                tabId = tabId,
+                                                url = pageUrl,
+                                                username = json.optString("username"),
+                                                password = json.optString("password"),
+                                                otpFieldCount = json.optInt("otpFields"),
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -929,6 +976,7 @@ class ContainerSessionManager @Inject constructor(
                 val safeUrl = url.orEmpty()
                 if (safeUrl.isNotBlank()) {
                     previousUrl = safeUrl
+                    lastKnownUrls[session] = safeUrl
                     onLocationChanged(safeUrl, safeUrl.startsWith("https://"))
                 }
             }
@@ -955,6 +1003,13 @@ class ContainerSessionManager @Inject constructor(
 
             override fun onPageStop(session: GeckoSession, success: Boolean) {
                 onProgressChanged(100, false)
+                // کاوشِ صفحهٔ ورود و پیشنهادِ ذخیره/پرکردن. تبِ خصوصی در این نگاشت نیست، پس
+                // هیچ‌چیز از حالت خصوصی ذخیره نمی‌شود.
+                val containerId = sessionContainers[session]
+                val activeUrl = lastKnownUrls[session].orEmpty()
+                if (success && containerId != null && activeUrl.startsWith("http")) {
+                    runCatching { loginWatcher.get().observePage(containerId, activeUrl) }
+                }
             }
         }
 
@@ -1006,9 +1061,11 @@ class ContainerSessionManager @Inject constructor(
                     }
                 }
             }
+
             HealthGuardAction.ESCALATE_TO_CREDENTIAL_FALLBACK -> {
                 onServerRevokedFallbackRequired(container.domain)
             }
+
             HealthGuardAction.NONE -> Unit
         }
     }
@@ -1066,6 +1123,7 @@ class ContainerSessionManager @Inject constructor(
                     appendLine("  network.proxy.ssl: \"${config.proxyHost}\"")
                     appendLine("  network.proxy.ssl_port: ${config.proxyPort}")
                 }
+
                 ProxyType.SOCKS5 -> {
                     appendLine("  network.proxy.type: 1")
                     appendLine("  network.proxy.socks: \"${config.proxyHost}\"")
@@ -1073,6 +1131,7 @@ class ContainerSessionManager @Inject constructor(
                     appendLine("  network.proxy.socks_version: 5")
                     appendLine("  network.proxy.socks_remote_dns: true")
                 }
+
                 ProxyType.NONE -> {
                     appendLine("  network.proxy.type: 5")
                 }
@@ -1090,6 +1149,9 @@ class ContainerSessionManager @Inject constructor(
 
         /** رویدادی که content script پس از اجرای اسکریپتِ بومی با نتیجه برمی‌گرداند. */
         const val JS_RESULT_EVENT = "JS_RESULT"
+
+        /** لحظهٔ ارسالِ فرمِ ورود در صفحه؛ برای پیشنهادِ «ذخیرهٔ این ورود». */
+        const val LOGIN_SUBMIT_EVENT = "LOGIN_SUBMIT"
 
         /** مهلتِ پاسخِ صفحه به درخواستِ اجرای اسکریپت (حالت مطالعه/بلندخوانی). */
         const val SCRIPT_TIMEOUT_MILLIS = 2_500L

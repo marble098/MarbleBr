@@ -128,7 +128,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
+import com.marble098.marblebr.core.i18n.MarbleStrings
+import com.marble098.marblebr.core.model.AutofillCandidate
+import com.marble098.marblebr.core.model.LoginMethod
+import com.marble098.marblebr.core.model.PasswordStrengthLevel
+import com.marble098.marblebr.core.model.SiteAdditionPlan
+import com.marble098.marblebr.core.model.SiteBlocker
+import com.marble098.marblebr.core.model.SiteRoute
 import com.marble098.marblebr.core.designsystem.MarbleGlassIconButton
+import com.marble098.marblebr.vault.PasswordNotice
 import com.marble098.marblebr.core.designsystem.MarbleLayout
 import com.marble098.marblebr.core.designsystem.SiteBadgeLogo
 import com.marble098.marblebr.core.designsystem.liquidGlass
@@ -183,6 +191,11 @@ fun BrowserScreen(
     val historyItems by viewModel.historyItems.collectAsState()
     val downloads by viewModel.downloads.collectAsState()
     val siteAccounts by viewModel.siteAccounts.collectAsState()
+    val savePrompt by viewModel.savePrompt.collectAsState()
+    val passwordNotice by viewModel.passwordNotice.collectAsState()
+    val passwordCount by viewModel.storedPasswordCount.collectAsState()
+    val protectedSiteCount by viewModel.protectedSiteCount.collectAsState()
+    val pulseDomains by viewModel.pulseDomains.collectAsState()
     val blockedAdsCount by viewModel.adBlocker.blockedCount.collectAsState()
     val strings = LocalMarbleStrings.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -354,6 +367,9 @@ fun BrowserScreen(
                 downloadsCount = downloads.size,
                 blockedAdsCount = blockedAdsCount.toInt(),
                 tabsCount = uiState.tabs.size,
+                passwordCount = passwordCount,
+                protectedSiteCount = protectedSiteCount,
+                pulseDomains = pulseDomains,
                 submit = submit,
                 viewModel = viewModel,
                 onOpenVaultDashboard = onOpenVaultDashboard,
@@ -560,6 +576,102 @@ fun BrowserScreen(
         )
     }
 
+    // «ذخیرهٔ هوشمندِ ورود»: کارتِ تأیید پس از ارسالِ موفقِ فرم. گذرواژه فقط در همان
+    // لحظه در حافظه است و با تأییدِ کاربر به مخزنِ رمزنگاری‌شده می‌رود.
+    savePrompt?.let { prompt ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissPasswordPrompt,
+            icon = { Icon(Icons.Default.Lock, contentDescription = null) },
+            title = { Text(strings.saveLoginTitle) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(strings.saveLoginBody)
+                    Text(
+                        text = prompt.site + " · " + prompt.username,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = strings.passwordStrengthLabel(
+                            strengthLabel(prompt.strength.level, strings),
+                        ),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = viewModel::acceptPasswordPrompt) { Text(strings.saveLoginConfirm) }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissPasswordPrompt) { Text(strings.saveLoginNotNow) }
+            },
+        )
+    }
+
+    // تذکرِ گذرواژهٔ ضعیف‌تر یا هشدارِ دامنهٔ بدل؛ هر دو فقط اطلاع‌رسانی‌اند.
+    passwordNotice?.let { notice ->
+        val warning = notice as? PasswordNotice.PhishingWarning
+        AlertDialog(
+            onDismissRequest = viewModel::consumePasswordNotice,
+            icon = {
+                Icon(
+                    if (warning != null) Icons.Default.Shield else Icons.Default.Security,
+                    contentDescription = null,
+                )
+            },
+            title = {
+                Text(if (warning != null) strings.phishingWarningTitle else strings.saveLoginWeakerTitle)
+            },
+            text = {
+                Text(
+                    if (warning != null) {
+                        strings.phishingWarningBody(
+                            warning.host,
+                            warning.impersonated ?: strings.originLookalike,
+                        )
+                    } else {
+                        strings.saveLoginWeakerBody
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::consumePasswordNotice) {
+                    Text(if (warning != null) strings.phishingWarningDismiss else strings.close)
+                }
+            },
+        )
+    }
+
+    if (uiState.showSiteCompatibilitySheet) {
+        val sheetUrl = uiState.activeTab?.url.orEmpty()
+        var candidates by remember { mutableStateOf<List<AutofillCandidate>>(emptyList()) }
+        LaunchedEffect(sheetUrl, uiState.showSiteCompatibilitySheet) {
+            candidates = if (sheetUrl.isBlank()) emptyList() else viewModel.siteCandidates(sheetUrl)
+        }
+        ModalBottomSheet(
+            onDismissRequest = viewModel::closeSiteCompatibilitySheet,
+            containerColor = MaterialTheme.colorScheme.surface,
+        ) {
+            SiteCompatibilitySheet(
+                strings = strings,
+                plan = uiState.sitePlan,
+                candidates = candidates,
+                onTryNext = viewModel::tryNextSiteRoute,
+                onFill = { credentialId ->
+                    viewModel.autofillFromVault(credentialId)
+                    viewModel.closeSiteCompatibilitySheet()
+                },
+                onCaptureCurrentForm = {
+                    viewModel.checkForSubmittableLogin()
+                    viewModel.closeSiteCompatibilitySheet()
+                },
+                modifier = Modifier,
+            )
+            Spacer(Modifier.height(20.dp))
+        }
+    }
+
     pendingCloseTabId?.let { tabId ->
         val title = uiState.tabs.firstOrNull { it.id == tabId }?.title.orEmpty()
         AlertDialog(
@@ -605,6 +717,171 @@ fun BrowserScreen(
             },
         )
     }
+}
+
+/* ------------------------------- افزودن هر سایتی / ورود دستی ------------------------------- */
+
+/**
+ * برگهٔ «این سایت چطور وارد می‌شود؟»
+ *
+ * به‌جای پیامِ «پشتیبانی نمی‌شود»، روشِ ورودِ شناسایی‌شده و نردبانِ راه‌های جایگزین را نشان
+ * می‌دهد. هر راه یک ضربه است و کانتینر/نشستِ فعلی حفظ می‌شود.
+ */
+@Composable
+private fun SiteCompatibilitySheet(
+    strings: MarbleStrings,
+    plan: SiteAdditionPlan?,
+    candidates: List<AutofillCandidate>,
+    onTryNext: () -> Unit,
+    onFill: (String) -> Unit,
+    onCaptureCurrentForm: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = MarbleLayout.Screen),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            text = strings.addAnySiteTitle,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = strings.addAnySiteDescription,
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.onSurfaceVariant,
+        )
+        if (plan == null) {
+            Text(
+                text = strings.loginMethodUnknownHint,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.outline,
+            )
+            return@Column
+        }
+        Text(
+            text = strings.loginMethodTitle,
+            style = MaterialTheme.typography.labelLarge,
+            color = colors.primary,
+        )
+        Text(
+            text = loginMethodLabel(plan.assessment.primary, strings),
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
+        plan.assessment.blockers
+            .filter { it != SiteBlocker.NONE }
+            .forEach { blocker ->
+                Text(
+                    text = blockerLabel(blocker, strings),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                )
+            }
+        if (plan.steps.isNotEmpty()) {
+            Text(
+                text = strings.addAnySiteRoute(routeLabel(plan.steps.first().route, strings)),
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.primary,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (plan.hasFallbacks) {
+                Button(onClick = onTryNext) { Text(strings.addAnySiteAction) }
+            }
+            FilledTonalButton(onClick = onCaptureCurrentForm) {
+                Text(strings.saveLoginConfirm)
+            }
+        }
+        if (candidates.isEmpty()) {
+            Text(
+                text = strings.saveLoginNoStored,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.outline,
+            )
+        } else {
+            Text(
+                text = strings.saveLoginFillTitle,
+                style = MaterialTheme.typography.labelLarge,
+                color = colors.primary,
+            )
+            candidates.take(4).forEach { candidate ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(colors.surfaceContainerHigh.copy(alpha = 0.45f))
+                        .padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = candidate.username,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = candidate.domain,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    TextButton(onClick = { onFill(candidate.id) }) {
+                        Text(strings.saveLoginFillAction)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun routeLabel(route: SiteRoute?, strings: MarbleStrings): String = when (route) {
+    SiteRoute.DIRECT -> strings.routeDirect
+    SiteRoute.DESKTOP_USER_AGENT -> strings.routeDesktop
+    SiteRoute.MOBILE_SUBDOMAIN -> strings.routeMobile
+    SiteRoute.CANONICAL_HOST -> strings.routeCanonical
+    SiteRoute.PWA_WINDOW -> strings.routePwa
+    SiteRoute.VAULT_MANUAL_LOGIN -> strings.routeManual
+    SiteRoute.READ_ONLY_SNAPSHOT -> strings.routeReadOnly
+    null -> strings.routeDirect
+}
+
+internal fun loginMethodLabel(method: LoginMethod, strings: MarbleStrings): String = when (method) {
+    LoginMethod.PASSWORD -> strings.loginMethodPassword
+    LoginMethod.GOOGLE -> strings.loginMethodGoogle
+    LoginMethod.APPLE -> strings.loginMethodApple
+    LoginMethod.PHONE_CODE -> strings.loginMethodPhone
+    LoginMethod.EMAIL_CODE -> strings.loginMethodEmailCode
+    LoginMethod.MAGIC_LINK -> strings.loginMethodMagicLink
+    LoginMethod.PASSKEY -> strings.loginMethodPasskey
+    LoginMethod.WALLET -> strings.loginMethodWallet
+    LoginMethod.CORPORATE_SSO -> strings.loginMethodSso
+    LoginMethod.UNKNOWN -> strings.loginMethodUnknown
+}
+
+internal fun blockerLabel(blocker: SiteBlocker, strings: MarbleStrings): String = when (blocker) {
+    SiteBlocker.IFRAME_LOGIN -> strings.blockerIframe
+    SiteBlocker.BROWSER_REFUSED -> strings.blockerBrowser
+    SiteBlocker.THIRD_PARTY_COOKIES -> strings.blockerThirdParty
+    SiteBlocker.JAVASCRIPT_ONLY -> strings.blockerJavaScript
+    SiteBlocker.NETWORK_ERROR -> strings.blockerNetwork
+    SiteBlocker.ONE_TIME_CODE_ONLY -> strings.blockerOtp
+    SiteBlocker.NONE -> strings.loginMethodUnknownHint
+}
+
+internal fun strengthLabel(level: PasswordStrengthLevel, strings: MarbleStrings): String = when (level) {
+    PasswordStrengthLevel.VERY_WEAK -> strings.passwordStrengthVeryWeak
+    PasswordStrengthLevel.WEAK -> strings.passwordStrengthWeak
+    PasswordStrengthLevel.FAIR -> strings.passwordStrengthFair
+    PasswordStrengthLevel.STRONG -> strings.passwordStrengthStrong
+    PasswordStrengthLevel.EXCELLENT -> strings.passwordStrengthExcellent
 }
 
 /* ---------------------------------------- نوار بالا ---------------------------------------- */
@@ -677,7 +954,9 @@ private fun BrowserTopBar(
                     SessionHealthStatus.HEALTHY,
                     SessionHealthStatus.RECOVERED_FROM_VAULT,
                     -> colors.primary
+
                     SessionHealthStatus.SERVER_REVOKED_FALLBACK -> colors.error
+
                     else -> colors.outline
                 },
                 size = 42.dp,
@@ -992,6 +1271,9 @@ private fun LauncherContent(
     downloadsCount: Int,
     blockedAdsCount: Int,
     tabsCount: Int,
+    passwordCount: Int,
+    protectedSiteCount: Int,
+    pulseDomains: List<String>,
     submit: (String) -> Unit,
     viewModel: BrowserViewModel,
     onOpenVaultDashboard: (String?) -> Unit,
@@ -1014,6 +1296,12 @@ private fun LauncherContent(
         when {
             showHome -> HomeContent(
                 modifier = Modifier,
+                passwordCount = passwordCount,
+                protectedSiteCount = protectedSiteCount,
+                pulseSites = pulseDomains,
+                onOpenVault = { onOpenVaultDashboard(null) },
+                onAddAnySite = viewModel::addAnySite,
+                onOpenPasswordStudio = viewModel::openSiteCompatibilitySheet,
                 bookmarks = bookmarks,
                 historyItems = historyItems,
                 showNewTabTile = prefs.homeShortcutPosition != HomeShortcutPosition.NONE,

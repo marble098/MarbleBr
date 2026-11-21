@@ -1,5 +1,7 @@
 package com.marble098.marblebr.feature.vault
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -27,6 +29,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -44,6 +47,7 @@ import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.History
@@ -56,6 +60,7 @@ import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -82,6 +87,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -90,6 +96,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -103,9 +110,12 @@ import com.marble098.marblebr.core.designsystem.siteBadgeAccent
 import com.marble098.marblebr.core.i18n.MarbleStrings
 import com.marble098.marblebr.core.model.ChromeBarStyle
 import com.marble098.marblebr.core.model.HealthReason
+import com.marble098.marblebr.core.model.PulseRecommendation
+import com.marble098.marblebr.core.model.PulseUrgency
 import com.marble098.marblebr.core.model.SessionHealthStatus
 import com.marble098.marblebr.core.model.SessionSnapshotMeta
 import com.marble098.marblebr.core.model.WebAppContainer
+import com.marble098.marblebr.vault.RestorePreview
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -150,7 +160,34 @@ fun VaultDashboardScreen(
     val busyAction by viewModel.busyAction.collectAsState()
     val globalProtection by viewModel.globalProtectionEnabled.collectAsState()
     val expiryWatch by viewModel.expiryWatch.collectAsState()
+    val pulsePlan by viewModel.pulsePlan.collectAsState()
+    val pendingBackup by viewModel.pendingBackup.collectAsState()
+    val restorePreview by viewModel.restorePreview.collectAsState()
+    val backupBusy by viewModel.backupBusy.collectAsState()
     val strings = LocalMarbleStrings.current
+    val context = LocalContext.current
+    var showBackupDialog by remember { mutableStateOf(false) }
+
+    // ذخیرهٔ فایل پشتیبان با انتخاب‌گرِ خودِ سیستم (بدونِ دسترسی به حافظهٔ خارجی).
+    val backupSaver = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream"),
+    ) { uri ->
+        val payload = pendingBackup
+        if (uri != null && payload != null) {
+            val written = runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { stream ->
+                    stream.write(payload.text.toByteArray(Charsets.UTF_8))
+                } != null
+            }.getOrDefault(false)
+            if (!written) viewModel.onBackupShareFailed()
+        }
+        viewModel.consumePendingBackup()
+    }
+
+    // فایلِ پشتیبانِ ساخته‌شده آماده است؛ نامِ پیشنهادی را به انتخاب‌گر بده.
+    LaunchedEffect(pendingBackup?.fileName) {
+        pendingBackup?.let { backupSaver.launch(it.fileName) }
+    }
 
     var pendingSignOutContainer by remember { mutableStateOf<WebAppContainer?>(null) }
     var pendingDeleteSnapshot by remember { mutableStateOf<SessionSnapshotMeta?>(null) }
@@ -221,6 +258,27 @@ fun VaultDashboardScreen(
                     vault = viewModel.credentialVault,
                     unlocked = isBiometricUnlocked,
                     onUnlock = onRequestBiometricUnlock,
+                )
+            }
+
+            item(key = "backup") {
+                BackupCard(
+                    strings = strings,
+                    busy = backupBusy,
+                    onCreate = { showBackupDialog = true },
+                    onPreview = { text, password -> viewModel.previewRestore(text, password) },
+                    onApply = viewModel::applyRestore,
+                    onDiscard = viewModel::discardRestorePreview,
+                    preview = restorePreview,
+                )
+            }
+
+            item(key = "session_pulse") {
+                SessionPulseCard(
+                    strings = strings,
+                    recommendations = pulsePlan,
+                    busyAction = busyAction,
+                    onRunNow = viewModel::runSessionPulseNow,
                 )
             }
 
@@ -398,6 +456,18 @@ fun VaultDashboardScreen(
             )
             Spacer(Modifier.height(20.dp))
         }
+    }
+
+    if (showBackupDialog) {
+        BackupCreateDialog(
+            strings = strings,
+            busy = backupBusy,
+            onDismiss = { showBackupDialog = false },
+            onCreate = { password ->
+                showBackupDialog = false
+                viewModel.createBackup(password)
+            },
+        )
     }
 
     pendingSignOutContainer?.let { target ->
@@ -1525,6 +1595,261 @@ private fun PanelSwitch(
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
     }
+}
+
+/* --------------------------------------- پشتیبان‌گیری --------------------------------------- */
+
+/**
+ * کارتِ «پشتیبان‌گیری از گذرواژه‌ها و ورودها».
+ *
+ * دو مسیرِ روشن: ساختِ فایلِ رمزشده با گذرواژهٔ خودِ کاربر، و بازگردانیِ دومرحله‌ای
+ * (اول پیش‌نمایش، بعد اعمال). هیچ دادهٔ موجودی بی‌خبر بازنویسی نمی‌شود.
+ */
+@Composable
+private fun BackupCard(
+    strings: MarbleStrings,
+    busy: Boolean,
+    onCreate: () -> Unit,
+    onPreview: (String, String) -> Unit,
+    onApply: () -> Unit,
+    onDiscard: () -> Unit,
+    preview: RestorePreview?,
+) {
+    val colors = MaterialTheme.colorScheme
+    var password by remember { mutableStateOf("") }
+    var fileText by remember { mutableStateOf("") }
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(colors.surface.copy(alpha = 0.42f))
+            .border(1.dp, colors.outlineVariant.copy(alpha = 0.30f), shape)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        SectionTitle(
+            icon = Icons.Default.CloudUpload,
+            title = strings.backupTitle,
+            subtitle = strings.backupDescription,
+            trailing = null,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = onCreate, enabled = !busy) { Text(strings.backupCreate) }
+        }
+        Text(
+            text = strings.backupPasswordWarning,
+            style = MaterialTheme.typography.labelSmall,
+            color = colors.error,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = strings.backupRestoreBody,
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onSurfaceVariant,
+        )
+        BasicTextField(
+            value = fileText,
+            onValueChange = { fileText = it },
+            textStyle = MaterialTheme.typography.bodySmall.copy(color = colors.onSurface),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 64.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(colors.surfaceContainerHigh.copy(alpha = 0.55f))
+                .padding(10.dp),
+            decorationBox = { inner ->
+                if (fileText.isEmpty()) {
+                    Text(
+                        text = strings.backupRestorePickHint,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.outline,
+                    )
+                }
+                inner()
+            },
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                singleLine = true,
+                label = { Text(strings.backupPassword) },
+                modifier = Modifier.weight(1f),
+                visualTransformation = PasswordVisualTransformation(),
+            )
+            Button(
+                onClick = { onPreview(fileText, password) },
+                enabled = !busy && fileText.isNotBlank() && password.isNotEmpty(),
+            ) {
+                Text(strings.backupRestore)
+            }
+        }
+        if (preview != null) {
+            Text(
+                text = strings.backupRestorePreviewTitle,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = strings.backupRestorePreviewBody(
+                    preview.newCredentials + preview.newSessions + preview.newSites,
+                    preview.updatedCredentials + preview.updatedSessions + preview.updatedSites,
+                    preview.duplicateCredentials,
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onApply, enabled = !busy) { Text(strings.backupRestoreApply) }
+                TextButton(onClick = onDiscard) { Text(strings.cancel) }
+            }
+        }
+    }
+}
+
+/** گفت‌وگوی ساختِ فایل پشتیبان: گذرواژه + تکرار، با بررسیِ محلی قبل از رمزگذاری. */
+@Composable
+private fun BackupCreateDialog(
+    strings: MarbleStrings,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onCreate: (String) -> Unit,
+) {
+    var password by remember { mutableStateOf("") }
+    var confirm by remember { mutableStateOf("") }
+    val mismatch = confirm.isNotEmpty() && password != confirm
+    val tooShort = password.isNotEmpty() && password.length < 8
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        icon = { Icon(Icons.Default.CloudUpload, contentDescription = null) },
+        title = { Text(strings.backupCreate) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(strings.backupCreateBody)
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    singleLine = true,
+                    label = { Text(strings.backupPassword) },
+                    isError = tooShort,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = confirm,
+                    onValueChange = { confirm = it },
+                    singleLine = true,
+                    label = { Text(strings.backupPasswordConfirm) },
+                    isError = mismatch,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    text = when {
+                        tooShort -> strings.backupPasswordTooShort
+                        mismatch -> strings.backupPasswordMismatch
+                        else -> strings.backupPasswordHint
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (tooShort || mismatch) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onCreate(password) },
+                enabled = !busy && password.length >= 8 && password == confirm,
+            ) {
+                Text(strings.backupCreate)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(strings.cancel) } },
+    )
+}
+
+/* ---------------------------------------- نبضِ نشست ---------------------------------------- */
+
+/** ایدهٔ تازه: پیشنهادِ بیدارسازیِ نشست‌ها پیش از خواب‌آلود شدن، بر پایهٔ عادتِ واقعیِ کاربر. */
+@Composable
+private fun SessionPulseCard(
+    strings: MarbleStrings,
+    recommendations: List<PulseRecommendation>,
+    busyAction: String?,
+    onRunNow: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(colors.surface.copy(alpha = 0.42f))
+            .border(1.dp, colors.outlineVariant.copy(alpha = 0.30f), shape)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        SectionTitle(
+            icon = Icons.Default.Bolt,
+            title = strings.pulseTitle,
+            subtitle = strings.pulseDescription,
+            trailing = if (recommendations.isEmpty()) null else recommendations.size.toString(),
+        )
+        if (recommendations.isEmpty()) {
+            Text(
+                text = strings.pulseEmpty,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
+            )
+        } else {
+            recommendations.take(4).forEach { recommendation ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(urgencyColor(recommendation.urgency)),
+                    )
+                    Text(
+                        text = strings.pulseSiteLine(
+                            recommendation.domain,
+                            urgencyLabel(recommendation.urgency, strings),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Button(
+                onClick = onRunNow,
+                enabled = busyAction == null,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(strings.pulseRunNow)
+            }
+        }
+    }
+}
+
+@Composable
+private fun urgencyColor(urgency: PulseUrgency): Color = when (urgency) {
+    PulseUrgency.LOW -> MaterialTheme.colorScheme.outline
+    PulseUrgency.NORMAL -> MaterialTheme.colorScheme.primary
+    PulseUrgency.HIGH -> MaterialTheme.colorScheme.tertiary
+    PulseUrgency.CRITICAL -> MaterialTheme.colorScheme.error
+}
+
+private fun urgencyLabel(urgency: PulseUrgency, strings: MarbleStrings): String = when (urgency) {
+    PulseUrgency.LOW -> strings.pulseUrgencyLow
+    PulseUrgency.NORMAL -> strings.pulseUrgencyNormal
+    PulseUrgency.HIGH -> strings.pulseUrgencyHigh
+    PulseUrgency.CRITICAL -> strings.pulseUrgencyCritical
 }
 
 /* -------------------------------------- اجزای مشترک -------------------------------------- */

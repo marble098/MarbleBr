@@ -38,12 +38,14 @@ import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Tab
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -53,6 +55,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -121,6 +124,12 @@ internal fun HomeContent(
     modifier: Modifier = Modifier,
     tabsCount: Int = 0,
     bottomContentInset: Dp = 0.dp,
+    passwordCount: Int = 0,
+    protectedSiteCount: Int = 0,
+    pulseSites: List<String> = emptyList(),
+    onOpenVault: () -> Unit = {},
+    onAddAnySite: (String) -> Unit = {},
+    onOpenPasswordStudio: () -> Unit = {},
 ) {
     val strings = LocalMarbleStrings.current
     val focusManager = LocalFocusManager.current
@@ -186,6 +195,26 @@ internal fun HomeContent(
                 )
             }
 
+            item(key = "any_site") {
+                AddAnySiteCard(
+                    strings = strings,
+                    onAdd = onAddAnySite,
+                    chromeBarStyle = chromeBarStyle,
+                )
+            }
+
+            item(key = "vault_glance") {
+                VaultGlanceCard(
+                    strings = strings,
+                    passwordCount = passwordCount,
+                    protectedSiteCount = protectedSiteCount,
+                    pulseSites = pulseSites,
+                    chromeBarStyle = chromeBarStyle,
+                    onOpenVault = onOpenVault,
+                    onOpenPasswordStudio = onOpenPasswordStudio,
+                )
+            }
+
             item(key = "shortcuts_header") {
                 HomeSectionHeader(
                     title = strings.homeShortcutsTitle,
@@ -247,6 +276,240 @@ internal fun HomeContent(
                 }
             }
         }
+    }
+}
+
+/* ------------------------------------ افزودن هر سایتی ------------------------------------ */
+
+/**
+ * کارتِ «افزودن هر سایتی».
+ *
+ * پیامِ این کارت هیچ‌وقت «این سایت پشتیبانی نمی‌شود» نیست؛ آدرس را می‌گیرد و به نردبانِ مسیرها
+ * می‌سپارد. اگر یک راه جواب نداد، همان کارت راهِ بعدی را پیشنهاد می‌کند.
+ */
+@Composable
+private fun AddAnySiteCard(
+    strings: MarbleStrings,
+    onAdd: (String) -> Unit,
+    chromeBarStyle: ChromeBarStyle,
+) {
+    val colors = MaterialTheme.colorScheme
+    var input by rememberSaveable { mutableStateOf("") }
+    val shape = RoundedCornerShape(22.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .liquidGlass(
+                style = ChromeBarStyle.GLASS,
+                shape = shape,
+                fillAlphaOverride = if (chromeBarStyle == ChromeBarStyle.SOLID) 0.98f else 0.55f,
+                glow = false,
+                elevation = 4.dp,
+            )
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(colors.primary.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = null,
+                    tint = colors.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Text(
+                text = strings.addAnySiteTitle,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Text(
+            text = strings.addAnySiteDescription,
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            BasicTextField(
+                value = input,
+                onValueChange = { input = it.trimStart() },
+                singleLine = true,
+                textStyle = TextStyle(
+                    color = colors.onSurface,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                ),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = {
+                    if (input.isNotBlank()) {
+                        onAdd(input)
+                        input = ""
+                    }
+                }),
+                cursorBrush = Brush.verticalGradient(listOf(colors.primary, colors.primary)),
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(colors.surfaceContainerHigh.copy(alpha = 0.55f))
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                    .testTag("home_add_any_site_field"),
+                decorationBox = { inner ->
+                    if (input.isEmpty()) {
+                        Text(
+                            text = strings.addAnySiteHint,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.outline,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    inner()
+                },
+            )
+            FilledTonalButton(
+                onClick = {
+                    if (input.isNotBlank()) {
+                        onAdd(input)
+                        input = ""
+                    }
+                },
+                enabled = input.isNotBlank(),
+                modifier = Modifier.testTag("home_add_any_site_btn"),
+            ) {
+                Text(strings.addAnySiteAction, maxLines = 1)
+            }
+        }
+    }
+}
+
+/* -------------------------------------- نگاهِ مخزن -------------------------------------- */
+
+/** کارتِ کوتاهِ «گذرواژه‌ها و نشست‌ها» با شمارنده‌ها و پیشنهادِ نبضِ نشست. */
+@Composable
+private fun VaultGlanceCard(
+    strings: MarbleStrings,
+    passwordCount: Int,
+    protectedSiteCount: Int,
+    pulseSites: List<String>,
+    chromeBarStyle: ChromeBarStyle,
+    onOpenVault: () -> Unit,
+    onOpenPasswordStudio: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(22.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .liquidGlass(
+                style = ChromeBarStyle.GLASS,
+                shape = shape,
+                fillAlphaOverride = if (chromeBarStyle == ChromeBarStyle.SOLID) 0.98f else 0.55f,
+                glow = false,
+                elevation = 4.dp,
+            )
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.Lock,
+                contentDescription = null,
+                tint = colors.primary,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text = strings.backupTitle,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            TextButton(onClick = onOpenVault) { Text(strings.homeSeeAll) }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(MarbleLayout.Gap)) {
+            GlanceStat(
+                modifier = Modifier.weight(1f),
+                value = passwordCount.toString(),
+                label = strings.backupIncludeCredentials,
+                accent = colors.primary,
+            )
+            GlanceStat(
+                modifier = Modifier.weight(1f),
+                value = protectedSiteCount.toString(),
+                label = strings.protectionLabel,
+                accent = colors.tertiary,
+            )
+            GlanceStat(
+                modifier = Modifier.weight(1f),
+                value = pulseSites.size.toString(),
+                label = strings.pulseTitle,
+                accent = colors.secondary,
+            )
+        }
+        if (pulseSites.isNotEmpty()) {
+            Text(
+                text = strings.pulseDescription,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        TextButton(onClick = onOpenPasswordStudio, modifier = Modifier.testTag("home_vault_glance_btn")) {
+            Text(strings.saveLoginFillTitle)
+        }
+    }
+}
+
+@Composable
+private fun GlanceStat(
+    value: String,
+    label: String,
+    accent: Color,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(accent.copy(alpha = 0.10f))
+            .padding(vertical = 10.dp, horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = accent,
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

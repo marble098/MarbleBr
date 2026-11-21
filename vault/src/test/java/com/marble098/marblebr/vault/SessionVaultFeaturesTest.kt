@@ -153,6 +153,7 @@ class SessionVaultFeaturesTest {
             items.value
                 .filter { it.containerId == containerId && it.isPinned }
                 .sortedByDescending { it.capturedAtEpochMillis }
+        override suspend fun getAllForBackup(): List<SnapshotEntity> = items.value
 
         override suspend fun setPinned(snapshotId: String, pinned: Boolean) {
             items.value = items.value.map { if (it.id == snapshotId) it.copy(isPinned = pinned) else it }

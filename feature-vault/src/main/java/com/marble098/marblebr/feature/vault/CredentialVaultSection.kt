@@ -152,7 +152,10 @@ private fun UnlockedCredentials(vault: CredentialVault) {
                 } else {
                     saving = true
                     scope.launch {
-                        val result = runCatching { vault.save(fields, editing?.id) }
+                        // آدرسِ کوتاه (mci.ir) پیش از ذخیره به شکلِ یکدست درمی‌آید تا در
+                        // فهرست و پرکردنِ خودکار هم همان دامنه شناسایی شود.
+                        val normalized = fields.copy(site = CredentialVault.normalizeSite(fields.site))
+                        val result = runCatching { vault.save(normalized, editing?.id) }
                         saving = false
                         if (result.isSuccess) {
                             showingForm = false

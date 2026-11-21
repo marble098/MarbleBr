@@ -60,6 +60,8 @@ class GeckoAccountIsolationInstrumentedTest {
         val manager = ContainerSessionManager(
             context, db.containerDao(), vault, SessionHealthGuard(vault, db.healthEventDao()),
             LightweightAdBlocker(), LocalizationManager(prefs), prefs,
+            // این تست فقط جریانِ نشست/کوکی را می‌سنجد؛ کاوشگرِ ورود لازم نیست.
+            javax.inject.Provider { error("LoginWatcher is not used in this test") },
         )
 
         LocalTestSite().use { site ->

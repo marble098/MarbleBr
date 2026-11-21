@@ -12,6 +12,7 @@ import com.marble098.marblebr.core.database.HistoryDao
 import com.marble098.marblebr.core.database.HistoryEntity
 import com.marble098.marblebr.core.i18n.LocalizationManager
 import com.marble098.marblebr.core.i18n.MarbleStrings
+import com.marble098.marblebr.core.model.AutofillCandidate
 import com.marble098.marblebr.core.model.BookmarkItem
 import com.marble098.marblebr.core.model.BrowserTab
 import com.marble098.marblebr.core.model.DownloadItem
@@ -19,9 +20,11 @@ import com.marble098.marblebr.core.model.HealthReason
 import com.marble098.marblebr.core.model.HistoryItem
 import com.marble098.marblebr.core.model.PermissionState
 import com.marble098.marblebr.core.model.SessionHealthStatus
+import com.marble098.marblebr.core.model.SessionPulsePlanner
 import com.marble098.marblebr.core.model.SitePermission
 import com.marble098.marblebr.core.model.SitePermissionPolicy
 import com.marble098.marblebr.core.model.SitePermissionProfile
+import com.marble098.marblebr.core.model.SiteRoute
 import com.marble098.marblebr.core.model.TabTitleEngine
 import com.marble098.marblebr.core.model.WebAppContainer
 import com.marble098.marblebr.core.preferences.BrowserPreferences
@@ -29,7 +32,11 @@ import com.marble098.marblebr.core.preferences.BrowserPreferencesRepository
 import com.marble098.marblebr.core.preferences.SavedBrowserTabs
 import com.marble098.marblebr.engine.ContainerSessionManager
 import com.marble098.marblebr.engine.LightweightAdBlocker
+import com.marble098.marblebr.engine.LoginWatcher
 import com.marble098.marblebr.engine.PageContextTarget
+import com.marble098.marblebr.vault.PasswordNotice
+import com.marble098.marblebr.vault.PasswordSavePrompt
+import com.marble098.marblebr.vault.PasswordStudio
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -67,6 +74,14 @@ data class BrowserUiState(
     val activePermissionProfile: SitePermissionProfile? = null,
     /** بستهٔ دسترسی‌ها باز است؟ */
     val showSitePermissions: Boolean = false,
+    /** نردبانِ «افزودن هر سایتی» برای صفحهٔ جاری. */
+    val sitePlan: com.marble098.marblebr.core.model.SiteAdditionPlan? = null,
+    /** تبی که نردبان به آن تعلق دارد. */
+    val sitePlanTabId: String? = null,
+    /** آدرسی که کاربر خواسته اضافه کند (برای نمایش و بازمحاسبهٔ نردبان). */
+    val sitePlanTitle: String? = null,
+    /** پنلِ «چطور وارد شویم» و پرکردنِ دستی. */
+    val showSiteCompatibilitySheet: Boolean = false,
 ) {
     val activeTab: BrowserTab?
         get() = tabs.firstOrNull { it.id == activeTabId } ?: tabs.firstOrNull()
@@ -100,6 +115,9 @@ class BrowserViewModel @Inject constructor(
     private val localizationManager: LocalizationManager,
     val adBlocker: LightweightAdBlocker,
     private val sitePermissionStore: com.marble098.marblebr.core.preferences.SitePermissionStore,
+    private val loginWatcher: LoginWatcher,
+    val passwordStudio: PasswordStudio,
+    private val siteEngine: com.marble098.marblebr.engine.SiteCompatibilityEngine,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(BrowserUiState())
@@ -119,6 +137,33 @@ class BrowserViewModel @Inject constructor(
     val downloads: StateFlow<List<DownloadItem>> = downloadDao.observeAll()
         .map { list -> list.map(DownloadEntity::toDomain) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** شمارندهٔ گذرواژه‌های ذخیره‌شده برای کارتِ «نگاهِ مخزن» در صفحهٔ خانه. */
+    val storedPasswordCount: StateFlow<Int> = passwordStudio.candidatesForHome()
+        .map { it.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    /** تعدادِ سایت‌هایی که «مراقبت از ورود» روی آن‌ها روشن است. */
+    val protectedSiteCount: StateFlow<Int> = containerDao.observeAll()
+        .map { entries -> entries.count { it.neverSignOutEnabled } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    /** دامنه‌هایی که «نبضِ نشست» برایشان پیشنهادِ بیدارسازی دارد. */
+    val pulseDomains: StateFlow<List<String>> = combine(containerDao.observeAll(), historyItems) { entries, history ->
+        val patterns = SessionPulsePlanner.patternsFromHistory(history, System.currentTimeMillis())
+            .map { pattern ->
+                pattern.copy(
+                    neverSignOutEnabled = entries.firstOrNull { it.domain == pattern.domain }?.neverSignOutEnabled
+                        ?: false,
+                    cookieDaysConfigured = entries.firstOrNull { it.domain == pattern.domain }?.cookieExpirationDays
+                        ?: 365,
+                )
+            }
+            .filter { it.neverSignOutEnabled }
+        SessionPulsePlanner.plan(patterns, System.currentTimeMillis())
+            .map { it.domain }
+            .distinct()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val siteAccounts: StateFlow<List<WebAppContainer>> = combine(containerDao.observeAll(), uiState) { entries, state ->
         val domain = state.activeAccountForCurrentSite()?.domain
@@ -777,6 +822,162 @@ class BrowserViewModel @Inject constructor(
 
     fun dismissBanner() {
         _uiState.update { it.copy(bannerMessage = null) }
+    }
+
+    /* ------------------------- ذخیرهٔ هوشمند گذرواژه و افزودن هر سایتی ------------------------- */
+
+    /** کارتِ «این ورود را ذخیره کنم؟» که از موتورِ ورود می‌آید. */
+    val savePrompt: StateFlow<PasswordSavePrompt?> = passwordStudio.pendingPrompt
+
+    /** تذکر/هشدارِ کوتاه (گذرواژهٔ ضعیف‌تر یا دامنهٔ بدل). */
+    val passwordNotice: StateFlow<PasswordNotice?> = passwordStudio.notice
+
+    /**
+     * ارسالِ فرمِ ورود را بررسی می‌کند و در صورت لزوم کارتِ ذخیره را نشان می‌دهد.
+     *
+     * چه زمان صدا زده می‌شود؟ پس از هر بار کامل‌شدنِ صفحه؛ اگر کاربر همین حالا فرم را فرستاده
+     * باشد، content script مقادیر را یک بار خوانده و در حافظه نگه داشته است.
+     */
+    fun checkForSubmittableLogin() {
+        val tab = _uiState.value.activeWebTab() ?: return
+        if (tab.isPrivate || tab.url.isBlank()) return
+        loginWatcher.captureCurrentForm(tabId = tab.id, url = tab.url)
+    }
+
+    /** تأییدِ کاربر: ذخیرهٔ ورود در مخزنِ رمزنگاری‌شده. */
+    fun acceptPasswordPrompt() {
+        viewModelScope.launch {
+            val saved = passwordStudio.acceptPendingPrompt()
+            showLocalizedBanner { if (saved) it.saveLoginSaved else it.saveLoginFailed }
+        }
+    }
+
+    fun dismissPasswordPrompt() {
+        passwordStudio.dismissPendingPrompt()
+    }
+
+    fun consumePasswordNotice() {
+        passwordStudio.consumeNotice()
+    }
+
+    /** پرکردنِ فرمِ ورودِ همین صفحه از رکوردی که کاربر انتخاب می‌کند. */
+    fun autofillFromVault(credentialId: String) {
+        val tab = _uiState.value.activeWebTab() ?: return
+        viewModelScope.launch {
+            val script = passwordStudio.buildManualAutofillScript(tab.url, credentialId)
+            if (script == null) {
+                showLocalizedBanner { it.saveLoginNoStored }
+                return@launch
+            }
+            loginWatcher.runInPage(tab.id, script) { raw ->
+                if (raw != "filled") showLocalizedBanner { it.saveLoginNoStored }
+            }
+        }
+    }
+
+    /**
+     * «افزودن هر سایتی»: به‌جای ردکردنِ سایت، نردبانِ راه‌ها را می‌سازد.
+     *
+     * اولین مسیر (معمولاً بازکردنِ مستقیم) همین حالا اجرا می‌شود و مسیرهای بعدی در
+     * [BrowserUiState.sitePlan] می‌مانند تا اگر صفحه جواب نداد، کاربر با یک ضربه بعدی را برود.
+     */
+    fun addAnySite(rawInput: String) {
+        if (rawInput.isBlank()) return
+        viewModelScope.launch {
+            restore.join()
+            val strings = localizationManager.current()
+            val tab = createTab(isPrivate = false)
+            // نردبانِ قبلی نباید با نردبانِ آدرسِ تازه قاطی شود.
+            loginWatcher.forget(tab.id)
+            val plan = runCatching {
+                siteEngine.planFor(tabId = tab.id, url = rawInput, preferDesktop = false)
+            }.getOrNull()
+            val first = plan?.best
+            if (plan == null || first == null) {
+                loadPage(tab, rawInput)
+            } else {
+                updateTab(tab.id) { it.copy(isDesktopMode = first.useDesktopUserAgent) }
+                loadPage(tab, first.targetUrl)
+            }
+            if (plan != null) {
+                _uiState.update {
+                    it.copy(
+                        sitePlan = plan,
+                        sitePlanTabId = tab.id,
+                        sitePlanTitle = rawInput,
+                        bannerMessage = strings.addAnySiteRoute(routeLabel(plan.best?.route, strings)),
+                    )
+                }
+            }
+        }
+    }
+
+    /** مسیر بعدیِ همان نردبان؛ `null` یعنی همهٔ راه‌ها امتحان شده‌اند. */
+    fun tryNextSiteRoute() {
+        val plan = _uiState.value.sitePlan ?: return
+        val tabId = _uiState.value.sitePlanTabId ?: return
+        val tab = _uiState.value.tabs.firstOrNull { it.id == tabId } ?: return
+        viewModelScope.launch {
+            val strings = localizationManager.current()
+            // اگر کاربر خودش آدرس را عوض کرده، نردبانِ تازه از آدرسِ واقعیِ تب ساخته می‌شود.
+            if (tab.url.startsWith("http") && tab.url != plan.steps.firstOrNull()?.targetUrl) {
+                runCatching {
+                    _uiState.update { it.copy(sitePlan = siteEngine.planFor(tabId, tab.url)) }
+                }
+            }
+            val currentPlan = _uiState.value.sitePlan ?: return@launch
+            val next = currentPlan.steps.firstOrNull()
+            if (next == null) {
+                siteEngine.markRouteFailed(tabId, SiteRoute.DIRECT)
+                _uiState.update { it.copy(sitePlan = null, sitePlanTabId = null, sitePlanTitle = null) }
+                showBanner(strings.addAnySiteTriedAll)
+                return@launch
+            }
+            siteEngine.markRouteFailed(tabId, next.route)
+            val refreshed = siteEngine.planFor(tabId, _uiState.value.sitePlanTitle.orEmpty())
+            val attempt = siteEngine.stateOf(tabId).attemptedRoutes.size
+            updateTab(tabId) { it.copy(isDesktopMode = next.useDesktopUserAgent) }
+            if (next.route == SiteRoute.VAULT_MANUAL_LOGIN) {
+                // ورودِ دستی: پنلِ مخزن باز می‌شود، نه یک صفحهٔ دیگر.
+                _uiState.update { it.copy(showSiteCompatibilitySheet = true) }
+                return@launch
+            }
+            loadPage(tab, next.targetUrl)
+            _uiState.update {
+                it.copy(
+                    sitePlan = refreshed,
+                    bannerMessage = strings.addAnySiteFallback(attempt = attempt, of = currentPlan.steps.size),
+                )
+            }
+        }
+    }
+
+    fun dismissSitePlan() {
+        _uiState.update {
+            it.copy(sitePlan = null, sitePlanTabId = null, sitePlanTitle = null, showSiteCompatibilitySheet = false)
+        }
+    }
+
+    fun openSiteCompatibilitySheet() {
+        _uiState.update { it.copy(showSiteCompatibilitySheet = true) }
+    }
+
+    fun closeSiteCompatibilitySheet() {
+        _uiState.update { it.copy(showSiteCompatibilitySheet = false) }
+    }
+
+    /** کاندیدهای پرکردن برای پنلِ دستی (بدونِ گذرواژه). */
+    suspend fun siteCandidates(url: String): List<AutofillCandidate> = passwordStudio.candidatesFor(url)
+
+    private fun routeLabel(route: SiteRoute?, strings: MarbleStrings): String = when (route) {
+        SiteRoute.DIRECT -> strings.routeDirect
+        SiteRoute.DESKTOP_USER_AGENT -> strings.routeDesktop
+        SiteRoute.MOBILE_SUBDOMAIN -> strings.routeMobile
+        SiteRoute.CANONICAL_HOST -> strings.routeCanonical
+        SiteRoute.PWA_WINDOW -> strings.routePwa
+        SiteRoute.VAULT_MANUAL_LOGIN -> strings.routeManual
+        SiteRoute.READ_ONLY_SNAPSHOT -> strings.routeReadOnly
+        null -> strings.routeDirect
     }
 
     private fun showBanner(message: String) {

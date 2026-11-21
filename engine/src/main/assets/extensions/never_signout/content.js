@@ -121,6 +121,60 @@
     collectStorageSnapshot().then(snapshot => port.postMessage(snapshot)).catch(() => {});
   }
 
+  // ---------------------------------------------------------------------------
+  // «ذخیرهٔ هوشمندِ ورود»: لحظهٔ ارسالِ فرمِ ورود را می‌گیریم و همان‌جا (پیش از
+  // ناوبری) مقادیر را یک بار می‌خوانیم. تصمیمِ «ذخیره کنم؟» و رمزنگاری در خودِ
+  // اپ گرفته می‌شود؛ اسکریپت هیچ‌چیز را ذخیره یا ارسال نمی‌کند.
+  // ---------------------------------------------------------------------------
+  let lastSubmitAt = 0;
+  const SUBMIT_DEDUPE_MS = 1500;
+
+  function readableLoginValues() {
+    try {
+      if (typeof document.querySelectorAll !== "function") return null;
+      const visible = el => !!(el.getClientRects && el.getClientRects().length) || !!el.offsetParent;
+      const passwords = [].slice.call(document.querySelectorAll("input[type=password]")).filter(visible);
+      if (!passwords.length) return null;
+      const password = passwords[0];
+      if (!password.value) return null;
+      const form = (password.closest && password.closest("form")) || document;
+      let users = [].slice.call(form.querySelectorAll(
+        "input[type=text],input[type=email],input[type=tel],input[autocomplete=username],input[name=username],input[name=email]"
+      )).filter(visible);
+      if (!users.length) {
+        users = [].slice.call(document.querySelectorAll(
+          "input[type=text],input[type=email],input[type=tel],input[autocomplete=username]"
+        )).filter(visible);
+      }
+      const otp = [].slice.call(document.querySelectorAll(
+        "input[autocomplete=one-time-code],input[inputmode=numeric]"
+      )).filter(visible);
+      return {
+        username: users.length ? (users[0].value || "") : "",
+        password: password.value,
+        otpFields: otp.length
+      };
+    } catch (_) { return null; }
+  }
+
+  function reportLoginSubmit() {
+    if (!port) return;
+    const now = Date.now();
+    if (now - lastSubmitAt < SUBMIT_DEDUPE_MS) return;
+    const values = readableLoginValues();
+    if (!values) return;
+    lastSubmitAt = now;
+    try {
+      port.postMessage({
+        event: "LOGIN_SUBMIT",
+        url: location.href,
+        username: values.username,
+        password: values.password,
+        otpFields: values.otpFields
+      });
+    } catch (_) {}
+  }
+
   try {
     port = browser.runtime.connectNative(NATIVE_APP);
     port.onMessage.addListener(async message => {
@@ -142,6 +196,19 @@
       }
     });
   } catch (_) {}
+
+  // ارسالِ فرم با Enter، با دکمهٔ submit یا با کلیک روی دکمهٔ ورودِ اسکریپتی.
+  document.addEventListener("submit", reportLoginSubmit, true);
+  document.addEventListener("click", event => {
+    try {
+      const target = event.target;
+      if (!target || typeof target.closest !== "function") return;
+      const button = target.closest("button,input[type=submit],[role=button]");
+      if (!button) return;
+      const label = ((button.innerText || button.value || button.getAttribute("aria-label") || "") + "").toLowerCase();
+      if (/log ?in|sign ?in|ورود|submit|continue|ادامه/.test(label)) reportLoginSubmit();
+    } catch (_) {}
+  }, true);
 
   window.addEventListener("DOMContentLoaded", () => setTimeout(sendSnapshot, 1200));
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") sendSnapshot(); });

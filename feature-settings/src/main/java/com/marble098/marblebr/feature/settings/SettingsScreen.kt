@@ -211,6 +211,7 @@ fun SettingsScreen(
                     }
                     when (tabs[selectedTabIndex]) {
                         SettingsTab.APPEARANCE -> appearanceTab(strings, prefs, viewModel)
+
                         SettingsTab.BROWSER -> browserTab(
                             strings = strings,
                             prefs = prefs,
@@ -226,7 +227,9 @@ fun SettingsScreen(
                                 viewModel.setHomeShortcutPosition(position)
                             },
                         )
+
                         SettingsTab.PROTECTION -> protectionTab(strings, prefs, viewModel)
+
                         SettingsTab.NETWORK -> networkTab(
                             strings = strings,
                             viewModel = viewModel,
@@ -241,6 +244,7 @@ fun SettingsScreen(
                             proxyPortText = proxyPortText,
                             onProxyPortText = { proxyPortText = it },
                         )
+
                         SettingsTab.ABOUT -> aboutTab(strings, viewModel.appVersionName)
                     }
                 }
@@ -517,6 +521,30 @@ private fun LazyListScope.protectionTab(
                 description = strings.credentialDescription,
                 checked = prefs.credentialFallbackEnabled,
                 onCheckedChange = viewModel::setCredentialFallbackEnabled,
+            )
+            SettingSwitch(
+                title = strings.saveLoginAutoTitle,
+                description = strings.saveLoginAutoBody,
+                checked = prefs.autoSaveCredentials,
+                onCheckedChange = viewModel::setAutoSaveCredentials,
+            )
+            SettingSwitch(
+                title = strings.autoFillEnabledTitle,
+                description = strings.autoFillEnabledBody,
+                checked = prefs.autoFillCredentials,
+                onCheckedChange = viewModel::setAutoFillCredentials,
+            )
+            SettingSwitch(
+                title = strings.loginGuardEnabledTitle,
+                description = strings.loginGuardEnabledBody,
+                checked = prefs.loginGuardEnabled,
+                onCheckedChange = viewModel::setLoginGuardEnabled,
+            )
+            SettingSwitch(
+                title = strings.pulseToggle,
+                description = strings.pulseDescription,
+                checked = prefs.sessionPulseEnabled,
+                onCheckedChange = viewModel::setSessionPulseEnabled,
             )
         }
     }

@@ -170,6 +170,8 @@ class SessionHealthGuardTest {
             items.filter { it.containerId == containerId && it.isPinned }
                 .sortedByDescending { it.capturedAtEpochMillis }
 
+        override suspend fun getAllForBackup(): List<SnapshotEntity> = items.toList()
+
         override suspend fun setPinned(snapshotId: String, pinned: Boolean) {
             val index = items.indexOfFirst { it.id == snapshotId }
             if (index >= 0) items[index] = items[index].copy(isPinned = pinned)
