@@ -128,6 +128,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
+import com.marble098.marblebr.core.i18n.MarbleStrings
 import com.marble098.marblebr.core.model.AutofillCandidate
 import com.marble098.marblebr.core.model.LoginMethod
 import com.marble098.marblebr.core.model.PasswordStrengthLevel
@@ -366,6 +367,9 @@ fun BrowserScreen(
                 downloadsCount = downloads.size,
                 blockedAdsCount = blockedAdsCount.toInt(),
                 tabsCount = uiState.tabs.size,
+                passwordCount = passwordCount,
+                protectedSiteCount = protectedSiteCount,
+                pulseDomains = pulseDomains,
                 submit = submit,
                 viewModel = viewModel,
                 onOpenVaultDashboard = onOpenVaultDashboard,
@@ -1267,6 +1271,9 @@ private fun LauncherContent(
     downloadsCount: Int,
     blockedAdsCount: Int,
     tabsCount: Int,
+    passwordCount: Int,
+    protectedSiteCount: Int,
+    pulseDomains: List<String>,
     submit: (String) -> Unit,
     viewModel: BrowserViewModel,
     onOpenVaultDashboard: (String?) -> Unit,

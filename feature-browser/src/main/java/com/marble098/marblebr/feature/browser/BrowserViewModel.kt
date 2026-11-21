@@ -917,36 +917,38 @@ class BrowserViewModel @Inject constructor(
         val plan = _uiState.value.sitePlan ?: return
         val tabId = _uiState.value.sitePlanTabId ?: return
         val tab = _uiState.value.tabs.firstOrNull { it.id == tabId } ?: return
-        val strings = localizationManager.current()
-        // اگر کاربر خودش آدرس را عوض کرده، نردبانِ تازه از آدرسِ واقعیِ تب ساخته می‌شود.
-        if (tab.url.startsWith("http") && tab.url != plan.steps.firstOrNull()?.targetUrl) {
-            runCatching {
-                _uiState.update { it.copy(sitePlan = siteEngine.planFor(tabId, tab.url)) }
+        viewModelScope.launch {
+            val strings = localizationManager.current()
+            // اگر کاربر خودش آدرس را عوض کرده، نردبانِ تازه از آدرسِ واقعیِ تب ساخته می‌شود.
+            if (tab.url.startsWith("http") && tab.url != plan.steps.firstOrNull()?.targetUrl) {
+                runCatching {
+                    _uiState.update { it.copy(sitePlan = siteEngine.planFor(tabId, tab.url)) }
+                }
             }
-        }
-        val currentPlan = _uiState.value.sitePlan ?: return
-        val next = currentPlan.steps.firstOrNull()
-        if (next == null) {
-            siteEngine.markRouteFailed(tabId, SiteRoute.DIRECT)
-            _uiState.update { it.copy(sitePlan = null, sitePlanTabId = null, sitePlanTitle = null) }
-            showBanner(strings.addAnySiteTriedAll)
-            return
-        }
-        siteEngine.markRouteFailed(tabId, next.route)
-        val refreshed = siteEngine.planFor(tabId, _uiState.value.sitePlanTitle.orEmpty())
-        val attempt = siteEngine.stateOf(tabId).attemptedRoutes.size
-        updateTab(tabId) { it.copy(isDesktopMode = next.useDesktopUserAgent) }
-        if (next.route == SiteRoute.VAULT_MANUAL_LOGIN) {
-            // ورودِ دستی: پنلِ مخزن باز می‌شود، نه یک صفحهٔ دیگر.
-            _uiState.update { it.copy(showSiteCompatibilitySheet = true) }
-            return
-        }
-        loadPage(tab, next.targetUrl)
-        _uiState.update {
-            it.copy(
-                sitePlan = refreshed,
-                bannerMessage = strings.addAnySiteFallback(attempt = attempt, of = currentPlan.steps.size),
-            )
+            val currentPlan = _uiState.value.sitePlan ?: return@launch
+            val next = currentPlan.steps.firstOrNull()
+            if (next == null) {
+                siteEngine.markRouteFailed(tabId, SiteRoute.DIRECT)
+                _uiState.update { it.copy(sitePlan = null, sitePlanTabId = null, sitePlanTitle = null) }
+                showBanner(strings.addAnySiteTriedAll)
+                return@launch
+            }
+            siteEngine.markRouteFailed(tabId, next.route)
+            val refreshed = siteEngine.planFor(tabId, _uiState.value.sitePlanTitle.orEmpty())
+            val attempt = siteEngine.stateOf(tabId).attemptedRoutes.size
+            updateTab(tabId) { it.copy(isDesktopMode = next.useDesktopUserAgent) }
+            if (next.route == SiteRoute.VAULT_MANUAL_LOGIN) {
+                // ورودِ دستی: پنلِ مخزن باز می‌شود، نه یک صفحهٔ دیگر.
+                _uiState.update { it.copy(showSiteCompatibilitySheet = true) }
+                return@launch
+            }
+            loadPage(tab, next.targetUrl)
+            _uiState.update {
+                it.copy(
+                    sitePlan = refreshed,
+                    bannerMessage = strings.addAnySiteFallback(attempt = attempt, of = currentPlan.steps.size),
+                )
+            }
         }
     }
 
