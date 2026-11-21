@@ -89,7 +89,6 @@ LIBRARY_TARGETS: dict[str, str] = {
     "androidxTestRules": f"{GOOGLE_MAVEN}/androidx/test/rules/maven-metadata.xml",
     "espressoCore": f"{GOOGLE_MAVEN}/androidx/test/espresso/espresso-core/maven-metadata.xml",
     "robolectric": f"{CENTRAL_MAVEN}/org/robolectric/robolectric/maven-metadata.xml",
-    "json": f"{CENTRAL_MAVEN}/org/json/json/maven-metadata.xml",
 }
 
 # پلاگین‌ها و ابزارهای بیلد
