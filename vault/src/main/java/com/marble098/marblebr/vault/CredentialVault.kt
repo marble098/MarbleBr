@@ -222,7 +222,10 @@ class CredentialVault @Inject constructor(
                     val scheme = uri.scheme.lowercase()
                     val path = uri.rawPath.orEmpty()
                     val query = uri.rawQuery?.let { "?$it" }.orEmpty()
-                    "$scheme://${uri.host.lowercase()}$path$query"
+                    // `www.` حذف می‌شود تا ورودِ ذخیره‌شده با دامنهٔ سایت در پرکردنِ خودکار
+                    // یکی باشد (همان قاعده‌ای که CredentialCaptureHeuristics.domainOf دارد).
+                    val host = uri.host.lowercase().removePrefix("www.")
+                    "$scheme://$host$path$query"
                 }
             }.getOrDefault(withScheme)
         }
