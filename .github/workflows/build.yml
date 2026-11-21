@@ -46,6 +46,8 @@ jobs:
         run: |
           python3 scripts/test_verify_apks.py
           ./scripts/test_publish_release.sh
+          ./scripts/test_smoke_install_apks.sh
+          ./scripts/test_gradle_retry.sh
 
       - name: Run session extension isolation tests
         run: |
@@ -132,8 +134,7 @@ jobs:
           arch: x86_64
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: |
-            test "$(adb shell getconf PAGE_SIZE | tr -d '\r')" = 16384 && ./scripts/smoke_install_apks.sh "$RUNNER_TEMP/verified-apks"
+          script: EXPECTED_PAGE_SIZE=16384 ./scripts/smoke_install_apks.sh "$RUNNER_TEMP/verified-apks"
 
       - name: Upload test-only APKs (not compatible with official installations)
         uses: actions/upload-artifact@v7

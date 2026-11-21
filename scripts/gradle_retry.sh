@@ -22,14 +22,25 @@ MAX_ATTEMPTS="${GRADLE_MAX_ATTEMPTS:-3}"
 DELAY_SECONDS="${GRADLE_RETRY_DELAY:-15}"
 
 # نشانه‌های خطای گذرا (شبکه/حل پلاگین) در برابر خطای واقعی کد
-TRANSIENT_PATTERN='Could not (resolve|GET|HEAD|download)|PluginRequestsHandler|Plugin \[|Connection (reset|refused|timed out)|Read timed out|UnknownHostException|Temporary failure in name resolution|Received status code 5[0-9][0-9]|Service Unavailable|Gateway Time'
+TRANSIENT_PATTERN='Could not (resolve|find|GET|HEAD|download)|PluginRequestsHandler|Plugin \[|Connection (reset|refused|timed out)|Read timed out|UnknownHostException|Temporary failure in name resolution|Received status code 5[0-9][0-9]|Service Unavailable|Gateway Time'
+
+# Gradle نتیجهٔ «ماژول پیدا نشد» را تا ۲۴ ساعت در کش متادیتا نگه می‌دارد؛ همین کش از
+# کش CI بازیابی می‌شود و می‌تواند یک ۴۰۴ گذرای Maven Central را به شکست دائمی تبدیل کند.
+# پس در تلاش‌های بعدی پس از خطای حل وابستگی، کش را با --refresh-dependencies دور می‌زنیم.
+RESOLUTION_PATTERN='Could not (resolve|find)|Could not GET|Could not HEAD'
 
 attempt=1
 exit_code=1
+refresh_resolution=false
 while (( attempt <= MAX_ATTEMPTS )); do
-    echo "▶️ تلاش ${attempt}/${MAX_ATTEMPTS}: ./gradlew $*"
+    extra_args=()
+    if [[ "$refresh_resolution" == true ]]; then
+        extra_args=(--refresh-dependencies)
+        echo "🔄 دور زدن کش وابستگی‌ها با --refresh-dependencies"
+    fi
+    echo "▶️ تلاش ${attempt}/${MAX_ATTEMPTS}: ./gradlew ${extra_args[*]+${extra_args[*]} }$*"
     set +e
-    ./gradlew "$@" 2>&1 | tee "$LOG_FILE"
+    ./gradlew ${extra_args[@]+"${extra_args[@]}"} "$@" 2>&1 | tee "$LOG_FILE"
     exit_code=${PIPESTATUS[0]}
     set -e
 
@@ -41,6 +52,10 @@ while (( attempt <= MAX_ATTEMPTS )); do
     if ! grep -qE "$TRANSIENT_PATTERN" "$LOG_FILE"; then
         echo "❌ شکست غیرگذرا شناسایی شد؛ تلاش مجدد بی‌فایده است."
         exit "$exit_code"
+    fi
+
+    if grep -qE "$RESOLUTION_PATTERN" "$LOG_FILE"; then
+        refresh_resolution=true
     fi
 
     if (( attempt < MAX_ATTEMPTS )); then

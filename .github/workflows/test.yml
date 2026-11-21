@@ -41,6 +41,11 @@ jobs:
       - name: Run release publishing tests
         run: ./scripts/test_publish_release.sh
 
+      - name: Run install smoke-test and Gradle retry script tests
+        run: |
+          ./scripts/test_smoke_install_apks.sh
+          ./scripts/test_gradle_retry.sh
+
       - name: Run session extension isolation tests
         run: |
           node scripts/test_session_extension.js

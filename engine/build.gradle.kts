@@ -53,5 +53,8 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation(libs.org.json)
+    // Note: `org.json` is part of the Android platform (android.jar) and is therefore
+    // available to the unit-test classpath without an extra Maven dependency. The engine
+    // unit tests do not exercise JSON parsing, so pulling `org.json:json` from Maven
+    // Central only added a fragile external resolution step to every test run.
 }
