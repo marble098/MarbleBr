@@ -1,5 +1,7 @@
 package com.marble098.marblebr.feature.browser
 
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -38,6 +40,7 @@ import com.marble098.marblebr.vault.PasswordNotice
 import com.marble098.marblebr.vault.PasswordSavePrompt
 import com.marble098.marblebr.vault.PasswordStudio
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -118,6 +121,7 @@ class BrowserViewModel @Inject constructor(
     private val loginWatcher: LoginWatcher,
     val passwordStudio: PasswordStudio,
     private val siteEngine: com.marble098.marblebr.engine.SiteCompatibilityEngine,
+    @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(BrowserUiState())
@@ -507,6 +511,15 @@ class BrowserViewModel @Inject constructor(
         showLocalizedBanner { if (nextDesktop) it.bannerDesktopOn else it.bannerDesktopOff }
     }
 
+    /** به‌اشتراک‌گذاشتن پیوند همین صفحه با مرورگرهای دیگر (اپ‌های نصب‌شدهٔ Android). */
+    fun shareCurrentPage() {
+        val tab = _uiState.value.activeTab ?: return
+        val url = tab.url.takeIf { it.isNotBlank() } ?: return
+        val strings = localizationManager.strings()
+        val intent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, url)
+        appContext.startActivity(Intent.createChooser(intent, strings.menuSharePage))
+    }
+
     fun toggleFindInPage(visible: Boolean = !_uiState.value.isFindInPageVisible) {
         val tab = _uiState.value.activeTab
         if (!visible && tab != null) {
@@ -600,7 +613,7 @@ class BrowserViewModel @Inject constructor(
             val tab = _uiState.value.activeTab ?: return@launch
             val strings = localizationManager.current()
             if (tab.url.isBlank() || tab.isPrivate) return@launch
-            val saved = sessionManager.capturePageSnapshot(tab.id, tab.url)
+            val saved = sessionManager.capturePageSnapshot(tab.id, tab.url, manual = true)
             showBanner(if (saved) strings.bannerSnapshotSaved else strings.snapshotUnavailable)
         }
     }

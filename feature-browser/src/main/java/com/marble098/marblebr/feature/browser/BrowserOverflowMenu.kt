@@ -109,6 +109,9 @@ internal data class BrowserMenuActions(
     val onSitePermissions: () -> Unit = {},
     val onSiteAccounts: () -> Unit = {},
     val onSavePdf: () -> Unit = {},
+    // قابلیت تازه: به اشتراک‌گذاشتن صفحه و نشان کردن در نشان‌ها.
+    val onSharePage: () -> Unit = {},
+    val onBookmarkPage: () -> Unit = {},
 )
 
 @Composable
@@ -221,6 +224,18 @@ internal fun BrowserOverflowMenu(
                         accent = colors.tertiary,
                         testTag = "menu_site_permissions",
                     ) { onDismiss(); actions.onSitePermissions() }
+                    MenuRow(
+                        icon = Icons.Default.Share,
+                        title = strings.menuSharePage,
+                        accent = colors.tertiary,
+                        testTag = "menu_share_page",
+                    ) { onDismiss(); actions.onSharePage() }
+                    MenuRow(
+                        icon = Icons.Default.Bookmark,
+                        title = strings.bookmarkToggle,
+                        accent = colors.secondary,
+                        testTag = "menu_bookmark_page",
+                    ) { onDismiss(); actions.onBookmarkPage() }
                 }
 
                 if (state.hasPage && !state.isPrivate) {

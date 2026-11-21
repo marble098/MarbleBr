@@ -304,6 +304,8 @@ fun BrowserScreen(
         onSitePermissions = { viewModel.toggleSitePermissionsPanel(true) },
         onSiteAccounts = { showAccounts = true },
         onSavePdf = { activeTab?.let { requestPdf(it.id, it.title) } },
+        onSharePage = { viewModel.shareCurrentPage() },
+        onBookmarkPage = { viewModel.toggleBookmarkCurrentPage() },
     )
 
     Column(
@@ -436,6 +438,12 @@ fun BrowserScreen(
                 onSavePdf = {
                     viewModel.dismissPageContextMenu()
                     activeTab?.let { requestPdf(it.id, it.title) }
+                },
+                onSharePage = { viewModel.dismissPageContextMenu(); viewModel.shareCurrentPage() },
+                onBookmarkPage = { viewModel.dismissPageContextMenu(); viewModel.toggleBookmarkCurrentPage() },
+                onCopyText = {
+                    viewModel.dismissPageContextMenu()
+                    copyTextToClipboard(clipboardContext, strings.contextCopyText, target.text.orEmpty())
                 },
             )
         }

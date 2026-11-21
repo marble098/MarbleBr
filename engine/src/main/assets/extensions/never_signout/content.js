@@ -13,6 +13,50 @@
     } catch (_) {}
   }
 
+  // Each slow source gets a small budget: one lagging source (e.g. a busy page's
+  // indexedDB.databases()) must not eat the whole snapshot timeout.
+  function withBudget(fn, ms) {
+    return new Promise(resolve => {
+      let settled = false;
+      const settle = value => { if (settled) return; settled = true; clearTimeout(timer); resolve(value); };
+      const timer = setTimeout(() => settle(undefined), ms);
+      try {
+        Promise.resolve(fn()).then(settle, () => settle(undefined));
+      } catch (_) { settle(undefined); }
+    });
+  }
+
+  // Fallback when the background jar has nothing (site not enabled in Never sign out, or
+  // Set-Cookie was ignored): every non-HttpOnly cookie visible through document.cookie.
+  function parseDocumentCookies() {
+    try {
+      let host = location.hostname;
+      if (!host) {
+        try { host = new URL(location.origin || location.href).hostname; } catch (_) { host = ""; }
+      }
+      if (!host) return [];
+      return String(document.cookie || "")
+        .split(";")
+        .map(pair => pair.trim())
+        .filter(Boolean)
+        .map(pair => {
+          const i = pair.indexOf("=");
+          if (i <= 0) return null;
+          const name = pair.slice(0, i).trim();
+          const value = pair.slice(i + 1).trim();
+          if (!name) return null;
+          return {
+            name, value, domain: host, path: "/", isHostOnly: true,
+            isSecure: location.protocol === "https:", isHttpOnly: false, sameSite: "unspecified",
+            isSessionOnly: true, expiresEpochMillis: null
+          };
+        })
+        .filter(Boolean);
+    } catch (_) {
+      return [];
+    }
+  }
+
   async function collectStorageSnapshot() {
     const localDump = {};
     const sessionDump = {};
@@ -30,19 +74,17 @@
       }
     } catch (_) {}
     // Only names and versions are available here; this is NOT an IndexedDB backup.
-    try {
-      if (window.indexedDB && typeof window.indexedDB.databases === "function") {
-        const dbs = await window.indexedDB.databases();
-        for (const db of dbs) if (db && db.name) idbDump[db.name] = String(db.version || 1);
-      }
-    } catch (_) {}
+    const idbDbs = await withBudget(async () => {
+      if (!window.indexedDB || typeof window.indexedDB.databases !== "function") return [];
+      return (await window.indexedDB.databases()) || [];
+    }, 1200);
+    for (const db of idbDbs || []) if (db && db.name) idbDump[db.name] = String(db.version || 1);
     let cookies = [];
-    try {
-      const reply = await browser.runtime.sendMessage({ type: "GET_CAPTURED_COOKIES" });
-      if (Array.isArray(reply?.cookies)) cookies = reply.cookies;
-    } catch (_) {}
+    const jarReply = await withBudget(() => browser.runtime.sendMessage({ type: "GET_CAPTURED_COOKIES" }), 1500);
+    if (Array.isArray(jarReply?.cookies)) cookies = jarReply.cookies;
+    if (!cookies.length) cookies = parseDocumentCookies();
     let persisted = false;
-    try { persisted = await navigator.storage.persisted(); } catch (_) {}
+    try { persisted = (await withBudget(() => navigator.storage.persisted(), 400)) === true; } catch (_) {}
     return {
       event: "STORAGE_SNAPSHOT", origin: location.origin, href: location.href,
       cookies,
@@ -192,7 +234,15 @@
         try { result = String(eval(message.script) ?? ""); } catch (_) {}
         port.postMessage({ event: "JS_RESULT", requestId: message.requestId, result });
       } else if (message.type === "CAPTURE_PAGE") {
-        try { port.postMessage({ ...(await collectStorageSnapshot()), requestId: message.requestId }); } catch (_) {}
+        // The caller waits on this response, so always answer: even a failed collection is
+        // answered with a (possibly empty) snapshot instead of leaving the caller hanging.
+        let snapshot = null;
+        try { snapshot = await collectStorageSnapshot(); } catch (_) { snapshot = null; }
+        const finalSnapshot = snapshot || {
+          event: "STORAGE_SNAPSHOT", origin: location.origin, href: location.href,
+          cookies: [], localStorage: {}, sessionStorage: {}, indexedDbDump: {}, storagePersisted: false
+        };
+        try { port.postMessage({ ...finalSnapshot, requestId: message.requestId }); } catch (_) {}
       }
     });
   } catch (_) {}
