@@ -98,10 +98,14 @@ class ContainerSessionManager @Inject constructor(
     private val vaultManager: SessionVaultManager,
     private val healthGuard: SessionHealthGuard,
     private val adBlocker: LightweightAdBlocker,
-    /** پلِ «افزودن هر سایتی» و «ذخیرهٔ هوشمند گذرواژه». Provider تا وابستگیِ چرخه‌ای نسازد. */
-    private val loginWatcher: Provider<LoginWatcher>,
     private val localizationManager: LocalizationManager,
     private val preferencesRepository: com.marble098.marblebr.core.preferences.BrowserPreferencesRepository,
+    /**
+     * پلِ «افزودن هر سایتی» و «ذخیرهٔ هوشمند گذرواژه».
+     * Provider است تا وابستگیِ چرخه‌ای نسازد و آخرین پارامتر مانده تا فراخوانی‌های موجود
+     * (از جمله تست‌های ابزاری) بدونِ تغییر معتبر بمانند.
+     */
+    private val loginWatcher: Provider<LoginWatcher> = Provider { throw UnsupportedOperationException("LoginWatcher not wired") },
 ) {
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val activeSessions = ConcurrentHashMap<String, GeckoSession>()
