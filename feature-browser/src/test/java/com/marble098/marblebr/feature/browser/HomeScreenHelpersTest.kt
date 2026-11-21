@@ -44,4 +44,20 @@ class HomeScreenHelpersTest {
             }
         }
     }
+
+    @Test
+    fun `login method and blocker labels never return blanks`() {
+        val strings = com.marble098.marblebr.core.i18n.MarbleStrings.forLanguage(
+            com.marble098.marblebr.core.i18n.AppLanguage.PERSIAN,
+        )
+        com.marble098.marblebr.core.model.LoginMethod.entries.forEach { method ->
+            assertTrue("missing label for $method", loginMethodLabel(method, strings).isNotBlank())
+        }
+        com.marble098.marblebr.core.model.SiteBlocker.entries.forEach { blocker ->
+            assertTrue("missing label for $blocker", blockerLabel(blocker, strings).isNotBlank())
+        }
+        com.marble098.marblebr.core.model.PasswordStrengthLevel.entries.forEach { level ->
+            assertTrue("missing label for $level", strengthLabel(level, strings).isNotBlank())
+        }
+    }
 }

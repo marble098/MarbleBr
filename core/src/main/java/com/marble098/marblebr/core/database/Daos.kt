@@ -59,6 +59,10 @@ interface SnapshotDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(snapshot: SnapshotEntity)
 
+    /** همهٔ نسخه‌ها برای بستهٔ پشتیبان؛ فرادادهٔ غیرحساس، بدون رمزگشایی. */
+    @Query("SELECT * FROM session_snapshots")
+    suspend fun getAllForBackup(): List<SnapshotEntity>
+
     @Query("SELECT * FROM session_snapshots WHERE containerId = :containerId AND isPinned = 1 ORDER BY capturedAtEpochMillis DESC")
     suspend fun getPinnedForContainer(containerId: String): List<SnapshotEntity>
 
@@ -92,6 +96,9 @@ interface BookmarkDao {
 interface HistoryDao {
     @Query("SELECT * FROM history_items ORDER BY visitedAtEpochMillis DESC LIMIT 500")
     fun observeRecent(): Flow<List<HistoryEntity>>
+
+    @Query("SELECT * FROM history_items ORDER BY visitedAtEpochMillis DESC LIMIT :limit")
+    suspend fun getRecent(limit: Int): List<HistoryEntity>
 
     @Query("SELECT * FROM history_items WHERE title LIKE '%' || :query || '%' OR url LIKE '%' || :query || '%' ORDER BY visitedAtEpochMillis DESC LIMIT 50")
     suspend fun search(query: String): List<HistoryEntity>

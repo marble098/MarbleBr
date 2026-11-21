@@ -79,7 +79,8 @@ class CredentialFallbackAuthenticator @Inject constructor(
                 is PublicKeyCredential -> SilentReloginOutcome.PasskeyAssertionRetrieved(
                     authenticationResponseJson = credential.authenticationResponseJson,
                 )
-                is CustomCredential -> SilentReloginOutcome.CancelledOrUnavailable(strings.reloginUnsupportedType)
+                // «افزودن هر سایتی»: به‌جای پیامِ «پشتیبانی نمی‌شود»، راهِ جایگزین پیشنهاد می‌شود.
+                is CustomCredential -> SilentReloginOutcome.CancelledOrUnavailable(strings.reloginManualHint)
                 else -> SilentReloginOutcome.CancelledOrUnavailable(strings.reloginUnavailable)
             }
         }.getOrElse { error ->

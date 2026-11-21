@@ -48,6 +48,14 @@ data class BrowserPreferences(
     val openGoogleOnNewTab: Boolean = false,
     val rateDialogShown: Boolean = false,
     val rateLaunchCount: Int = 0,
+    /** ذخیرهٔ هوشمندِ ورودها پس از ورودِ موفق. */
+    val autoSaveCredentials: Boolean = true,
+    /** پیشنهادِ پرکردنِ خودکار روی صفحهٔ ورود. */
+    val autoFillCredentials: Boolean = true,
+    /** «نبضِ نشست»: یادآوریِ بازدیدِ سبک از سایت‌هایی که خواب‌آلود می‌شوند. */
+    val sessionPulseEnabled: Boolean = true,
+    /** هشدارِ بدلِ ورود پیش از تایپِ گذرواژه در دامنه‌های مشابه. */
+    val loginGuardEnabled: Boolean = true,
 )
 
 @Singleton
@@ -82,6 +90,10 @@ class BrowserPreferencesRepository @Inject constructor(
         val GOOGLE_NEW_TAB = booleanPreferencesKey("google_new_tab")
         val RATE_DIALOG_SHOWN = booleanPreferencesKey("rate_dialog_shown")
         val RATE_LAUNCH_COUNT = intPreferencesKey("rate_launch_count")
+        val AUTO_SAVE_CREDENTIALS = booleanPreferencesKey("auto_save_credentials")
+        val AUTO_FILL_CREDENTIALS = booleanPreferencesKey("auto_fill_credentials")
+        val SESSION_PULSE = booleanPreferencesKey("session_pulse_enabled")
+        val LOGIN_GUARD = booleanPreferencesKey("login_guard_enabled")
     }
 
     val preferencesFlow: Flow<BrowserPreferences> = dataStore.data.map { prefs ->
@@ -137,6 +149,10 @@ class BrowserPreferencesRepository @Inject constructor(
             openGoogleOnNewTab = prefs[Keys.GOOGLE_NEW_TAB] ?: false,
             rateDialogShown = prefs[Keys.RATE_DIALOG_SHOWN] ?: false,
             rateLaunchCount = prefs[Keys.RATE_LAUNCH_COUNT] ?: 0,
+            autoSaveCredentials = prefs[Keys.AUTO_SAVE_CREDENTIALS] ?: true,
+            autoFillCredentials = prefs[Keys.AUTO_FILL_CREDENTIALS] ?: true,
+            sessionPulseEnabled = prefs[Keys.SESSION_PULSE] ?: true,
+            loginGuardEnabled = prefs[Keys.LOGIN_GUARD] ?: true,
         )
     }
 
@@ -253,5 +269,21 @@ class BrowserPreferencesRepository @Inject constructor(
 
     suspend fun setRateLaunchCount(count: Int) {
         dataStore.edit { it[Keys.RATE_LAUNCH_COUNT] = count.coerceIn(0, 100) }
+    }
+
+    suspend fun setAutoSaveCredentials(enabled: Boolean) {
+        dataStore.edit { it[Keys.AUTO_SAVE_CREDENTIALS] = enabled }
+    }
+
+    suspend fun setAutoFillCredentials(enabled: Boolean) {
+        dataStore.edit { it[Keys.AUTO_FILL_CREDENTIALS] = enabled }
+    }
+
+    suspend fun setSessionPulseEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.SESSION_PULSE] = enabled }
+    }
+
+    suspend fun setLoginGuardEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.LOGIN_GUARD] = enabled }
     }
 }

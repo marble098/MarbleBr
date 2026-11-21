@@ -205,6 +205,7 @@ abstract class MarbleStrings {
     abstract val biometricCancelled: String
     abstract val reloginUnavailable: String
     abstract val reloginUnsupportedType: String
+    abstract val reloginManualHint: String
     abstract val reloginPromptSubtitle: String
     abstract val sitesSectionTitle: String
     abstract val sitesSectionBody: String
@@ -307,6 +308,117 @@ abstract class MarbleStrings {
     abstract fun vaultExpiryRenewed(domain: String): String
     abstract fun vaultExpiryRenewedCount(count: Int): String
     abstract fun vaultInsuranceDone(count: Int): String
+
+
+    // ---------------------------------------- افزودن هر سایتی
+    abstract val addAnySiteTitle: String
+    abstract val addAnySiteDescription: String
+    abstract val addAnySiteHint: String
+    abstract val addAnySiteAction: String
+    abstract val addAnySiteAdded: String
+    abstract fun addAnySiteFallback(attempt: Int, of: Int): String
+    abstract fun addAnySiteRoute(route: String): String
+    abstract val addAnySiteTriedAll: String
+    abstract val routeDirect: String
+    abstract val routeDesktop: String
+    abstract val routeMobile: String
+    abstract val routeCanonical: String
+    abstract val routePwa: String
+    abstract val routeManual: String
+    abstract val routeReadOnly: String
+    abstract val loginMethodTitle: String
+    abstract val loginMethodPassword: String
+    abstract val loginMethodGoogle: String
+    abstract val loginMethodApple: String
+    abstract val loginMethodPhone: String
+    abstract val loginMethodEmailCode: String
+    abstract val loginMethodMagicLink: String
+    abstract val loginMethodPasskey: String
+    abstract val loginMethodWallet: String
+    abstract val loginMethodSso: String
+    abstract val loginMethodUnknown: String
+    abstract val loginMethodUnknownHint: String
+    abstract val blockerIframe: String
+    abstract val blockerBrowser: String
+    abstract val blockerThirdParty: String
+    abstract val blockerJavaScript: String
+    abstract val blockerNetwork: String
+    abstract val blockerOtp: String
+
+    // ------------------------------------ ذخیرهٔ هوشمند گذرواژه
+    abstract val saveLoginTitle: String
+    abstract val saveLoginBody: String
+    abstract val saveLoginConfirm: String
+    abstract val saveLoginNotNow: String
+    abstract val saveLoginNeverForSite: String
+    abstract val saveLoginSaved: String
+    abstract val saveLoginFailed: String
+    abstract val saveLoginAutoTitle: String
+    abstract val saveLoginAutoBody: String
+    abstract val saveLoginFillTitle: String
+    abstract val saveLoginFillAction: String
+    abstract val saveLoginNoStored: String
+    abstract val saveLoginWeakerTitle: String
+    abstract val saveLoginWeakerBody: String
+    abstract fun passwordStrengthLabel(level: String): String
+    abstract val passwordStrengthVeryWeak: String
+    abstract val passwordStrengthWeak: String
+    abstract val passwordStrengthFair: String
+    abstract val passwordStrengthStrong: String
+    abstract val passwordStrengthExcellent: String
+    abstract val phishingWarningTitle: String
+    abstract fun phishingWarningBody(host: String, impersonated: String): String
+    abstract val phishingWarningDismiss: String
+    abstract val phishingWarningTrustOnce: String
+    abstract val originTrusted: String
+    abstract val originUnknown: String
+    abstract val originLookalike: String
+    abstract val loginGuardEnabledTitle: String
+    abstract val autoFillEnabledTitle: String
+    abstract val autoFillEnabledBody: String
+    abstract val loginGuardEnabledBody: String
+
+    // ------------------------------------- پشتیبان‌گیری
+    abstract val backupTitle: String
+    abstract val backupDescription: String
+    abstract val backupCreate: String
+    abstract val backupCreateBody: String
+    abstract val backupPassword: String
+    abstract val backupPasswordConfirm: String
+    abstract val backupPasswordHint: String
+    abstract val backupPasswordMismatch: String
+    abstract val backupPasswordTooShort: String
+    abstract val backupPasswordWarning: String
+    abstract val backupRestore: String
+    abstract val backupRestoreBody: String
+    abstract val backupRestorePickHint: String
+    abstract val backupRestorePreviewTitle: String
+    abstract fun backupRestorePreviewBody(newItems: Int, updatedItems: Int, duplicates: Int): String
+    abstract val backupRestoreApply: String
+    abstract val backupRestoreDone: String
+    abstract fun backupRestoreDoneBody(credentials: Int, sessions: Int, sites: Int): String
+    abstract val backupWrongPassword: String
+    abstract val backupNotABackup: String
+    abstract val backupEmpty: String
+    abstract val backupSavedTo: String
+    abstract val backupFailed: String
+    abstract val backupCantShare: String
+    abstract val backupIncludeCredentials: String
+    abstract val backupIncludeSessions: String
+    abstract val backupIncludeSites: String
+
+    // ------------------------------------------- نبض نشست
+    abstract val pulseTitle: String
+    abstract val pulseDescription: String
+    abstract val pulseRunNow: String
+    abstract val pulseEmpty: String
+    abstract fun pulseSiteLine(domain: String, urgency: String): String
+    abstract val pulseUrgencyLow: String
+    abstract val pulseUrgencyNormal: String
+    abstract val pulseUrgencyHigh: String
+    abstract val pulseUrgencyCritical: String
+    abstract val pulseDone: String
+    abstract val pulseToggle: String
 
     // ----------------------------------------------------- فرمت ها
     abstract fun tabsCount(count: Int): String
@@ -750,6 +862,7 @@ private object PersianStrings : MarbleStrings() {
     override val biometricCancelled = "تأیید هویت لغو شد"
     override val reloginUnavailable = "برای این سایت ورود ذخیره شده ای پیدا نشد"
     override val reloginUnsupportedType = "این نوع ورود پشتیبانی نمی شود"
+    override val reloginManualHint = "این نوع ورود را نمی‌توان خودکار انجام داد؛ صفحه باز می‌ماند تا با روشِ خودش وارد شوی و ورودت در مخزن ذخیره شود."
     override val reloginPromptSubtitle = "سایت نشستت را بست؛ با اثر انگشت دوباره وارد شو"
     override val sitesSectionTitle = "سایت ها"
     override val sitesSectionBody = "هر سایت فضای جدا و امن خودش را دارد."
@@ -1040,6 +1153,113 @@ private object PersianStrings : MarbleStrings() {
     override val reasonHealed = "برای بازیابی نشست تلاش شد؛ وضعیت ورود را بررسی کن."
     override val reasonServerRevoked = "سایت نشست را بست؛ با اثر انگشت یا Passkey سریع برگرد."
     override val reasonUnknown = "اتفاقی برای نشست افتاد که بررسی شد."
+
+    // ---------------------------------------- افزودن هر سایتی
+    override val addAnySiteTitle = "افزودن هر سایتی، حتی سخت‌ها"
+    override val addAnySiteDescription = "هر آدرسی را بنویس؛ اگر یک راه جواب نداد، خودمان راه بعدی را امتحان می‌کنیم."
+    override val addAnySiteHint = "آدرس سایت، مثلاً bank.example یا app.example.ir"
+    override val addAnySiteAction = "افزودن سایت"
+    override val addAnySiteAdded = "سایت اضافه شد و در فهرست است."
+    override fun addAnySiteFallback(attempt: Int, of: Int) = "راه $attempt از $of جواب نداد؛ راه بعدی را امتحان می‌کنیم."
+    override fun addAnySiteRoute(route: String) = "راه پیشنهادی: $route"
+    override val addAnySiteTriedAll = "همهٔ راه‌ها امتحان شد. سایت در فهرست می‌ماند و هر وقت خواستی دوباره تلاش کن."
+    override val routeDirect = "باز کردنِ مستقیم"
+    override val routeDesktop = "نمای دسکتاپ"
+    override val routeMobile = "نمای موبایلِ سایت"
+    override val routeCanonical = "نشانیِ اصلی بدون www"
+    override val routePwa = "پنجرهٔ مستقل (مانند اپ)"
+    override val routeManual = "ورودِ دستی با مخزن"
+    override val routeReadOnly = "نمایش نسخهٔ ذخیره‌شده"
+    override val loginMethodTitle = "این سایت چطور وارد می‌شود؟"
+    override val loginMethodPassword = "با نام کاربری و گذرواژه"
+    override val loginMethodGoogle = "با حساب گوگل"
+    override val loginMethodApple = "با حساب اپل"
+    override val loginMethodPhone = "با کد پیامکی"
+    override val loginMethodEmailCode = "با کد ایمیل"
+    override val loginMethodMagicLink = "با لینکِ ورود در ایمیل"
+    override val loginMethodPasskey = "با اثر انگشت یا پاسکی"
+    override val loginMethodWallet = "با کیف پول"
+    override val loginMethodSso = "با حساب سازمانی"
+    override val loginMethodUnknown = "روش ورود هنوز معلوم نیست"
+    override val loginMethodUnknownHint = "صفحه را باز کن؛ نشانه‌ها را خودمان پیدا می‌کنیم."
+    override val blockerIframe = "فرم ورود داخل قابِ دیگری است؛ ورودِ دستی از مخزن راه‌حل است."
+    override val blockerBrowser = "سایت مرورگرهای داخلی را نمی‌پذیرد؛ نمای دسکتاپ را امتحان می‌کنیم."
+    override val blockerThirdParty = "ورود به کوکیِ سایتِ دیگر وابسته است؛ پنجرهٔ مستقل کمک می‌کند."
+    override val blockerJavaScript = "صفحه بدون اجرای اسکریپت چیزی نشان نمی‌دهد."
+    override val blockerNetwork = "شبکه یا خودِ سایت پاسخ نداد؛ نسخهٔ ذخیره‌شده را نشان می‌دهیم."
+    override val blockerOtp = "این سایت فقط کد یک‌بارمصرف می‌خواهد؛ کد را ذخیره نمی‌کنیم."
+    override val saveLoginTitle = "این ورود را ذخیره کنم؟"
+    override val saveLoginBody = "نام کاربری و گذرواژه با کلیدِ دستگاه رمز می‌شوند و فقط روی همین گوشی می‌مانند."
+    override val saveLoginConfirm = "ذخیره کن"
+    override val saveLoginNotNow = "الآن نه"
+    override val saveLoginNeverForSite = "برای این سایت دیگر نپرس"
+    override val saveLoginSaved = "ورود ذخیره شد."
+    override val saveLoginFailed = "ذخیره نشد؛ بعداً از مخزن دوباره امتحان کن."
+    override val saveLoginAutoTitle = "ذخیرهٔ هوشمندِ ورود"
+    override val saveLoginAutoBody = "فقط پس از ورودِ موفق و با تأییدِ خودت ذخیره می‌شود."
+    override val saveLoginFillTitle = "ورودِ ذخیره‌شده پیدا شد"
+    override val saveLoginFillAction = "پر کردنِ فرم"
+    override val saveLoginNoStored = "برای این سایت ورودی ذخیره نشده است."
+    override val saveLoginWeakerTitle = "گذرواژهٔ تازه ضعیف‌تر است"
+    override val saveLoginWeakerBody = "گذرواژه‌ای که ساختی از قبلی ضعیف‌تر است؛ مطمئنی می‌خواهی عوضش کنی؟"
+    override fun passwordStrengthLabel(level: String) = "قدرت گذرواژه: $level"
+    override val passwordStrengthVeryWeak = "بسیار ضعیف"
+    override val passwordStrengthWeak = "ضعیف"
+    override val passwordStrengthFair = "متوسط"
+    override val passwordStrengthStrong = "قوی"
+    override val passwordStrengthExcellent = "عالی"
+    override val phishingWarningTitle = "مراقب باش؛ این آدرس اصل نیست"
+    override fun phishingWarningBody(host: String, impersonated: String) =
+        "$host شبیه $impersonated است ولی دامنهٔ دیگری دارد. اینجا گذرواژه ننویس."
+    override val phishingWarningDismiss = "بستن"
+    override val phishingWarningTrustOnce = "می‌دانم، ادامه می‌دهم"
+    override val originTrusted = "آدرسِ آشنا"
+    override val originUnknown = "سایتِ تازه برای تو"
+    override val originLookalike = "شبیه یک سایتِ آشنا"
+    override val loginGuardEnabledTitle = "نگهبانِ بدلِ ورود"
+    override val autoFillEnabledTitle = "پرکردنِ خودکارِ فرمِ ورود"
+    override val autoFillEnabledBody = "روی صفحهٔ ورودِ سایت‌های شناخته‌شده، ورودِ ذخیره‌شده را با یک لمس پر می‌کنیم."
+    override val loginGuardEnabledBody = "اگر آدرسی شبیه سایتِ آشنا باشد ولی دامنهٔ دیگری داشته باشد، پیش از تایپِ گذرواژه هشدار می‌دهیم."
+    override val backupTitle = "پشتیبان‌گیری از گذرواژه‌ها و ورودها"
+    override val backupDescription = "یک فایلِ رمزشده بساز و هر جا خواستی بازگردان؛ بدونِ گذرواژه‌ات قابلِ خواندن نیست."
+    override val backupCreate = "ساخت فایل پشتیبان"
+    override val backupCreateBody = "یک گذرواژه برای خودِ فایل انتخاب کن. اگر آن را گم کنی، فایل باز نمی‌شود."
+    override val backupPassword = "گذرواژهٔ فایل پشتیبان"
+    override val backupPasswordConfirm = "تکرار گذرواژه"
+    override val backupPasswordHint = "دست‌کم ۸ نویسه؛ جملهٔ طولانی بهتر است."
+    override val backupPasswordMismatch = "دو گذرواژه یکسان نیستند."
+    override val backupPasswordTooShort = "گذرواژهٔ فایل باید دست‌کم ۸ نویسه باشد."
+    override val backupPasswordWarning = "این گذرواژه را جایی امن نگه دار؛ بدونِ آن هیچ راه بازیابی وجود ندارد."
+    override val backupRestore = "بازگردانی از فایل"
+    override val backupRestoreBody = "فایل پشتیبان و گذرواژهٔ آن را وارد کن؛ اول پیش‌نمایش می‌بینی، بعد اعمال می‌کنی."
+    override val backupRestorePickHint = "انتخاب فایل پشتیبان"
+    override val backupRestorePreviewTitle = "پیش‌نمایشِ بازگردانی"
+    override fun backupRestorePreviewBody(newItems: Int, updatedItems: Int, duplicates: Int) =
+        "$newItems مورد تازه اضافه می‌شود، $updatedItems مورد به‌روز می‌شود و $duplicates مورد تکرارِ تکراری نادیده می‌ماند."
+    override val backupRestoreApply = "اعمال کن"
+    override val backupRestoreDone = "بازگردانی انجام شد."
+    override fun backupRestoreDoneBody(credentials: Int, sessions: Int, sites: Int) =
+        "$credentials ورود، $sessions نسخهٔ نشست و $sites سایت بازگردانی شد."
+    override val backupWrongPassword = "گذرواژهٔ فایل درست نیست."
+    override val backupNotABackup = "این فایل، پشتیبانِ MarbleBr نیست."
+    override val backupEmpty = "چیزی برای پشتیبان‌گیری نیست."
+    override val backupSavedTo = "فایل پشتیبان آماده شد."
+    override val backupFailed = "ساخت فایل پشتیبان انجام نشد."
+    override val backupCantShare = "برنامه‌ای برای ذخیرهٔ فایل پیدا نشد."
+    override val backupIncludeCredentials = "گذرواژه‌ها"
+    override val backupIncludeSessions = "نسخه‌های نشست"
+    override val backupIncludeSites = "تنظیمات سایت‌ها"
+    override val pulseTitle = "نبضِ نشست"
+    override val pulseDescription = "از عادتِ خودت یاد می‌گیریم و پیش از خواب‌آلود شدنِ سایت‌ها، آرام بیدارشان می‌کنیم."
+    override val pulseRunNow = "بیدار کردنِ حالا"
+    override val pulseEmpty = "همه‌چیز تازه است؛ فعلاً کاری لازم نیست."
+    override fun pulseSiteLine(domain: String, urgency: String) = "$domain · $urgency"
+    override val pulseUrgencyLow = "آرام"
+    override val pulseUrgencyNormal = "معمولی"
+    override val pulseUrgencyHigh = "زودتر لازم است"
+    override val pulseUrgencyCritical = "خیلی نزدیک به خروج"
+    override val pulseDone = "بیدارسازی انجام شد."
+    override val pulseToggle = "نبضِ هوشمند"
 }
 
 private object EnglishStrings : MarbleStrings() {
@@ -1223,6 +1443,7 @@ private object EnglishStrings : MarbleStrings() {
     override val biometricCancelled = "Identity check cancelled"
     override val reloginUnavailable = "No saved sign-in was found for this site"
     override val reloginUnsupportedType = "This kind of sign-in isn’t supported"
+    override val reloginManualHint = "This sign-in can’t be automated; the page stays open so you can sign in your way and save it to the vault."
     override val reloginPromptSubtitle = "The site ended your session — confirm with your fingerprint to get back in"
     override val sitesSectionTitle = "Sites"
     override val sitesSectionBody = "Every site has its own safe space."
@@ -1512,5 +1733,113 @@ private object EnglishStrings : MarbleStrings() {
     override val reasonStorageCleared = "The site’s local storage was wiped."
     override val reasonHealed = "Session restore was attempted; check whether you are still signed in."
     override val reasonServerRevoked = "The site ended your session — get back in with your fingerprint or a passkey."
+
     override val reasonUnknown = "Something touched your session, so we checked it."
+
+    // ---------------------------------------- Add any site
+    override val addAnySiteTitle = "Add any site, even the difficult ones"
+    override val addAnySiteDescription = "Type any address. If one way fails, we try the next one for you."
+    override val addAnySiteHint = "Site address, e.g. bank.example or app.example.com"
+    override val addAnySiteAction = "Add site"
+    override val addAnySiteAdded = "Added. The site is in your list."
+    override fun addAnySiteFallback(attempt: Int, of: Int) = "Way $attempt of $of didn’t work — trying the next one."
+    override fun addAnySiteRoute(route: String) = "Suggested way: $route"
+    override val addAnySiteTriedAll = "Every way was tried. The site stays in your list; try again anytime."
+    override val routeDirect = "Open directly"
+    override val routeDesktop = "Desktop view"
+    override val routeMobile = "Site’s mobile view"
+    override val routeCanonical = "Canonical address without www"
+    override val routePwa = "Standalone window (app-like)"
+    override val routeManual = "Manual sign-in from the vault"
+    override val routeReadOnly = "Show the saved copy"
+    override val loginMethodTitle = "How does this site sign in?"
+    override val loginMethodPassword = "Username and password"
+    override val loginMethodGoogle = "Google account"
+    override val loginMethodApple = "Apple account"
+    override val loginMethodPhone = "SMS code"
+    override val loginMethodEmailCode = "Email code"
+    override val loginMethodMagicLink = "Magic link in email"
+    override val loginMethodPasskey = "Fingerprint or passkey"
+    override val loginMethodWallet = "Wallet"
+    override val loginMethodSso = "Work account"
+    override val loginMethodUnknown = "Sign-in method not known yet"
+    override val loginMethodUnknownHint = "Open the page — we’ll look for the clues ourselves."
+    override val blockerIframe = "The login form lives in another frame; manual sign-in from the vault works."
+    override val blockerBrowser = "The site refuses in-app browsers; we’ll try desktop view."
+    override val blockerThirdParty = "Sign-in relies on another site’s cookies; the standalone window helps."
+    override val blockerJavaScript = "The page shows nothing without scripts running."
+    override val blockerNetwork = "The network or the site didn’t answer; we’ll show the saved copy."
+    override val blockerOtp = "This site only asks for a one-time code; we never store codes."
+    override val saveLoginTitle = "Save this sign-in?"
+    override val saveLoginBody = "Your username and password are encrypted with your device key and stay on this phone."
+    override val saveLoginConfirm = "Save it"
+    override val saveLoginNotNow = "Not now"
+    override val saveLoginNeverForSite = "Never ask for this site"
+    override val saveLoginSaved = "Sign-in saved."
+    override val saveLoginFailed = "Couldn’t save it; try again from the vault."
+    override val saveLoginAutoTitle = "Smart sign-in saving"
+    override val saveLoginAutoBody = "Saved only after a successful sign-in, and only with your approval."
+    override val saveLoginFillTitle = "Saved sign-in found"
+    override val saveLoginFillAction = "Fill the form"
+    override val saveLoginNoStored = "No saved sign-in for this site yet."
+    override val saveLoginWeakerTitle = "The new password is weaker"
+    override val saveLoginWeakerBody = "The password you just used is weaker than the saved one. Replace it anyway?"
+    override fun passwordStrengthLabel(level: String) = "Password strength: $level"
+    override val passwordStrengthVeryWeak = "Very weak"
+    override val passwordStrengthWeak = "Weak"
+    override val passwordStrengthFair = "Fair"
+    override val passwordStrengthStrong = "Strong"
+    override val passwordStrengthExcellent = "Excellent"
+    override val phishingWarningTitle = "Careful — this address isn’t the real one"
+    override fun phishingWarningBody(host: String, impersonated: String) =
+        "$host looks like $impersonated but belongs to a different domain. Don’t type your password here."
+    override val phishingWarningDismiss = "Close"
+    override val phishingWarningTrustOnce = "I understand, continue"
+    override val originTrusted = "A site you know"
+    override val originUnknown = "New to you"
+    override val originLookalike = "Looks like a site you know"
+    override val loginGuardEnabledTitle = "Lookalike sign-in guard"
+    override val autoFillEnabledTitle = "Autofill sign-in forms"
+    override val autoFillEnabledBody = "On sign-in pages of sites you know, one tap fills the saved credentials."
+    override val loginGuardEnabledBody = "If an address looks like a site you know but sits on another domain, we warn before you type a password."
+    override val backupTitle = "Back up passwords and sign-ins"
+    override val backupDescription = "Create one encrypted file and restore it anywhere; it can’t be read without your password."
+    override val backupCreate = "Create backup file"
+    override val backupCreateBody = "Pick a password for the file itself. If you lose it, the file can’t be opened."
+    override val backupPassword = "Backup file password"
+    override val backupPasswordConfirm = "Repeat password"
+    override val backupPasswordHint = "At least 8 characters; a long sentence is better."
+    override val backupPasswordMismatch = "The two passwords don’t match."
+    override val backupPasswordTooShort = "The file password needs at least 8 characters."
+    override val backupPasswordWarning = "Keep this password somewhere safe; there is no other way to recover it."
+    override val backupRestore = "Restore from file"
+    override val backupRestoreBody = "Pick the backup file and type its password; you see a preview before anything is applied."
+    override val backupRestorePickHint = "Choose backup file"
+    override val backupRestorePreviewTitle = "Restore preview"
+    override fun backupRestorePreviewBody(newItems: Int, updatedItems: Int, duplicates: Int) =
+        "$newItems new items will be added, $updatedItems updated, and $duplicates duplicates skipped."
+    override val backupRestoreApply = "Apply"
+    override val backupRestoreDone = "Restore finished."
+    override fun backupRestoreDoneBody(credentials: Int, sessions: Int, sites: Int) =
+        "$credentials sign-ins, $sessions session versions and $sites sites restored."
+    override val backupWrongPassword = "That file password is wrong."
+    override val backupNotABackup = "This file isn’t a MarbleBr backup."
+    override val backupEmpty = "There’s nothing to back up yet."
+    override val backupSavedTo = "Backup file is ready."
+    override val backupFailed = "Couldn’t create the backup file."
+    override val backupCantShare = "No app was found to save the file."
+    override val backupIncludeCredentials = "Passwords"
+    override val backupIncludeSessions = "Session versions"
+    override val backupIncludeSites = "Site settings"
+    override val pulseTitle = "Session pulse"
+    override val pulseDescription = "We learn your habits and quietly wake sites up before they go to sleep."
+    override val pulseRunNow = "Wake them now"
+    override val pulseEmpty = "Everything is fresh — nothing to do right now."
+    override fun pulseSiteLine(domain: String, urgency: String) = "$domain · $urgency"
+    override val pulseUrgencyLow = "calm"
+    override val pulseUrgencyNormal = "normal"
+    override val pulseUrgencyHigh = "needed soon"
+    override val pulseUrgencyCritical = "about to sign out"
+    override val pulseDone = "Wake-up finished."
+    override val pulseToggle = "Smart pulse"
 }

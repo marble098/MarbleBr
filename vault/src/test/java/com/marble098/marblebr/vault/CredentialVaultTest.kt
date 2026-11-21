@@ -71,4 +71,18 @@ class CredentialVaultTest {
             state.value = state.value.filterNot { it.id == id }
         }
     }
+
+    @Test
+    fun anySiteAddressIsAcceptedAfterNormalization() {
+        // «افزودن هر سایتی»: آدرسِ کوتاه که کاربر تایپ می‌کند هم معتبر است.
+        assertTrue(CredentialVault.isValidSite("my.mci.ir"))
+        assertTrue(CredentialVault.isValidSite("example.com/login?next=/panel"))
+        assertTrue(CredentialVault.isValidSite("app.example.ir:8443/sso"))
+        assertEquals("https://my.mci.ir/panel", CredentialVault.normalizeSite("my.mci.ir/panel"))
+        assertEquals("https://example.com", CredentialVault.normalizeSite("https://WWW.Example.COM"))
+        // اسکیم‌های خطرناک هنوز رد می‌شوند؛ «هر سایتی» یعنی آدرسِ وب، نه هر رشته‌ای.
+        assertFalse(CredentialVault.isValidSite("data:text/html,<script>alert(1)</script>"))
+        assertFalse(CredentialVault.isValidSite("file:///etc/passwd"))
+        assertFalse(CredentialVault.isValidSite(""))
+    }
 }

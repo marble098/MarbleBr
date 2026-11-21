@@ -102,6 +102,30 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setAutoSaveCredentials(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setAutoSaveCredentials(enabled)
+        }
+    }
+
+    fun setAutoFillCredentials(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setAutoFillCredentials(enabled)
+        }
+    }
+
+    fun setLoginGuardEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setLoginGuardEnabled(enabled)
+        }
+    }
+
+    fun setSessionPulseEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setSessionPulseEnabled(enabled)
+        }
+    }
+
     fun setAdBlockEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setAdBlockEnabled(enabled)

@@ -6,18 +6,26 @@ import com.marble098.marblebr.core.database.ContainerDao
 import com.marble098.marblebr.core.database.ContainerEntity
 import com.marble098.marblebr.core.database.HealthEventDao
 import com.marble098.marblebr.core.database.HealthEventEntity
+import com.marble098.marblebr.core.database.HistoryEntity
 import com.marble098.marblebr.core.i18n.LocalizationManager
 import com.marble098.marblebr.core.i18n.MarbleStrings
 import com.marble098.marblebr.core.model.SessionExpiryAssessment
 import com.marble098.marblebr.core.model.SessionExpiryGuard
 import com.marble098.marblebr.core.model.SessionInsurancePolicy
+import com.marble098.marblebr.core.model.PulseRecommendation
+import com.marble098.marblebr.core.model.SessionPulsePlanner
 import com.marble098.marblebr.core.model.SessionSnapshotMeta
+import com.marble098.marblebr.core.model.SiteUsagePattern
 import com.marble098.marblebr.core.model.SiteInsuranceCandidate
 import com.marble098.marblebr.core.model.WebAppContainer
 import com.marble098.marblebr.engine.ContainerSessionManager
 import com.marble098.marblebr.engine.KeepAliveScheduler
 import com.marble098.marblebr.vault.SessionVaultManager
 import com.marble098.marblebr.vault.CredentialVault
+import com.marble098.marblebr.vault.BackupOutcome
+import com.marble098.marblebr.vault.RestoreOutcome
+import com.marble098.marblebr.vault.RestorePreview
+import com.marble098.marblebr.vault.VaultBackupManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -92,6 +100,8 @@ class VaultDashboardViewModel @Inject constructor(
     private val localizationManager: LocalizationManager,
     private val keepAliveScheduler: KeepAliveScheduler,
     private val healthEventDao: HealthEventDao,
+    private val backupManager: VaultBackupManager,
+    private val historyDao: com.marble098.marblebr.core.database.HistoryDao,
 ) : ViewModel() {
 
     val containers: StateFlow<List<WebAppContainer>> = containerDao.observeAll()
@@ -157,6 +167,24 @@ class VaultDashboardViewModel @Inject constructor(
             if (id == null) emptyList() else list.filter { it.containerId == id }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /* ---------------------------------- پشتیبان‌گیری ---------------------------------- */
+
+    /** فایلِ پشتیبانِ آماده (متن + نامِ پیشنهادی) برای ذخیره با SAF. */
+    private val _pendingBackup = MutableStateFlow<PendingBackup?>(null)
+    val pendingBackup: StateFlow<PendingBackup?> = _pendingBackup.asStateFlow()
+
+    /** پیش‌نمایشِ بازگردانی؛ تا کاربر «اعمال کن» نگوید هیچ چیز نوشته نمی‌شود. */
+    private val _restorePreview = MutableStateFlow<RestorePreview?>(null)
+    val restorePreview: StateFlow<RestorePreview?> = _restorePreview.asStateFlow()
+
+    private val _backupBusy = MutableStateFlow(false)
+    val backupBusy: StateFlow<Boolean> = _backupBusy.asStateFlow()
+
+    /** «نبضِ نشست»: پیشنهادِ بیدارسازی بر پایهٔ عادتِ واقعیِ کاربر. */
+    val pulsePlan: StateFlow<List<PulseRecommendation>> = containers
+        .map { list -> buildPulsePlan(list) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     init {
         viewModelScope.launch {
             // پرچمِ سراسریِ محافظت را از تنظیمات می‌خوانیم تا داشبورد بتواند هشدارِ درست بدهد.
@@ -165,6 +193,155 @@ class VaultDashboardViewModel @Inject constructor(
             }
         }
     }
+
+    /**
+     * ساختِ بستهٔ رمزشده. هیچ خروجیِ خامی روی دیسک نوشته نمی‌شود؛ فقط متنِ آمادهٔ ذخیره با
+     * انتخاب‌گرِ فایلِ خودِ سیستم، تا اپ به حافظهٔ خارجی دسترسی نداشته باشد.
+     */
+    fun createBackup(password: String) {
+        if (password.length < VaultBackupManager.MIN_PASSWORD_LENGTH) {
+            notify { it.backupPasswordTooShort }
+            return
+        }
+        if (_backupBusy.value) return
+        runBusy("backup-create") {
+            _backupBusy.value = true
+            try {
+                when (val outcome = backupManager.createBackup(password)) {
+                    is BackupOutcome.Success -> {
+                        _pendingBackup.value = PendingBackup(text = outcome.text, fileName = outcome.fileName)
+                        notify { it.backupSavedTo }
+                    }
+                    is BackupOutcome.Failure -> notify { strings ->
+                        when (outcome.problem) {
+                            com.marble098.marblebr.core.model.BackupProblem.EMPTY_BACKUP -> strings.backupEmpty
+                            com.marble098.marblebr.core.model.BackupProblem.EMPTY_PASSWORD -> strings.backupPasswordTooShort
+                            else -> strings.backupFailed
+                        }
+                    }
+                }
+            } finally {
+                _backupBusy.value = false
+            }
+        }
+    }
+
+    /** متنِ پشتیبان در اختیارِ انتخاب‌گرِ فایل قرار گرفت. */
+    fun consumePendingBackup() {
+        _pendingBackup.value = null
+    }
+
+    fun onBackupShareFailed() {
+        _pendingBackup.value = null
+        notify { it.backupCantShare }
+    }
+
+    /** پیش‌نمایشِ بازگردانی؛ اگر فایل یا گذرواژه غلط باشد پیامِ دقیق داده می‌شود. */
+    fun previewRestore(text: String, password: String) {
+        if (_backupBusy.value) return
+        runBusy("backup-preview") {
+            _backupBusy.value = true
+            try {
+                when (val outcome = backupManager.previewRestore(text, password)) {
+                    is RestoreOutcome.Success -> _restorePreview.value = outcome.preview
+                    is RestoreOutcome.Failure -> notify { strings -> restoreProblemMessage(strings, outcome.problem) }
+                    is RestoreOutcome.Applied -> Unit
+                }
+            } finally {
+                _backupBusy.value = false
+            }
+        }
+    }
+
+    fun applyRestore() {
+        if (_backupBusy.value) return
+        runBusy("backup-apply") {
+            _backupBusy.value = true
+            try {
+                when (val outcome = backupManager.applyPendingRestore()) {
+                    is RestoreOutcome.Applied -> {
+                        val report = outcome.report
+                        _restorePreview.value = null
+                        _feedback.update {
+                            VaultFeedback(
+                                localizationManager.current().backupRestoreDoneBody(
+                                    report.credentialsAdded + report.credentialsUpdated,
+                                    report.sessionsAdded + report.sessionsUpdated,
+                                    report.sitesAdded + report.sitesUpdated,
+                                ),
+                            )
+                        }
+                    }
+                    is RestoreOutcome.Failure -> {
+                        _restorePreview.value = null
+                        notify { strings -> restoreProblemMessage(strings, outcome.problem) }
+                    }
+                    is RestoreOutcome.Success -> _restorePreview.value = outcome.preview
+                }
+            } finally {
+                _backupBusy.value = false
+            }
+        }
+    }
+
+    fun discardRestorePreview() {
+        _restorePreview.value = null
+        backupManager.discardPendingRestore()
+    }
+
+    /** «بیدار کردنِ حالا»: همان کارِ نگه‌داشتنِ نشست، اما فقط برای سایت‌های پیشنهادیِ نبض. */
+    fun runSessionPulseNow() {
+        runBusy("pulse-now") {
+            val recommendations = pulsePlan.value
+            if (recommendations.isEmpty()) {
+                notify { it.pulseEmpty }
+                return@runBusy
+            }
+            val byDomain = containers.value.associateBy { it.domain }
+            var woken = 0
+            recommendations.forEach { recommendation ->
+                val container = byDomain[recommendation.domain] ?: return@forEach
+                if (runCatching { sessionManager.captureSiteSnapshotNow(container) }.getOrDefault(false)) {
+                    woken++
+                }
+            }
+            notify { if (woken > 0) it.pulseDone else it.pulseEmpty }
+        }
+    }
+
+    private suspend fun buildPulsePlan(list: List<WebAppContainer>): List<PulseRecommendation> {
+        if (list.isEmpty()) return emptyList()
+        val visits = runCatching { historyDao.getRecent(200) }.getOrDefault(emptyList())
+        val now = System.currentTimeMillis()
+        val byDomain = list.associateBy { it.domain }
+        val patterns: List<SiteUsagePattern> = SessionPulsePlanner
+            .patternsFromHistory(
+                visits.map { it.toDomain() },
+                now,
+            )
+            .mapNotNull { pattern ->
+                val container = byDomain[pattern.domain] ?: return@mapNotNull null
+                pattern.copy(
+                    neverSignOutEnabled = container.neverSignOutEnabled,
+                    cookieDaysConfigured = container.cookieExpirationDays,
+                    lastSuccessfulCheckAtEpochMillis = snapshots.value
+                        .filter { it.containerId == container.id }
+                        .maxOfOrNull { it.capturedAtEpochMillis },
+                )
+            }
+        return SessionPulsePlanner.plan(patterns, now)
+    }
+
+    private fun restoreProblemMessage(strings: MarbleStrings, problem: com.marble098.marblebr.core.model.BackupProblem): String =
+        when (problem) {
+            com.marble098.marblebr.core.model.BackupProblem.WRONG_PASSWORD -> strings.backupWrongPassword
+            com.marble098.marblebr.core.model.BackupProblem.NOT_A_BACKUP,
+            com.marble098.marblebr.core.model.BackupProblem.UNSUPPORTED_VERSION,
+            -> strings.backupNotABackup
+            com.marble098.marblebr.core.model.BackupProblem.EMPTY_BACKUP -> strings.backupEmpty
+            com.marble098.marblebr.core.model.BackupProblem.EMPTY_PASSWORD -> strings.backupPasswordTooShort
+            com.marble098.marblebr.core.model.BackupProblem.CORRUPTED -> strings.backupFailed
+        }
 
     private fun buildOverview(
         containers: List<WebAppContainer>,
@@ -483,6 +660,9 @@ class VaultDashboardViewModel @Inject constructor(
         const val MAX_KEEP_ALIVE_MINUTES = 720
     }
 }
+
+/** بستهٔ پشتیبانِ ساخته‌شده و آمادهٔ ذخیره با انتخاب‌گرِ فایل. */
+data class PendingBackup(val text: String, val fileName: String)
 
 /** پیامِ بازخوردِ داشبورد با شناسهٔ یکتا تا هر بار نمایش داده شود. */
 data class VaultFeedback(

@@ -518,6 +518,30 @@ private fun LazyListScope.protectionTab(
                 checked = prefs.credentialFallbackEnabled,
                 onCheckedChange = viewModel::setCredentialFallbackEnabled,
             )
+            SettingSwitch(
+                title = strings.saveLoginAutoTitle,
+                description = strings.saveLoginAutoBody,
+                checked = prefs.autoSaveCredentials,
+                onCheckedChange = viewModel::setAutoSaveCredentials,
+            )
+            SettingSwitch(
+                title = strings.autoFillEnabledTitle,
+                description = strings.autoFillEnabledBody,
+                checked = prefs.autoFillCredentials,
+                onCheckedChange = viewModel::setAutoFillCredentials,
+            )
+            SettingSwitch(
+                title = strings.loginGuardEnabledTitle,
+                description = strings.loginGuardEnabledBody,
+                checked = prefs.loginGuardEnabled,
+                onCheckedChange = viewModel::setLoginGuardEnabled,
+            )
+            SettingSwitch(
+                title = strings.pulseToggle,
+                description = strings.pulseDescription,
+                checked = prefs.sessionPulseEnabled,
+                onCheckedChange = viewModel::setSessionPulseEnabled,
+            )
         }
     }
 
