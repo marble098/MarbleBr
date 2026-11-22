@@ -88,6 +88,46 @@ class OneTimeCodeExtractorTest {
         assertNull(OneTimeCodeExtractor.extract(CodeMessage("کد تایید: 123456", receivedAtEpochMillis = now), nowEpochMillis = now + 60L * 60L * 1000L))
     }
 
+    /**
+     * نمونهٔ واقعیِ گزارش‌شده از کاربر: پیامکِ انتقالِ بانکی با شمارهٔ کارت، مبلغ و رمز.
+     * پیش‌تر این پیامک هیچ کدی نمی‌داد چون «بانك/ملي» با حروفِ عربی نوشته شده بود و
+     * «رمز 8504897» هم به‌عنوان «برچسبِ چسبیده» بونوس نمی‌گرفت.
+     */
+    @Test
+    fun `real bank transfer message yields the dynamic password not the card or amount`() {
+        val hit = extract(
+            "بانك ملي\n" +
+                "621986*8001\n" +
+                "انتقال به\n" +
+                "مبلغ 10,000,000\n" +
+                "رمز 8504897",
+            sender = "98700007",
+        )
+        assertNotNull(hit)
+        assertEquals("8504897", hit?.code)
+        assertTrue("confidence=${hit?.confidence}", (hit?.confidence ?: 0) >= OneTimeCodeExtractor.CONFIDENCE_THRESHOLD)
+    }
+
+    @Test
+    fun `arabic letter variants in keywords are normalized`() {
+        // «بانك» با كافِ عربی و «ملي» با يِ عربی؛ نرمال‌سازی باید هر دو را بپذیرد.
+        assertEquals("8504897", extract("بانك ملي رمز 8504897")?.code)
+        assertEquals("12345", extract("كد: 12345")?.code)
+    }
+
+    @Test
+    fun `label glued to digits wins over a nearer amount`() {
+        val hit = extract("مبلغ 2,500,000 ريال\nرمز 384726\nشماره کارت 6037-9977-1234-5678")
+        assertEquals("384726", hit?.code)
+    }
+
+    @Test
+    fun `card number groups are never mistaken for a code`() {
+        // 621986*8001 → «621986» و «8001» هرگز نباید برنده شوند.
+        val hit = extract("کد پیگیری: 621986*8001\nمبلغ 10,000,000")
+        assertNull(hit)
+    }
+
     @Test
     fun `looksLikeCode only accepts plain digit runs of the right size`() {
         assertTrue(OneTimeCodeExtractor.looksLikeCode("482913"))

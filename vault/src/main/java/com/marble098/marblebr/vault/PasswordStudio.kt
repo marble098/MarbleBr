@@ -247,11 +247,40 @@ class PasswordStudio @Inject constructor(
      * هرگز در تبِ اشتباه نوشته نشود.
      */
     fun onCodeArrived(hit: OneTimeCodeHit) {
+        // **باگِ مهم:** پیش‌تر فقط «کد در دسترس است» اعلام می‌شد و خودِ کد دور ریخته می‌شد.
+        // پس مسیرِ پیامکِ زنده هرگز جواب نمی‌داد: `findOneTimeCode` فقط اعلان‌ها و
+        // `recentMessages()` را می‌گشت و در گوشی‌هایی که خواندنِ صندوقِ پیامک ممکن نبود،
+        // کدِ تازهٔ رسیده هیچ‌وقت در صفحه نوشته نمی‌شد. حالا آخرین کدِ رسیده همین‌جا
+        // نگه داشته می‌شود و در اولویتِ خواندن قرار می‌گیرد.
+        latestCode?.let { previous ->
+            if (previous.code == hit.code && previous.receivedAtEpochMillis == hit.receivedAtEpochMillis) {
+                return
+            }
+        }
+        latestCode = hit
         _lastActivity.value = LoginActivity.OneTimeCodeAvailable(hit.length)
     }
 
     /** آخرین کدِ رسیده از اعلان را مصرف می‌کند (تا دوباره استفاده نشود). */
-    fun consumeNotificationCode() = notificationBridge.consume()
+    fun consumeNotificationCode() {
+        notificationBridge.consume()
+        // OTPs are single-use: clear the in-memory live-SMS cache after a successful fill too.
+        clearLatestCode()
+    }
+
+    /**
+     * آخرین کدِ رسیده از مسیرِ پیامکِ زنده (broadcast).
+     *
+     * چرا `@Volatile`؟ چون `SmsCodeListener` از threadِ فرعیِ broadcast صدا زده می‌شود و
+     * `findOneTimeCode` از coroutine دیگری می‌خواند.
+     */
+    @Volatile
+    private var latestCode: OneTimeCodeHit? = null
+
+    /** پاک‌کردنِ کدِ نگه‌داشته‌شده (مثلاً وقتی کاربر از صفحهٔ کد خارج شد). */
+    fun clearLatestCode() {
+        latestCode = null
+    }
 
     /* ---------------------------------------- پیشنهادِ ذخیره ---------------------------------------- */
 
@@ -533,10 +562,14 @@ class PasswordStudio @Inject constructor(
      */
     suspend fun findOneTimeCode(pageUrl: String, lookBackMillis: Long = SmsOneTimeCodeReader.DEFAULT_LOOKBACK_MILLIS): OneTimeCodeHit? {
         val now = System.currentTimeMillis()
+        // ۱) کدِ زندهٔ پیامک (broadcast) — تازه‌ترین منبع و دقیقاً همان پیامکی که کاربر می‌بیند.
+        latestCode?.takeIf { hit -> now - hit.receivedAtEpochMillis <= lookBackMillis }?.let { return it }
+        // ۲) اعلان‌ها (اپ‌های پیام‌رسان معمولاً اعلان را زودتر نشان می‌دهند).
         val fromNotification = notificationBridge.lastCode.value?.takeIf { hit ->
             now - hit.receivedAtEpochMillis <= lookBackMillis
         }
         if (fromNotification != null) return fromNotification
+        // ۳) صندوقِ پیامک (پیامکی که قبل از باز شدنِ صفحهٔ کد رسیده).
         return smsReader.findRecentCode(now, lookBackMillis)
     }
 

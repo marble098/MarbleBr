@@ -27,6 +27,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
@@ -51,6 +52,29 @@ import javax.inject.Provider
 import javax.inject.Singleton
 
 data class PageContextTarget(val linkUrl: String?, val imageUrl: String?, val text: String? = null)
+
+/** درخواستِ باز کردنِ پنجرهٔ تازه (popup) از سوی صفحه. */
+data class PopupPermissionRequest(
+    val tabId: String,
+    val targetUri: String,
+    val shouldPrompt: Boolean = true,
+    val respond: (Boolean) -> Unit,
+)
+
+/** درخواستِ یک دسترسیِ محتوایی (موقعیت، اعلان، دوربین/میکروفون، …). */
+data class ContentPermissionRequest(
+    val tabId: String,
+    val url: String,
+    val permission: SitePermission,
+    val respond: (Boolean) -> Unit,
+)
+
+/** درخواستِ دسترسیِ سطحِ اندروید (دوربین، میکروفون، موقعیت). */
+data class AndroidPermissionRequest(
+    val tabId: String,
+    val permissions: List<String>,
+    val respond: (Boolean) -> Unit,
+)
 
 /** Restore stage only; never include cookie contents in diagnostic state. */
 enum class CookieRestoreStatus {
@@ -145,6 +169,31 @@ class ContainerSessionManager @Inject constructor(
     @Volatile
     private var geckoRuntime: GeckoRuntime? = null
 
+    /**
+     * تنظیماتِ شبکه‌ای که در اولین ساختِ [GeckoRuntime] اعمال می‌شود.
+     *
+     * **باگِ مهمِ نسخهٔ قبل:** `getOrCreateRuntime()` همیشه با مقدارِ پیش‌فرض (`ProxyDnsConfig()`)
+     * صدا زده می‌شد، بنابراین پروکسیِ ذخیره‌شده در تنظیمات هرگز به Gecko نمی‌رسید و کاربر
+     * فکر می‌کرد پروکسی متصل است. حالا:
+     * - در `init` تنظیمات از DataStore خوانده و در این فیلد نگه داشته می‌شود؛
+     * - اگر اولین نشست قبل از پایانِ خواندن ساخته شد، یک بار کوتاه و مشروط (حداکثر ۱.۵ ثانیه)
+     *   منتظر می‌مانیم؛
+     * - اگر باز هم چیزی نبود، از مقدارِ پیش‌فرض استفاده می‌شود (بدونِ پروکسی).
+     */
+    @Volatile
+    private var runtimeNetworkConfig: ProxyDnsConfig? = null
+
+    init {
+        engineScope.launch {
+            runCatching {
+                runtimeNetworkConfig = preferencesRepository.preferencesFlow.first().proxyDnsConfig
+            }
+        }
+    }
+
+    /** آیا موتور Gecko قبلاً ساخته شده است؟ (برای پیامِ «راه‌اندازی دوباره لازم است») */
+    fun isRuntimeCreated(): Boolean = geckoRuntime != null
+
     @Synchronized
     fun getOrCreateRuntime(proxyDnsConfig: ProxyDnsConfig = ProxyDnsConfig()): GeckoRuntime {
         geckoRuntime?.let { return it }
@@ -153,8 +202,13 @@ class ContainerSessionManager @Inject constructor(
             .antiTracking(
                 ContentBlocking.AntiTracking.DEFAULT or ContentBlocking.AntiTracking.STP,
             )
-            .cookieBehavior(ContentBlocking.CookieBehavior.ACCEPT_FIRST_PARTY)
+            // «همیشه لاگین بمان»: کوکی‌های شخصِ اول و سومِ مربوط به همان سایت پذیرفته
+            // می‌شوند. پیش‌تر ACCEPT_FIRST_PARTY باعث می‌شد برخی سایت‌های بانکی/وب‌اپ‌ها
+            // نشستِ ورود را روی دامنهٔ سوم (SSO/CDN) از دست بدهند.
+            .cookieBehavior(ContentBlocking.CookieBehavior.ACCEPT_ALL)
             .build()
+
+        val effectiveNetworkConfig = resolveRuntimeNetworkConfig(proxyDnsConfig)
 
         val settingsBuilder = GeckoRuntimeSettings.Builder()
             .javaScriptEnabled(true)
@@ -162,19 +216,29 @@ class ContainerSessionManager @Inject constructor(
             .globalPrivacyControlEnabled(true)
             .contentBlocking(contentBlocking)
 
-        proxyDnsConfig.resolvedDohUri()?.let { dohUri ->
+        effectiveNetworkConfig.resolvedDohUri()?.let { dohUri ->
             settingsBuilder.defaultRecursiveResolverUri(dohUri)
         }
 
-        if (proxyDnsConfig.proxyType != ProxyType.NONE && proxyDnsConfig.proxyHost.isNotBlank()) {
-            val configFile = writeGeckoProxyConfigFile(proxyDnsConfig)
-            settingsBuilder.configFilePath(configFile.absolutePath)
-        }
+        // فایلِ تنظیماتِ Gecko همیشه نوشته می‌شود: علاوه بر پروکسی، پرچم‌های ضروریِ
+        // رفتارِ صفحه (مثل `dom.disable_open_during_load` برای پرسشِ popup) هم در آن است.
+        val configFile = writeGeckoProxyConfigFile(effectiveNetworkConfig)
+        settingsBuilder.configFilePath(configFile.absolutePath)
 
         val runtime = GeckoRuntime.create(appContext, settingsBuilder.build())
         installNeverSignOutExtension(runtime)
         geckoRuntime = runtime
         return runtime
+    }
+
+    private fun resolveRuntimeNetworkConfig(explicit: ProxyDnsConfig): ProxyDnsConfig {
+        if (explicit.hasUsableProxy() || explicit.resolvedDohUri() != null) return explicit
+        runtimeNetworkConfig?.let { return it }
+        return runBlocking {
+            withTimeoutOrNull(NETWORK_CONFIG_WAIT_MILLIS) {
+                preferencesRepository.preferencesFlow.first().proxyDnsConfig
+            }
+        } ?: ProxyDnsConfig()
     }
 
     /**
@@ -243,6 +307,9 @@ class ContainerSessionManager @Inject constructor(
         onServerRevokedFallbackRequired: (domain: String) -> Unit = {},
         onDownloadRequested: (url: String, userAgent: String?) -> Unit = { _, _ -> },
         onContextMenu: (PageContextTarget) -> Unit = {},
+        onPopupRequest: (PopupPermissionRequest) -> Unit = {},
+        onContentPermissionRequest: (ContentPermissionRequest) -> Unit = {},
+        onAndroidPermissionRequest: (AndroidPermissionRequest) -> Unit = {},
     ): GeckoSession {
         activeSessions[tabId]?.let { return it }
 
@@ -276,34 +343,13 @@ class ContainerSessionManager @Inject constructor(
             onContextMenu = onContextMenu,
         )
 
-        // تصمیمِ دسترسی‌ها: پخش خودکار همیشه از روی پروفایل پاسخ داده می‌شود (اگر کاربر
-        // اجازه نداده باشد بلاک است) و بقیه هم همان پروفایل را دنبال می‌کنند.
-        session.permissionDelegate = object : GeckoSession.PermissionDelegate {
-            override fun onContentPermissionRequest(
-                session: GeckoSession,
-                perm: GeckoSession.PermissionDelegate.ContentPermission,
-            ): GeckoResult<Int> = GeckoResult.fromValue(decisionFor(tabId, perm.permission))
-
-            override fun onMediaPermissionRequest(
-                session: GeckoSession,
-                uri: String,
-                video: Array<out GeckoSession.PermissionDelegate.MediaSource>?,
-                audio: Array<out GeckoSession.PermissionDelegate.MediaSource>?,
-                callback: GeckoSession.PermissionDelegate.MediaCallback,
-            ) {
-                val profile = permissionProfiles[tabId]
-                val videoAllowed = profile?.stateOf(SitePermission.CAMERA) == PermissionState.ALLOW
-                val audioAllowed = profile?.stateOf(SitePermission.MICROPHONE) == PermissionState.ALLOW
-                val videoSource = video?.firstOrNull()?.takeIf { videoAllowed }
-                val audioSource = audio?.firstOrNull()?.takeIf { audioAllowed }
-                if (videoSource == null && audioSource == null) {
-                    callback.reject()
-                } else {
-                    // API گکوویو `accept` ندارد؛ نامِ درست `grant(video, audio)` است.
-                    callback.grant(videoSource, audioSource)
-                }
-            }
-        }
+        attachPermissionDelegates(
+            session = session,
+            tabId = tabId,
+            onPopupRequest = onPopupRequest,
+            onContentPermissionRequest = onContentPermissionRequest,
+            onAndroidPermissionRequest = onAndroidPermissionRequest,
+        )
 
         activeSessions[tabId] = session
         sessionContainers[session] = container.id
@@ -532,6 +578,188 @@ class ContainerSessionManager @Inject constructor(
     }
 
     /**
+     * دسترسی‌های هر نشست: popup، دسترسی‌های محتوایی و دسترسی‌های اندروید.
+     *
+     * **نقدِ نسخهٔ قبل:** سه مشکل واقعی داشت:
+     * ۱. `onPopupPrompt` اصلاً پیاده‌سازی نشده بود؛ پس هر popup (پرداخت بانکی، ورود با گوگل،
+     *    پیش‌نمایش فایل) بی‌صدا بلاک می‌شد و کاربر فقط صفحهٔ سفید می‌دید.
+     * ۲. برای حالتِ ASK مقدارِ `VALUE_PROMPT` برمی‌گشت، ولی هیچ پنجره‌ای نمایش داده نمی‌شد؛
+     *    یعنی «بپرس» عملاً «بلاک» بود.
+     * ۳. `onAndroidPermissionsRequest` پیاده‌سازی نشده بود؛ بنابراین حتی با اجازهٔ کاربر،
+     *    دوربین/میکروفون/موقعیت هیچ‌وقت به Gecko نمی‌رسید.
+     *
+     * حالا هر سه مسیر یک درخواستِ صریح به رابط کاربر می‌فرستند و پاسخِ کاربر با همان
+     * `GeckoResult`/callback به Gecko برمی‌گردد.
+     */
+    private fun attachPermissionDelegates(
+        session: GeckoSession,
+        tabId: String,
+        onPopupRequest: (PopupPermissionRequest) -> Unit,
+        onContentPermissionRequest: (ContentPermissionRequest) -> Unit,
+        onAndroidPermissionRequest: (AndroidPermissionRequest) -> Unit,
+    ) {
+        session.promptDelegate = object : GeckoSession.PromptDelegate {
+            override fun onPopupPrompt(
+                session: GeckoSession,
+                prompt: GeckoSession.PromptDelegate.PopupPrompt,
+            ): GeckoResult<GeckoSession.PromptDelegate.PromptResponse>? {
+                val state = permissionProfiles[tabId]?.stateOf(SitePermission.POPUPS)
+                if (state == PermissionState.BLOCK) {
+                    return GeckoResult.fromValue(prompt.confirm(AllowOrDeny.DENY))
+                }
+                val result = GeckoResult<GeckoSession.PromptDelegate.PromptResponse>()
+                onPopupRequest(
+                    PopupPermissionRequest(
+                        tabId = tabId,
+                        targetUri = prompt.targetUri.orEmpty(),
+                        shouldPrompt = state != PermissionState.ALLOW,
+                        respond = { allow ->
+                            val response = if (allow) {
+                                prompt.confirm(AllowOrDeny.ALLOW)
+                            } else {
+                                prompt.confirm(AllowOrDeny.DENY)
+                            }
+                            result.complete(response)
+                        },
+                    ),
+                )
+                return result
+            }
+        }
+
+        session.permissionDelegate = object : GeckoSession.PermissionDelegate {
+            override fun onContentPermissionRequest(
+                session: GeckoSession,
+                perm: GeckoSession.PermissionDelegate.ContentPermission,
+            ): GeckoResult<Int> {
+                // Persistent storage is a core part of "never sign out"; it is not a
+                // user-facing permission and is always granted for a protected tab.
+                if (perm.permission == GeckoSession.PermissionDelegate.PERMISSION_PERSISTENT_STORAGE) {
+                    return GeckoResult.fromValue(GeckoSession.PermissionDelegate.ContentPermission.VALUE_ALLOW)
+                }
+                val sitePermission = permissionFor(perm.permission) ?: return GeckoResult.fromValue(
+                    GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY,
+                )
+                val state = permissionProfiles[tabId]?.stateOf(sitePermission)
+                    ?: com.marble098.marblebr.core.model.SitePermissionPolicy.defaults[sitePermission]
+                    ?: PermissionState.ASK
+                return when (state) {
+                    PermissionState.ALLOW -> GeckoResult.fromValue(
+                        GeckoSession.PermissionDelegate.ContentPermission.VALUE_ALLOW,
+                    )
+                    PermissionState.BLOCK -> GeckoResult.fromValue(
+                        GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY,
+                    )
+                    PermissionState.ASK -> {
+                        val result = GeckoResult<Int>()
+                        onContentPermissionRequest(
+                            ContentPermissionRequest(
+                                tabId = tabId,
+                                url = perm.uri.orEmpty(),
+                                permission = sitePermission,
+                                respond = { allow ->
+                                    result.complete(
+                                        if (allow) {
+                                            GeckoSession.PermissionDelegate.ContentPermission.VALUE_ALLOW
+                                        } else {
+                                            GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY
+                                        },
+                                    )
+                                },
+                            ),
+                        )
+                        result
+                    }
+                }
+            }
+
+            override fun onMediaPermissionRequest(
+                session: GeckoSession,
+                uri: String,
+                video: Array<out GeckoSession.PermissionDelegate.MediaSource>?,
+                audio: Array<out GeckoSession.PermissionDelegate.MediaSource>?,
+                callback: GeckoSession.PermissionDelegate.MediaCallback,
+            ) {
+                val profile = permissionProfiles[tabId]
+                val videoState = profile?.stateOf(SitePermission.CAMERA)
+                    ?: com.marble098.marblebr.core.model.SitePermissionPolicy.defaults[SitePermission.CAMERA]
+                    ?: PermissionState.ASK
+                val audioState = profile?.stateOf(SitePermission.MICROPHONE)
+                    ?: com.marble098.marblebr.core.model.SitePermissionPolicy.defaults[SitePermission.MICROPHONE]
+                    ?: PermissionState.ASK
+                val videoAllowed = videoState == PermissionState.ALLOW
+                val audioAllowed = audioState == PermissionState.ALLOW
+                val videoSource = video?.firstOrNull()?.takeIf { videoAllowed }
+                val audioSource = audio?.firstOrNull()?.takeIf { audioAllowed }
+                if ((video != null && !videoAllowed) || (audio != null && !audioAllowed)) {
+                    // For a mixed request, ask once for the strongest missing permission.
+                    val requested = when {
+                        video != null && !videoAllowed -> SitePermission.CAMERA
+                        else -> SitePermission.MICROPHONE
+                    }
+                    onContentPermissionRequest(
+                        ContentPermissionRequest(
+                            tabId = tabId,
+                            url = uri,
+                            permission = requested,
+                            respond = { allow ->
+                                if (!allow) {
+                                    callback.reject()
+                                } else {
+                                    val grantedVideo = video?.firstOrNull()?.takeIf { videoAllowed || requested == SitePermission.CAMERA }
+                                    val grantedAudio = audio?.firstOrNull()?.takeIf { audioAllowed || requested == SitePermission.MICROPHONE }
+                                    if (grantedVideo == null && grantedAudio == null) callback.reject() else callback.grant(grantedVideo, grantedAudio)
+                                }
+                            },
+                        ),
+                    )
+                    return
+                }
+                if (videoSource == null && audioSource == null) {
+                    callback.reject()
+                } else {
+                    callback.grant(videoSource, audioSource)
+                }
+            }
+
+            override fun onAndroidPermissionsRequest(
+                session: GeckoSession,
+                permissions: Array<out String>?,
+                callback: GeckoSession.PermissionDelegate.Callback,
+            ) {
+                val requested = permissions.orEmpty().toList()
+                val allGranted = requested.all { permission ->
+                    androidx.core.content.ContextCompat.checkSelfPermission(
+                        appContext,
+                        permission,
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                }
+                if (allGranted) {
+                    callback.grant()
+                    return
+                }
+                onAndroidPermissionRequest(
+                    AndroidPermissionRequest(
+                        tabId = tabId,
+                        permissions = requested,
+                        respond = { callback.grant() },
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun permissionFor(permission: Int): SitePermission? = when (permission) {
+        GeckoSession.PermissionDelegate.PERMISSION_GEOLOCATION -> SitePermission.GEOLOCATION
+        GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION -> SitePermission.NOTIFICATIONS
+        GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_AUDIBLE,
+        GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_INAUDIBLE,
+        -> SitePermission.AUTOPLAY
+
+        else -> null
+    }
+
+    /**
      * اعمالِ «دسترسی‌های سایت» روی نشست.
      *
      * - **جاوااسکریپت** با `session.settings.allowJavascript` روشن/خاموش می‌شود (همان راهی که
@@ -549,27 +777,6 @@ class ContainerSessionManager @Inject constructor(
     /** پروفایلِ فعالِ دسترسی‌های یک تب (برای نمایش در پنل تنظیمات سایت). */
     fun permissionProfileOf(tabId: String): SitePermissionProfile =
         permissionProfiles[tabId] ?: SitePermissionProfile(domain = "")
-
-    /** تصمیمِ نهایی برای یک دسترسیِ محتوا؛ هم delegate و هم پنل از همین تابع استفاده می‌کنند. */
-    private fun decisionFor(tabId: String, permission: Int): Int {
-        val profile = permissionProfiles[tabId]
-        val state = when (permission) {
-            GeckoSession.PermissionDelegate.PERMISSION_GEOLOCATION -> profile?.stateOf(SitePermission.GEOLOCATION)
-
-            GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION -> profile?.stateOf(SitePermission.NOTIFICATIONS)
-
-            GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_AUDIBLE,
-            GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_INAUDIBLE,
-            -> profile?.stateOf(SitePermission.AUTOPLAY)
-
-            else -> null
-        } ?: PermissionState.ASK
-        return when (state) {
-            PermissionState.ALLOW -> GeckoSession.PermissionDelegate.ContentPermission.VALUE_ALLOW
-            PermissionState.BLOCK -> GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY
-            PermissionState.ASK -> GeckoSession.PermissionDelegate.ContentPermission.VALUE_PROMPT
-        }
-    }
 
     /**
      * ویژگی ۷ Never Sign-out Engine:
@@ -1177,21 +1384,27 @@ class ContainerSessionManager @Inject constructor(
 
     private fun writeGeckoProxyConfigFile(config: ProxyDnsConfig): File {
         val file = File(appContext.filesDir, "gecko-network-config.yaml")
+        // هرگز مقدارِ خامِ کاربر را داخلِ YAML ننویسیم؛ نقل‌قول و کاراکترهای کنترلی حذف می‌شوند.
+        val host = config.proxyHost.trim()
+            .replace("\"", "")
+            .replace("'", "")
+            .filterNot { it == '\r' || it == '\n' || it == '\u0000' }
+        val port = config.proxyPort.coerceIn(1, 65535)
         val yaml = buildString {
             appendLine("prefs:")
             when (config.proxyType) {
                 ProxyType.HTTP -> {
                     appendLine("  network.proxy.type: 1")
-                    appendLine("  network.proxy.http: \"${config.proxyHost}\"")
-                    appendLine("  network.proxy.http_port: ${config.proxyPort}")
-                    appendLine("  network.proxy.ssl: \"${config.proxyHost}\"")
-                    appendLine("  network.proxy.ssl_port: ${config.proxyPort}")
+                    appendLine("  network.proxy.http: \"$host\"")
+                    appendLine("  network.proxy.http_port: $port")
+                    appendLine("  network.proxy.ssl: \"$host\"")
+                    appendLine("  network.proxy.ssl_port: $port")
                 }
 
                 ProxyType.SOCKS5 -> {
                     appendLine("  network.proxy.type: 1")
-                    appendLine("  network.proxy.socks: \"${config.proxyHost}\"")
-                    appendLine("  network.proxy.socks_port: ${config.proxyPort}")
+                    appendLine("  network.proxy.socks: \"$host\"")
+                    appendLine("  network.proxy.socks_port: $port")
                     appendLine("  network.proxy.socks_version: 5")
                     appendLine("  network.proxy.socks_remote_dns: true")
                 }
@@ -1200,6 +1413,11 @@ class ContainerSessionManager @Inject constructor(
                     appendLine("  network.proxy.type: 5")
                 }
             }
+            // خالی‌کردنِ هر فهرستِ استثنای قبلی؛ وگرنه پروکسی برای بعضی دامنه‌ها اعمال نمی‌شد.
+            appendLine("  network.proxy.no_proxies_on: \"\"")
+            // لازمهٔ کارکردِ `onPopupPrompt`: Gecko بدون این پرچم popup را بی‌صدا باز/بسته می‌کند
+            // و هیچ فرصتی برای پرسیدنِ کاربر باقی نمی‌گذارد.
+            appendLine("  dom.disable_open_during_load: true")
         }
         file.writeText(yaml)
         return file
@@ -1207,6 +1425,7 @@ class ContainerSessionManager @Inject constructor(
 
     companion object {
         private const val EXTENSION_START_TIMEOUT_MILLIS = 10_000L
+        private const val NETWORK_CONFIG_WAIT_MILLIS = 1_500L
         private const val AUTO_SNAPSHOT_TIMEOUT_MILLIS = 4_000L
         private const val MANUAL_SNAPSHOT_TIMEOUT_MILLIS = 9_000L
         private const val MANUAL_SNAPSHOT_RETRY_DELAY_MILLIS = 500L

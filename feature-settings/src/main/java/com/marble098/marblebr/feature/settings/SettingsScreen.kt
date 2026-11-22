@@ -10,7 +10,10 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -58,6 +61,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -629,37 +633,65 @@ private fun LazyListScope.networkTab(
                 onSelect = onSelectProxyType,
             )
             if (selectedProxyType != ProxyType.NONE) {
+                val validation = viewModel.validateProxy(selectedProxyType, proxyHost, proxyPortText)
                 OutlinedTextField(
                     value = proxyHost,
                     onValueChange = onProxyHost,
                     label = { Text(strings.proxyHostHint) },
                     singleLine = true,
                     shape = MaterialTheme.shapes.medium,
+                    isError = !validation.isValid && !validation.portInvalid,
+                    supportingText = if (!validation.isValid && !validation.portInvalid) {
+                        { Text(strings.proxyHostInvalid) }
+                    } else {
+                        null
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = proxyPortText,
-                    onValueChange = onProxyPortText,
+                    onValueChange = { value -> if (value.length <= 5) onProxyPortText(value.filter { it.isDigit() }) },
                     label = { Text(strings.proxyPortHint) },
                     singleLine = true,
                     shape = MaterialTheme.shapes.medium,
-                    modifier = Modifier.fillMaxWidth(),
+                    isError = validation.portInvalid,
+                    supportingText = if (validation.portInvalid) {
+                        { Text(strings.proxyPortInvalid) }
+                    } else {
+                        null
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("settings_proxy_port"),
                 )
+                if (viewModel.isRuntimeCreated()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = strings.proxyRestartRequired,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             Spacer(Modifier.height(10.dp))
             Button(
                 onClick = {
-                    viewModel.updateDnsAndProxy(
+                    viewModel.saveNetwork(
                         dnsMode = selectedDns,
                         customDohUri = customDohUri,
                         proxyType = selectedProxyType,
                         proxyHost = proxyHost,
-                        proxyPort = proxyPortText.toIntOrNull() ?: 1080,
+                        proxyPortText = proxyPortText,
                     )
                 },
-                modifier = Modifier.fillMaxWidth(),
+                enabled = viewModel.validateProxy(selectedProxyType, proxyHost, proxyPortText).isValid,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("settings_save_network"),
             ) {
                 Text(strings.saveNetwork)
             }
@@ -751,8 +783,12 @@ private fun SettingsSection(
                 fillAlphaOverride = 0.58f,
                 elevation = 6.dp,
             )
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            // نقدِ نسخهٔ قبل: padding داخلِ کارت ۱۶dp بود ولی فاصلهٔ عمودیِ آیتم‌ها ۱۰dp؛
+            // نتیجه یک «جعبهٔ شلوغ» بود که در آن چیپ‌ها به متنِ بالا می‌چسبیدند. حالا
+            // paddingِ افقی ۱۸dp و فاصلهٔ آیتم‌ها ۱۲dp است تا ریتمِ تنفس یکدست باشد.
+            .padding(horizontal = 18.dp, vertical = 16.dp)
+            .animateContentSize(animationSpec = tween(220)),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
@@ -769,18 +805,22 @@ private fun SettingsSection(
                     modifier = Modifier.size(18.dp),
                 )
             }
-            Spacer(Modifier.size(9.dp))
+            Spacer(Modifier.size(10.dp))
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
             )
         }
         if (description.isNotBlank()) {
+            // توضیح، دقیقاً زیرِ متنِ عنوان (نه زیرِ آیکون) شروع می‌شود تا لبهٔ چپِ همهٔ
+            // خطوطِ متنیِ کارت با هم بخوانند؛ این همان «بی‌نظمیِ جعبه‌ها» بود که کاربر دید.
             Text(
                 text = description,
                 style = MaterialTheme.typography.bodyMedium,
                 color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(start = 42.dp),
             )
         }
         content()
@@ -791,7 +831,12 @@ private fun SettingsSection(
 private fun SettingLabel(text: String) {
     Text(
         text = text,
-        style = MaterialTheme.typography.titleMedium,
+        // برچسبِ فیلد باید از عنوانِ بخش کوچک‌تر و روشن‌تر باشد؛ پیش‌تر هر دو titleMedium
+        // بودند و سلسله‌مراتبِ بصری گم می‌شد.
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.padding(top = 4.dp),
     )
 }
 

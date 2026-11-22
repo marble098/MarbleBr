@@ -242,6 +242,27 @@ data class HistoryItem(
     val url: String,
     val containerId: String,
     val visitedAtEpochMillis: Long = System.currentTimeMillis(),
+    /** چند بار این آدرس باز شده؛ برای «پربازدیدترین‌ها» و مرتب‌سازیِ پیشنهادها. */
+    val visitCount: Int = 1,
+)
+
+/** منبعِ یک پیشنهادِ نوار آدرس. */
+@Serializable
+enum class AddressSuggestionSource {
+    HISTORY,
+    BOOKMARK,
+    MOST_VISITED,
+    OPEN_TAB,
+}
+
+/** یک پیشنهادِ هوشمند برای نوار آدرس (تاریخچه، نشان یا پربازدید). */
+@Serializable
+data class AddressSuggestion(
+    val url: String,
+    val title: String,
+    val source: AddressSuggestionSource,
+    val visitCount: Int = 0,
+    val lastVisitedAtEpochMillis: Long = 0,
 )
 
 @Serializable
@@ -292,6 +313,64 @@ data class ProxyDnsConfig(
         DnsMode.SYSTEM -> null
         DnsMode.CUSTOM -> customDohUri.takeIf { it.startsWith("https://") }
         else -> dnsMode.dohUri
+    }
+
+    /** آیا یک پروکسیِ فعال و معتبر برای اعمال تنظیم شده است؟ */
+    fun hasUsableProxy(): Boolean =
+        proxyType != ProxyType.NONE && ProxyValidator.validate(proxyType, proxyHost, proxyPort).isValid
+}
+
+/** نتیجهٔ اعتبارسنجیِ تنظیماتِ پروکسی؛ متنِ خطا در رابط کاربر ساخته می‌شود. */
+data class ProxyValidation(
+    val isValid: Boolean,
+    val hostBlank: Boolean = false,
+    val hostInvalid: Boolean = false,
+    val portInvalid: Boolean = false,
+)
+
+/**
+ * اعتبارسنجیِ سبکِ پروکسی — بدون وابستگی به اندروید تا در آزمون واحد هم بررسی شود.
+ *
+ * چرا لازم است؟ پیش‌تر پورتِ نامعتبر (مثلاً ۹۹۹۹۹) بی‌صدا ذخیره می‌شد و بعداً Gecko با یک
+ * فایلِ کانفیگِ خراب بالا می‌آمد؛ یا میزبانِ خالی باعث می‌شد پروکسی عملاً اعمال نشود ولی
+ * کاربر فکر می‌کند متصل است.
+ */
+object ProxyValidator {
+    private const val MIN_PORT = 1
+    private const val MAX_PORT = 65535
+
+    /** میزبان: دامنه، IPv4 یا IPv6 داخلِ کروشه؛ بدونِ فاصله و کاراکترهای کنترلی. */
+    private val HOST_PATTERN = Regex(
+        """^(?:\[[0-9A-Fa-f:.]+]|[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)$""",
+    )
+
+    fun validate(type: ProxyType, rawHost: String, port: Int): ProxyValidation {
+        if (type == ProxyType.NONE) return ProxyValidation(isValid = true)
+        val host = normalizeHost(rawHost)
+        val hostBlank = host.isBlank()
+        val hostInvalid = !hostBlank && !HOST_PATTERN.matches(host)
+        val portInvalid = port !in MIN_PORT..MAX_PORT
+        return ProxyValidation(
+            isValid = !hostBlank && !hostInvalid && !portInvalid,
+            hostBlank = hostBlank,
+            hostInvalid = hostInvalid,
+            portInvalid = portInvalid,
+        )
+    }
+
+    /** حذفِ پروتکل، مسیر، `www.` و فاصله‌های دورِ میزبان؛ IPv6 داخلِ کروشه حفظ می‌شود. */
+    fun normalizeHost(rawHost: String): String {
+        var value = rawHost.trim()
+        val schemeSeparator = value.indexOf("://")
+        if (schemeSeparator >= 0) value = value.substring(schemeSeparator + 3)
+        value = value.substringBefore('/')
+        if (value.startsWith("[")) {
+            val closing = value.indexOf(']')
+            if (closing > 0) value = value.substring(0, closing + 1)
+        } else {
+            value = value.substringBefore(':')
+        }
+        return value.lowercase().removePrefix("www.")
     }
 }
 

@@ -7,7 +7,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 
@@ -20,6 +21,11 @@ import androidx.core.content.ContextCompat
  * ۲. **ردکردن، اپ را نمی‌شکند.** بدونِ `RECEIVE_SMS`، مسیرِ اعلان و «چسباندنِ دستی» کار می‌کنند.
  * ۳. **دسترسیِ اعلان با Intent گرفته می‌شود، نه با دیالوگ.** `NotificationListenerService` راهِ
  *    رسمی است و کاربر باید خودش در تنظیمات روشنش کند؛ همین‌جا با یک ضربه هدایتش می‌کنیم.
+ *
+ * **باگِ نسخهٔ قبل:** فقط `RECEIVE_SMS` خواسته می‌شد، در حالی که خواندنِ صندوقِ پیامک به
+ * `READ_SMS` نیاز دارد. نتیجه: دیالوگِ دسترسی می‌آمد، کاربر «اجازه» می‌زد، ولی
+ * `recentMessages()` همیشه خالی می‌گشت و کدِ پیامکی پیدا نمی‌شد. حالا هر دو مجوز با هم
+ * خواسته می‌شوند و نتیجهٔ هر کدام جداگانه به لایهٔ مرورگر گزارش می‌شود.
  */
 @Composable
 internal fun LoginAssistPermissionEffect(
@@ -27,14 +33,14 @@ internal fun LoginAssistPermissionEffect(
     onSmsPermissionResult: (granted: Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
+    val onSmsResult by rememberUpdatedState(onSmsPermissionResult)
 
     val smsLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-    ) { granted -> onSmsPermissionResult(granted) }
-
-    val hasSms = remember(context) {
-        ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) ==
-            PackageManager.PERMISSION_GRANTED
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+    ) { results ->
+        val granted = results[Manifest.permission.RECEIVE_SMS] == true &&
+            results[Manifest.permission.READ_SMS] == true
+        onSmsResult(granted)
     }
 
     // اعلان‌ها (Android 13+) فقط برای تذکرِ «کد نوشته شد» لازم‌اند؛ نبودشان مانعِ کار نیست.
@@ -43,7 +49,10 @@ internal fun LoginAssistPermissionEffect(
     ) { /* هر نتیجه‌ای پذیرفته است */ }
 
     LaunchedEffect(otpAssistEnabled) {
-        if (!otpAssistEnabled) return@LaunchedEffect
+        if (!otpAssistEnabled) {
+            onSmsResult(false)
+            return@LaunchedEffect
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val hasNotifications = ContextCompat.checkSelfPermission(
                 context,
@@ -51,6 +60,24 @@ internal fun LoginAssistPermissionEffect(
             ) == PackageManager.PERMISSION_GRANTED
             if (!hasNotifications) notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        if (!hasSms) smsLauncher.launch(Manifest.permission.RECEIVE_SMS)
+        val hasReceive = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECEIVE_SMS,
+        ) == PackageManager.PERMISSION_GRANTED
+        val hasRead = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.READ_SMS,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!hasReceive || !hasRead) {
+            smsLauncher.launch(
+                arrayOf(
+                    Manifest.permission.RECEIVE_SMS,
+                    Manifest.permission.READ_SMS,
+                ),
+            )
+        } else {
+            // اگر دسترسی از قبل هست، شنونده را همین حالا روشن کن.
+            onSmsResult(true)
+        }
     }
 }

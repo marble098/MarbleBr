@@ -84,6 +84,7 @@ import com.marble098.marblebr.core.designsystem.SiteBadgeLogo
 import com.marble098.marblebr.core.designsystem.liquidGlass
 import com.marble098.marblebr.core.designsystem.siteBadgeAccent
 import com.marble098.marblebr.core.i18n.MarbleStrings
+import com.marble098.marblebr.core.model.AddressSuggestionEngine
 import com.marble098.marblebr.core.model.BookmarkItem
 import com.marble098.marblebr.core.model.ChromeBarStyle
 import com.marble098.marblebr.core.model.HistoryItem
@@ -135,6 +136,16 @@ internal fun HomeContent(
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     var homeSearch by remember { mutableStateOf("") }
+    // پیشنهادهای زنده از همان موتورِ نوار آدرس: تاریخچه، نشان‌ها و پربازدیدها.
+    // محاسبهٔ محلی و سبک است (حداکثر چند صد آیتم) و هیچ داده‌ای ذخیره نمی‌کند.
+    val homeSuggestions = remember(homeSearch, bookmarks, historyItems) {
+        AddressSuggestionEngine.build(
+            query = homeSearch,
+            history = historyItems,
+            bookmarks = bookmarks,
+            limit = 5,
+        )
+    }
     val submit: (String) -> Unit = { query ->
         if (query.isNotBlank()) {
             focusManager.clearFocus()
@@ -168,14 +179,27 @@ internal fun HomeContent(
             }
 
             item(key = "search") {
-                HomeSearchBar(
-                    value = homeSearch,
-                    placeholder = strings.homeSearchHint,
-                    onValueChange = { homeSearch = it },
-                    onSubmit = { submit(homeSearch) },
-                    onClear = { homeSearch = "" },
-                    chromeBarStyle = chromeBarStyle,
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HomeSearchBar(
+                        value = homeSearch,
+                        placeholder = strings.homeSearchHint,
+                        onValueChange = { homeSearch = it },
+                        onSubmit = { submit(homeSearch) },
+                        onClear = { homeSearch = "" },
+                        chromeBarStyle = chromeBarStyle,
+                    )
+                    // پیشنهادهای زنده: همان موتورِ نوار آدرس، تا رفتارِ جستجو در خانه و
+                    // داخلِ صفحه یکسان باشد.
+                    if (homeSearch.isNotBlank() && homeSuggestions.isNotEmpty()) {
+                        AddressSuggestionList(
+                            suggestions = homeSuggestions,
+                            onPick = { suggestion ->
+                                homeSearch = ""
+                                submit(suggestion.url)
+                            },
+                        )
+                    }
+                }
             }
 
             item(key = "quick_actions") {

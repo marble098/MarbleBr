@@ -4,7 +4,6 @@ import com.marble098.marblebr.core.model.LoginObservationProbe
 import com.marble098.marblebr.core.model.OtpFieldProbe
 import com.marble098.marblebr.core.model.OneTimeCodeExtractor
 import com.marble098.marblebr.core.model.OneTimeCodeHit
-import com.marble098.marblebr.core.model.OneTimeCodeSource
 import com.marble098.marblebr.vault.LoginOneTimeCodeDirective
 import com.marble098.marblebr.vault.LoginPageDirective
 import com.marble098.marblebr.vault.PasswordStudio
@@ -190,9 +189,7 @@ class LoginWatcher @Inject constructor(
      * شنیدنِ پیامک‌های تازه؛ کدِ رسیده بی‌درنگ به استودیو می‌رود تا اگر صفحه منتظرِ کد باشد
      * نوشته شود. اگر دسترسی نباشد، `SmsCodeListener` خودش بی‌صدا هیچ کاری نمی‌کند.
      */
-    fun startSmsListening(onCode: (OneTimeCodeHit) -> Unit) {
-        smsBridge.get().start(onCode)
-    }
+    fun startSmsListening(onCode: (OneTimeCodeHit) -> Unit): Boolean = smsBridge.get().start(onCode)
 
     fun stopSmsListening() {
         smsBridge.get().stop()
@@ -306,14 +303,16 @@ class SmsBridge @Inject constructor(
     private var listener: SmsCodeListener? = null
 
     /** شروعِ شنیدن؛ اگر دسترسی نباشد بی‌صدا هیچ کاری نمی‌کند. */
-    fun start(onCode: (OneTimeCodeHit) -> Unit) {
-        if (listener != null) return
+    fun start(onCode: (OneTimeCodeHit) -> Unit): Boolean {
+        if (listener != null) return true
         // فقط کدهای تازه: پیامکِ تکراریِ همان کد نباید دوباره به استودیو برود.
         val seen = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
         val active = SmsCodeListener { hit ->
             if (seen.add(OneTimeCodeExtractor.fingerprint(hit.code))) onCode(hit)
         }
-        if (active.start(context)) listener = active
+        if (!active.start(context)) return false
+        listener = active
+        return true
     }
 
     fun stop() {

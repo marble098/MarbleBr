@@ -1,5 +1,6 @@
 package com.marble098.marblebr.core.database
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -142,6 +143,9 @@ data class HistoryEntity(
     val url: String,
     val containerId: String,
     val visitedAtEpochMillis: Long,
+    /** تعداد بازدیدهای این آدرس؛ برای پربازدیدترین‌ها و مرتب‌سازیِ پیشنهادها. */
+    @ColumnInfo(defaultValue = "1")
+    val visitCount: Int = 1,
 ) {
     fun toDomain(): HistoryItem = HistoryItem(
         id = id,
@@ -149,6 +153,7 @@ data class HistoryEntity(
         url = url,
         containerId = containerId,
         visitedAtEpochMillis = visitedAtEpochMillis,
+        visitCount = visitCount,
     )
 }
 

@@ -13,7 +13,18 @@
       هیچ پیامکی ذخیره یا به هیچ سروری ارسال نمی‌شود (AGENTS.md: عدم خروج داده).
     -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <!-- RECEIVE_SMS فقط پیامکِ تازه را می‌گیرد؛ برای خواندنِ صندوقِ ورودی (پیامکی که
+         قبل از باز شدنِ صفحهٔ کد رسیده) READ_SMS هم لازم است. پیش‌تر فقط RECEIVE_SMS بود
+         و `recentMessages()` همیشه خالی برمی‌گشت. -->
+    <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- دسترسی‌های سایت: دوربین، میکروفون و موقعیت. فقط وقتی کاربر در پنجرهٔ دسترسی
+         «اجازه» بدهد از سیستم خواسته می‌شوند؛ هرگز در راه‌اندازی اولیه پرسیده نمی‌شوند. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
         android:name=".MarbleBrApplication"

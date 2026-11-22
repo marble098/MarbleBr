@@ -14,6 +14,8 @@ import com.marble098.marblebr.core.database.HistoryDao
 import com.marble098.marblebr.core.database.HistoryEntity
 import com.marble098.marblebr.core.i18n.LocalizationManager
 import com.marble098.marblebr.core.i18n.MarbleStrings
+import com.marble098.marblebr.core.model.AddressSuggestion
+import com.marble098.marblebr.core.model.AddressSuggestionEngine
 import com.marble098.marblebr.core.model.AutofillCandidate
 import com.marble098.marblebr.core.model.BookmarkItem
 import com.marble098.marblebr.core.model.BrowserTab
@@ -36,6 +38,7 @@ import com.marble098.marblebr.engine.ContainerSessionManager
 import com.marble098.marblebr.engine.LightweightAdBlocker
 import com.marble098.marblebr.engine.LoginWatcher
 import com.marble098.marblebr.engine.PageContextTarget
+import com.marble098.marblebr.engine.ContentPermissionRequest
 import com.marble098.marblebr.core.model.CredentialCaptureHeuristics
 import com.marble098.marblebr.core.model.PasswordNotice
 import com.marble098.marblebr.vault.LoginActivity
@@ -62,6 +65,30 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
+
+/**
+ * یک درخواستِ دسترسی که از سوی صفحه آمده و منتظرِ پاسخِ کاربر است.
+ *
+ * چرا مدلِ جدا؟ چون سه مسیرِ متفاوت (popup، دسترسیِ محتوایی Gecko و دسترسیِ اندروید)
+ * یکی باید در رابط کاربری دیده شوند و پاسخ با همان `respond` به Gecko برگردد؛ در غیر این
+ * صورت `GeckoResult` هرگز کامل نمی‌شود و صفحهٔ سایت تا ابد منتظر می‌ماند.
+ */
+/** نتیجهٔ جستجو در کتابخانه (نشان‌ها + تاریخچه). */
+data class LibrarySearchResult(
+    val bookmarks: List<BookmarkItem> = emptyList(),
+    val history: List<HistoryItem> = emptyList(),
+)
+
+data class PendingSitePermission(
+    val kind: Kind,
+    val tabId: String,
+    val url: String,
+    val permission: SitePermission? = null,
+    val androidPermissions: List<String> = emptyList(),
+    val respond: (Boolean) -> Unit,
+) {
+    enum class Kind { POPUP, CONTENT, ANDROID }
+}
 
 data class BrowserUiState(
     val tabs: List<BrowserTab> = emptyList(),
@@ -94,6 +121,12 @@ data class BrowserUiState(
     val showAutofillUnlockPrompt: Boolean = false,
     /** آیا برای دامنهٔ همین صفحه، ورودِ ذخیره‌شده داریم؟ (برای منوی «پر کردن») */
     val hasStoredLoginForCurrentSite: Boolean = false,
+    /** متنِ در حال تایپ در نوار آدرس (برای پیشنهادهای زنده). */
+    val addressQuery: String = "",
+    /** آیا نوار آدرس فوکوس دارد و پیشنهادها باید نمایش داده شوند؟ */
+    val addressFocused: Boolean = false,
+    /** پرسشِ منتظرِ پاسخِ کاربر: popup یا دسترسیِ محتوایی. */
+    val pendingPermission: PendingSitePermission? = null,
 ) {
     val activeTab: BrowserTab?
         get() = tabs.firstOrNull { it.id == activeTabId } ?: tabs.firstOrNull()
@@ -150,6 +183,21 @@ class BrowserViewModel @Inject constructor(
     val downloads: StateFlow<List<DownloadItem>> = downloadDao.observeAll()
         .map { list -> list.map(DownloadEntity::toDomain) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * پیشنهادهای زندهٔ نوار آدرس: تاریخچه، نشان‌ها و پربازدیدها.
+     *
+     * نقدِ نسخهٔ قبل: نوار آدرس هیچ پیشنهادی نداشت؛ کاربر باید کل آدرس را از حفظ می‌نوشت.
+     */
+    val addressSuggestions: StateFlow<List<AddressSuggestion>> =
+        combine(bookmarks, historyItems, uiState) { marks, visits, state ->
+            AddressSuggestionEngine.build(
+                query = state.addressQuery,
+                history = visits,
+                bookmarks = marks,
+                limit = 8,
+            )
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** شمارندهٔ گذرواژه‌های ذخیره‌شده برای کارتِ «نگاهِ مخزن» در صفحهٔ خانه. */
     val storedPasswordCount: StateFlow<Int> = passwordStudio.candidatesForHome()
@@ -341,8 +389,10 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
-    fun openLinkInNewTab(url: String) {
-        val source = _uiState.value.activeWebTab() ?: return
+    fun openLinkInNewTab(url: String, sourceTabId: String? = null) {
+        val source = sourceTabId?.let { id -> _uiState.value.tabs.firstOrNull { it.id == id } }
+            ?: _uiState.value.activeWebTab()
+            ?: return
         val current = containers[source.id]
             ?.takeIf { !source.isPrivate && it.domain == ContainerSessionManager.extractDomain(url) }
         loadPage(createTab(isPrivate = source.isPrivate, desktop = source.isDesktopMode), url, current)
@@ -697,6 +747,199 @@ class BrowserViewModel @Inject constructor(
         downloadLauncher.refreshDownloads()
     }
 
+    fun onAddressQueryChanged(query: String) {
+        _uiState.update { if (it.addressQuery == query) it else it.copy(addressQuery = query) }
+    }
+
+    fun onAddressFocusChanged(focused: Boolean) {
+        _uiState.update { if (it.addressFocused == focused) it else it.copy(addressFocused = focused) }
+    }
+
+    fun onPopupRequest(request: com.marble098.marblebr.engine.PopupPermissionRequest) {
+        if (_uiState.value.activeTabId != request.tabId) {
+            request.respond(false)
+            return
+        }
+        if (!request.shouldPrompt) {
+            openPopupTargetInTab(request.tabId, request.targetUri)
+            request.respond(false)
+            return
+        }
+        _uiState.update {
+            it.copy(
+                pendingPermission = PendingSitePermission(
+                    kind = PendingSitePermission.Kind.POPUP,
+                    tabId = request.tabId,
+                    url = request.targetUri,
+                    respond = request.respond,
+                ),
+            )
+        }
+    }
+
+    private fun openPopupTargetInTab(sourceTabId: String, targetUrl: String) {
+        val url = targetUrl.trim()
+        if (!url.startsWith("https://", true) && !url.startsWith("http://", true)) return
+        val sourceTab = _uiState.value.tabs.firstOrNull { it.id == sourceTabId } ?: return
+        // Treat an approved popup as a regular tab in the same site context. This browser's tab
+        // model has no separate Gecko popup window host; never leak private/account state.
+        openLinkInNewTab(url, sourceTab.id)
+    }
+
+    fun onContentPermissionRequest(request: ContentPermissionRequest) {
+        if (_uiState.value.activeTabId != request.tabId) {
+            request.respond(false)
+            return
+        }
+        _uiState.update {
+            it.copy(
+                pendingPermission = PendingSitePermission(
+                    kind = PendingSitePermission.Kind.CONTENT,
+                    tabId = request.tabId,
+                    url = request.url,
+                    permission = request.permission,
+                    respond = request.respond,
+                ),
+            )
+        }
+    }
+
+    fun onAndroidPermissionRequest(request: com.marble098.marblebr.engine.AndroidPermissionRequest) {
+        _uiState.update {
+            it.copy(
+                pendingPermission = PendingSitePermission(
+                    kind = PendingSitePermission.Kind.ANDROID,
+                    tabId = request.tabId,
+                    url = "",
+                    androidPermissions = request.permissions,
+                    respond = request.respond,
+                ),
+            )
+        }
+    }
+
+    /** پاسخِ کاربر به پرسشِ دسترسی؛ برای پرسشِ «اجازهٔ گوشی» فقط دیالوگِ سیستم را باز می‌کند. */
+    fun resolvePendingPermission(allow: Boolean) {
+        val pending = _uiState.value.pendingPermission ?: return
+        if (pending.kind == PendingSitePermission.Kind.ANDROID) {
+            // SitePermissionPromptHost calls this only after Android's permission activity
+            // returns; the result must reach Gecko's original callback on both outcomes.
+            pending.respond(allow)
+            _uiState.update { it.copy(pendingPermission = null) }
+            return
+        }
+        if (pending.kind == PendingSitePermission.Kind.POPUP) {
+            // Popup sessions are not allowed to escape the owning site context. Treat an
+            // approved popup as a regular isolated browser tab instead; Gecko's native
+            // onNewSession path is intentionally not used by this tab model.
+            if (allow) openPopupTargetInTab(pending.tabId, pending.url)
+            pending.respond(false)
+        } else {
+            pending.respond(allow)
+        }
+        _uiState.update { it.copy(pendingPermission = null) }
+    }
+
+    fun dismissPendingPermission() {
+        _uiState.value.pendingPermission?.respond(false)
+        _uiState.update { it.copy(pendingPermission = null) }
+    }
+
+    /* ------------------------------------------ کتابخانه (نشان‌ها/تاریخچه) ------------------------------------------ */
+
+    /**
+     * افزودنِ دستیِ نشان. آدرس بدونِ پروتکل هم پذیرفته می‌شود تا کاربر لازم نباشد
+     * `https://` را تایپ کند؛ ولی آدرسِ خالی یا بدونِ نقطه رد می‌شود.
+     */
+    fun addBookmark(title: String, url: String, folder: String = "general", onResult: (Boolean) -> Unit = {}) {
+        val normalizedUrl = url.trim().let { value ->
+            when {
+                value.isEmpty() -> ""
+                value.startsWith("http://", true) || value.startsWith("https://", true) -> value
+                else -> "https://$value"
+            }
+        }
+        val domain = normalizedUrl.removePrefix("https://").removePrefix("http://")
+        if (normalizedUrl.isBlank() || !domain.contains('.') || domain.contains(' ')) {
+            onResult(false)
+            return
+        }
+        viewModelScope.launch {
+            val existing = bookmarks.value.firstOrNull { it.url == normalizedUrl }
+            bookmarkDao.upsert(
+                BookmarkEntity(
+                    id = existing?.id ?: UUID.randomUUID().toString(),
+                    title = title.trim().ifBlank { domain },
+                    url = normalizedUrl,
+                    folder = folder.trim().ifBlank { "general" },
+                    createdAtEpochMillis = existing?.createdAtEpochMillis ?: System.currentTimeMillis(),
+                ),
+            )
+            showLocalizedBanner { it.libraryBookmarkSaved }
+            onResult(true)
+        }
+    }
+
+    fun updateBookmark(bookmark: BookmarkItem, title: String, url: String, folder: String) {
+        viewModelScope.launch {
+            bookmarkDao.updateBookmark(
+                id = bookmark.id,
+                title = title.trim().ifBlank { bookmark.title },
+                url = url.trim().ifBlank { bookmark.url },
+                folder = folder.trim().ifBlank { "general" },
+            )
+            showLocalizedBanner { it.libraryBookmarkUpdated }
+        }
+    }
+
+    fun moveBookmarkToFolder(bookmark: BookmarkItem, folder: String) {
+        viewModelScope.launch {
+            bookmarkDao.moveToFolder(bookmark.id, folder.trim().ifBlank { "general" })
+        }
+    }
+
+    fun deleteBookmark(bookmark: BookmarkItem) {
+        viewModelScope.launch {
+            bookmarkDao.deleteById(bookmark.id)
+            showLocalizedBanner { it.libraryBookmarkDeleted }
+        }
+    }
+
+    /** حذفِ یک ردیفِ تاریخچه (همان آدرس، همهٔ بازدیدهایش). */
+    fun deleteHistoryItem(item: HistoryItem) {
+        viewModelScope.launch {
+            historyDao.deleteByUrl(item.url)
+            showLocalizedBanner { it.libraryHistoryDeleted }
+        }
+    }
+
+    /** حذفِ همهٔ بازدیدهای یک دامنه. */
+    fun deleteHistoryForSite(url: String) {
+        viewModelScope.launch {
+            val domain = CredentialCaptureHeuristics.domainOf(url)
+            if (domain.isBlank()) return@launch
+            historyDao.deleteByUrl(url)
+            showLocalizedBanner { it.librarySiteHistoryDeleted }
+        }
+    }
+
+    /** پاک‌کردنِ تاریخچهٔ قدیمی‌تر از [days] روز (برای «پاک‌سازیِ دوره‌ای»). */
+    fun clearHistoryOlderThan(days: Int) {
+        viewModelScope.launch {
+            historyDao.deleteOlderThan(System.currentTimeMillis() - days * 86_400_000L)
+        }
+    }
+
+    /** جستجو در نشان‌ها و تاریخچه؛ نتیجه در دو فهرستِ جدا برمی‌گردد. */
+    suspend fun searchLibrary(query: String): LibrarySearchResult {
+        val needle = query.trim()
+        if (needle.isBlank()) return LibrarySearchResult()
+        return LibrarySearchResult(
+            bookmarks = bookmarkDao.search(needle).map(BookmarkEntity::toDomain),
+            history = historyDao.search(needle).map(HistoryEntity::toDomain),
+        )
+    }
+
     fun onPageContextMenu(tabId: String, target: PageContextTarget) {
         if (_uiState.value.activeWebTab()?.id == tabId) _uiState.update { it.copy(contextTarget = target) }
     }
@@ -1016,10 +1259,17 @@ class BrowserViewModel @Inject constructor(
      * شروعِ گوش‌دادن به پیامک‌های تازه (اگر دسترسی باشد). کم‌هزینه است: یک گیرندهٔ برادکست که
      * فقط تا وقتی «رمزِ یکبارمصرف» روشن است زنده می‌ماند، و در `onCleared` بسته می‌شود.
      */
-    fun startCodeListening() {
-        if (codeListenerStarted) return
-        codeListenerStarted = true
-        loginWatcher.startSmsListening { hit -> passwordStudio.onCodeArrived(hit) }
+    fun startCodeListening(force: Boolean = false) {
+        if (codeListenerStarted && !force) return
+        // فقط وقتی پرچم را روشن می‌کنیم که گیرنده واقعاً ثبت شده باشد. پیش‌تر این پرچم
+        // پیش از دادنِ دسترسی `true` می‌شد و بعد از «اجازه» دیگر هرگز شنونده شروع نمی‌شد.
+        codeListenerStarted = loginWatcher.startSmsListening { hit -> passwordStudio.onCodeArrived(hit) }
+    }
+
+    fun stopCodeListening() {
+        if (codeListenerStarted) loginWatcher.stopSmsListening()
+        codeListenerStarted = false
+        passwordStudio.clearLatestCode()
     }
 
     /** آیا اپ می‌تواند کد را از پیامک/اعلان بخواند؟ برای راهنمای تنظیمات. */

@@ -29,12 +29,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -53,20 +51,14 @@ import androidx.compose.material.icons.filled.ArrowRightAlt
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DesktopWindows
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Fingerprint
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Tab
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -77,7 +69,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -119,7 +110,6 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -208,6 +198,7 @@ fun BrowserScreen(
     val protectedSiteCount by viewModel.protectedSiteCount.collectAsState()
     val pulseDomains by viewModel.pulseDomains.collectAsState()
     val blockedAdsCount by viewModel.adBlocker.blockedCount.collectAsState()
+    val addressSuggestions by viewModel.addressSuggestions.collectAsState()
     val strings = LocalMarbleStrings.current
     // خبرهای کوتاهِ ورود (کد نوشته شد، فرم پر شد، …) در نوارِ بالای صفحه دیده می‌شوند،
     // نه در دیالوگ؛ سپس پیام پاک می‌شود تا تکرار نشود.
@@ -228,10 +219,12 @@ fun BrowserScreen(
 
     // اگر کاربر «رمزِ یکبارمصرف» را روشن کرده باشد، همین‌جا (و فقط همین‌جا) اجازه‌های اختیاری
     // پیامک/اعلان پرسیده می‌شوند؛ ردکردن باعثِ هیچ خطایی نمی‌شود.
-    LoginAssistPermissionEffect(otpAssistEnabled = prefs.otpAssistEnabled)
-    LaunchedEffect(prefs.otpAssistEnabled) {
-        if (prefs.otpAssistEnabled) viewModel.startCodeListening()
-    }
+    LoginAssistPermissionEffect(
+        otpAssistEnabled = prefs.otpAssistEnabled,
+        onSmsPermissionResult = { granted ->
+            if (granted) viewModel.startCodeListening(force = true) else viewModel.stopCodeListening()
+        },
+    )
 
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -269,6 +262,9 @@ fun BrowserScreen(
         if (query.isNotBlank()) {
             focusManager.clearFocus()
             keyboardController?.hide()
+            // پس از ارسال، پیشنهادها نباید در چرخهٔ بعدی دوباره ظاهر شوند.
+            viewModel.onAddressFocusChanged(false)
+            viewModel.onAddressQueryChanged("")
             viewModel.navigateToInput(query)
         }
     }
@@ -383,6 +379,23 @@ fun BrowserScreen(
             onFindClose = { viewModel.toggleFindInPage(false) },
             onDismissBanner = viewModel::dismissBanner,
             onOpenVault = { onOpenVaultDashboard(activeTab?.containerId) },
+            suggestions = addressSuggestions,
+            showSuggestions = uiState.addressFocused &&
+                uiState.addressQuery.isNotBlank() &&
+                addressSuggestions.isNotEmpty(),
+            onPickSuggestion = { picked ->
+                viewModel.onAddressFocusChanged(false)
+                viewModel.onAddressQueryChanged("")
+                submit(picked)
+            },
+            onAddressQueryChanged = viewModel::onAddressQueryChanged,
+            onAddressFocusChanged = viewModel::onAddressFocusChanged,
+        )
+
+        SitePermissionPromptHost(
+            pending = uiState.pendingPermission,
+            onAllow = { viewModel.resolvePendingPermission(true) },
+            onDeny = { viewModel.dismissPendingPermission() },
         )
 
         // نشانگر «حالت مطالعه روشن است»: یک نوار نازک با دکمهٔ خاموش‌کردن، تا کاربر بداند
@@ -527,14 +540,25 @@ fun BrowserScreen(
 
     if (showBookmarksHistorySheet) {
         ModalBottomSheet(onDismissRequest = { showBookmarksHistorySheet = false }) {
-            BookmarksAndHistorySheet(
+            LibrarySheet(
                 bookmarks = bookmarks,
                 historyItems = historyItems,
                 onSelectUrl = { url ->
                     showBookmarksHistorySheet = false
                     submit(url)
                 },
+                onOpenInNewTab = { url ->
+                    showBookmarksHistorySheet = false
+                    viewModel.openNewTab(url)
+                },
                 onClearHistory = viewModel::clearBrowsingHistory,
+                onClearHistoryOlderThan = viewModel::clearHistoryOlderThan,
+                onAddBookmark = { title, url, folder, result -> viewModel.addBookmark(title, url, folder, result) },
+                onUpdateBookmark = viewModel::updateBookmark,
+                onMoveBookmark = viewModel::moveBookmarkToFolder,
+                onDeleteBookmark = viewModel::deleteBookmark,
+                onDeleteHistoryItem = viewModel::deleteHistoryItem,
+                onSearch = viewModel::searchLibrary,
             )
         }
     }
@@ -1049,6 +1073,11 @@ private fun BrowserTopBar(
     onFindClose: () -> Unit,
     onDismissBanner: () -> Unit,
     onOpenVault: () -> Unit,
+    suggestions: List<com.marble098.marblebr.core.model.AddressSuggestion> = emptyList(),
+    showSuggestions: Boolean = false,
+    onPickSuggestion: (String) -> Unit = {},
+    onAddressQueryChanged: (String) -> Unit = {},
+    onAddressFocusChanged: (Boolean) -> Unit = {},
 ) {
     val strings = LocalMarbleStrings.current
     val colors = MaterialTheme.colorScheme
@@ -1105,6 +1134,8 @@ private fun BrowserTopBar(
                     onSubmit = onSubmit,
                     onBookmark = onBookmark,
                     modifier = Modifier.weight(1f),
+                    onQueryChanged = onAddressQueryChanged,
+                    onFocusChanged = onAddressFocusChanged,
                 )
             }
 
@@ -1138,6 +1169,18 @@ private fun BrowserTopBar(
                     actions = menuActions,
                 )
             }
+        }
+
+        // پیشنهادهای زندهٔ نوار آدرس: تاریخچه، نشان‌ها و پربازدیدها. با انتخابِ هر مورد،
+        // همان آدرس باز می‌شود و نوار بسته می‌شود.
+        if (showSuggestions) {
+            AddressSuggestionList(
+                suggestions = suggestions,
+                onPick = { suggestion ->
+                    onAddressFocusChanged(false)
+                    onPickSuggestion(suggestion.url)
+                },
+            )
         }
 
         Box(Modifier.fillMaxWidth().height(2.5.dp)) {
@@ -1245,6 +1288,10 @@ fun BrowserAddressField(
     onSubmit: (String) -> Unit,
     onBookmark: () -> Unit,
     modifier: Modifier = Modifier,
+    /** متنِ تازهٔ تایپ‌شده؛ برای ساختنِ پیشنهادهای زنده. */
+    onQueryChanged: (String) -> Unit = {},
+    /** فوکوس/خروجِ فوکوس؛ پیشنهادها فقط هنگامِ فوکوس دیده می‌شوند. */
+    onFocusChanged: (Boolean) -> Unit = {},
 ) {
     val strings = LocalMarbleStrings.current
     val colors = MaterialTheme.colorScheme
@@ -1258,6 +1305,12 @@ fun BrowserAddressField(
     val submitNow = rememberUpdatedState(onSubmit)
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+
+    // به‌روزرسانیِ لحظه‌ای: هر تغییرِ متن/فوکوس به لایهٔ داده می‌رود تا پیشنهادها ساخته شوند.
+    LaunchedEffect(input.text, focused) {
+        onQueryChanged(input.text)
+        onFocusChanged(focused)
+    }
 
     LaunchedEffect(url, focused) {
         if (!focused && input.text != url) input = TextFieldValue(url)
@@ -1339,7 +1392,10 @@ fun BrowserAddressField(
                             }
                         }
                     }
-                    .onFocusChanged { focused = it.isFocused }
+                    .onFocusChanged {
+                        focused = it.isFocused
+                        onFocusChanged(it.isFocused)
+                    }
                     .focusRequester(focusRequester)
                     .testTag("smart_address_bar")
                     .onPreviewKeyEvent { event ->
@@ -1539,6 +1595,9 @@ private fun GeckoSessionWebView(
                     onServerRevokedFallbackRequired = viewModel::onServerRevokedFallbackRequired,
                     onDownloadRequested = { url, _ -> if (!tab.isPrivate) viewModel.enqueueDownload(url) },
                     onContextMenu = { target -> viewModel.onPageContextMenu(tab.id, target) },
+                    onPopupRequest = viewModel::onPopupRequest,
+                    onContentPermissionRequest = viewModel::onContentPermissionRequest,
+                    onAndroidPermissionRequest = viewModel::onAndroidPermissionRequest,
                 )
                 ctx.findActivity()?.let { activity ->
                     geckoSession.selectionActionDelegate = PageSelectionDelegate(
@@ -1926,106 +1985,6 @@ private fun TabCard(
         }
         IconButton(onClick = onClose, modifier = Modifier.size(30.dp)) {
             Icon(Icons.Default.Close, contentDescription = strings.closeTab, modifier = Modifier.size(16.dp))
-        }
-    }
-}
-
-@Composable
-private fun BookmarksAndHistorySheet(
-    bookmarks: List<BookmarkItem>,
-    historyItems: List<HistoryItem>,
-    onSelectUrl: (String) -> Unit,
-    onClearHistory: () -> Unit,
-) {
-    val strings = LocalMarbleStrings.current
-    val colors = MaterialTheme.colorScheme
-    var selectedSection by remember { mutableStateOf(0) }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = selectedSection == 0,
-                    onClick = { selectedSection = 0 },
-                    label = { Text(strings.bookmarksCount(bookmarks.size)) },
-                )
-                FilterChip(
-                    selected = selectedSection == 1,
-                    onClick = { selectedSection = 1 },
-                    label = { Text(strings.historyCount(historyItems.size)) },
-                )
-            }
-            if (selectedSection == 1 && historyItems.isNotEmpty()) {
-                TextButton(onClick = onClearHistory) { Text(strings.clearHistory) }
-            }
-        }
-
-        val isBookmarks = selectedSection == 0
-        val isEmpty = if (isBookmarks) bookmarks.isEmpty() else historyItems.isEmpty()
-        if (isEmpty) {
-            Text(
-                text = if (isBookmarks) strings.emptyBookmarks else strings.emptyHistory,
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.onSurfaceVariant,
-                modifier = Modifier.padding(vertical = 16.dp),
-            )
-        } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(bottom = 16.dp),
-            ) {
-                if (isBookmarks) {
-                    items(bookmarks, key = { it.id }) { bm ->
-                        LibraryRow(title = bm.title, url = bm.url, onClick = { onSelectUrl(bm.url) })
-                    }
-                } else {
-                    items(historyItems, key = { it.id }) { item ->
-                        LibraryRow(title = item.title, url = item.url, onClick = { onSelectUrl(item.url) })
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LibraryRow(title: String, url: String, onClick: () -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(16.dp)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(colors.surface.copy(alpha = 0.55f))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 9.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        SiteBadgeLogo(displayName = title, domain = siteDomain(url), size = 30.dp)
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title.ifBlank { siteDomain(url) },
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = siteDomain(url),
-                style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.sp),
-                color = colors.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
     }
 }
