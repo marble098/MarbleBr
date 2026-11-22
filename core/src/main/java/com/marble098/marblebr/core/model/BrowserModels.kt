@@ -315,8 +315,9 @@ data class ProxyDnsConfig(
         else -> dnsMode.dohUri
     }
 
-    /** آیا پروکسی‌ای برای اعمال تنظیم شده است؟ (نوع، میزبان و پورت باید معتبر باشند.) */
-    fun hasUsableProxy(): Boolean = ProxyValidator.validate(proxyType, proxyHost, proxyPort).isValid
+    /** آیا یک پروکسیِ فعال و معتبر برای اعمال تنظیم شده است؟ */
+    fun hasUsableProxy(): Boolean =
+        proxyType != ProxyType.NONE && ProxyValidator.validate(proxyType, proxyHost, proxyPort).isValid
 }
 
 /** نتیجهٔ اعتبارسنجیِ تنظیماتِ پروکسی؛ متنِ خطا در رابط کاربر ساخته می‌شود. */
