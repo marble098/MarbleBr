@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build_and_verify:
-    name: Lint, Test & Build Multi-ABI APKs
+  build_release:
+    name: Build and verify signed release APKs
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -31,25 +31,32 @@ jobs:
           fetch-depth: 0
 
       - name: Verify Persian CHANGELOG.md rules
+        if: github.event_name == 'workflow_dispatch'
         env:
           ENFORCE_CHANGELOG_DIFF: ${{ github.event_name == 'pull_request' && 'true' || 'false' }}
           BASE_REF: origin/main
         run: ./scripts/check_changelog.sh
 
       - name: Run Semantic Versioning script unit tests
+        if: github.event_name == 'workflow_dispatch'
         run: ./scripts/test_bump_version.sh
 
       - name: Run Unified Dependency Updater Script Tests
+        if: github.event_name == 'workflow_dispatch'
         run: python3 scripts/test_update_dependencies.py
 
-      - name: Run APK verification and release publishing tests
+      - name: Run APK verification tests
+        run: python3 scripts/test_verify_apks.py
+
+      - name: Run release publishing and smoke-test script tests
+        if: github.event_name == 'workflow_dispatch'
         run: |
-          python3 scripts/test_verify_apks.py
           ./scripts/test_publish_release.sh
           ./scripts/test_smoke_install_apks.sh
           ./scripts/test_gradle_retry.sh
 
       - name: Run session extension isolation tests
+        if: github.event_name == 'workflow_dispatch'
         run: |
           node scripts/test_session_extension.js
           node scripts/test_session_content.js
@@ -67,6 +74,7 @@ jobs:
           validate-wrappers: false
 
       - name: Run ktlint & detekt static analysis
+        if: github.event_name == 'workflow_dispatch'
         run: |
           set -o pipefail
           if ! ./scripts/gradle_retry.sh /tmp/lint.log ktlintCheck detekt --stacktrace; then
@@ -76,6 +84,7 @@ jobs:
           fi
 
       - name: Run Unit Tests (Vault, Health Guard, Version Algorithm, Browser)
+        if: github.event_name == 'workflow_dispatch'
         run: |
           set -o pipefail
           if ! ./scripts/gradle_retry.sh /tmp/test.log testDebugUnitTest --stacktrace; then
@@ -113,32 +122,62 @@ jobs:
       - name: Verify signed APKs and native payloads
         run: python3 scripts/verify_apks.py app/build/outputs/apk/release "$RUNNER_TEMP/verified-apks"
 
-      - name: Enable emulator acceleration
-        run: sudo chmod a+rw /dev/kvm
-
-      - name: Verify clean install and switching APKs on Android 8
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 26
-          target: google_apis
-          arch: x86_64
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: ./scripts/smoke_install_apks.sh "$RUNNER_TEMP/verified-apks"
-
-      - name: Verify clean install and switching APKs on Android 15 with 16 KB pages
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis_ps16k
-          arch: x86_64
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: EXPECTED_PAGE_SIZE=16384 ./scripts/smoke_install_apks.sh "$RUNNER_TEMP/verified-apks"
-
       - name: Upload test-only APKs (not compatible with official installations)
         uses: actions/upload-artifact@v7
         with:
           name: marblebr-test-only-apks-not-for-updates
           path: ${{ runner.temp }}/verified-apks/*
           if-no-files-found: error
+          compression-level: 0
+
+  smoke_release:
+    name: Release APK smoke test (Android ${{ matrix.android }})
+    needs: build_release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - android: '8'
+            api: 26
+            target: google_apis
+            page-size: ''
+          - android: '15'
+            api: 35
+            target: google_apis_ps16k
+            page-size: '16384'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: marblebr-test-only-apks-not-for-updates
+          path: ${{ runner.temp }}/verified-apks
+      - name: Enable emulator acceleration
+        run: sudo chmod a+rw /dev/kvm
+      - name: Verify clean install and switching APKs
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          EXPECTED_PAGE_SIZE: ${{ matrix.page-size }}
+        with:
+          api-level: ${{ matrix.api }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: ./scripts/smoke_install_apks.sh "$RUNNER_TEMP/verified-apks"
+
+  build_and_verify:
+    name: Lint, Test & Build Multi-ABI APKs
+    needs: [build_release, smoke_release]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require release build and both smoke tests to pass
+        env:
+          BUILD_RESULT: ${{ needs.build_release.result }}
+          SMOKE_RESULT: ${{ needs.smoke_release.result }}
+        run: test "$BUILD_RESULT" = success && test "$SMOKE_RESULT" = success
