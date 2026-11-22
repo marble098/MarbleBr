@@ -1989,7 +1989,6 @@ private fun TabCard(
     }
 }
 
-
 @Composable
 private fun DownloadsSheet(downloads: List<DownloadItem>) {
     val strings = LocalMarbleStrings.current

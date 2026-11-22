@@ -177,8 +177,11 @@ internal fun LibrarySheet(
 
         if (section == 0) {
             val visibleBookmarks = (searchResult?.bookmarks ?: bookmarks).let { items ->
-                if (sortOrder == 2) items.sortedBy { it.title.lowercase() }
-                else items.sortedByDescending { it.createdAtEpochMillis }
+                if (sortOrder == 2) {
+                    items.sortedBy { it.title.lowercase() }
+                } else {
+                    items.sortedByDescending { it.createdAtEpochMillis }
+                }
             }
             if (visibleBookmarks.isEmpty()) {
                 LibraryEmpty(
