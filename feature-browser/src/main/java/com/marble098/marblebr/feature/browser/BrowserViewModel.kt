@@ -254,6 +254,7 @@ class BrowserViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    private val popupOpeners = mutableMapOf<String, String>()
     private val containers = mutableMapOf<String, WebAppContainer>()
     private val pendingNavigation = mutableMapOf<String, Job>()
     private val recentlyClosed = ArrayDeque<BrowserTab>()
@@ -312,7 +313,10 @@ class BrowserViewModel @Inject constructor(
             } else {
                 containerDao.getById(tab.containerId)?.toDomain() ?: sessionManager.getOrCreateContainerForUrl(tab.url)
             }
-            if (container != null) containers[tab.id] = container
+            if (container != null) {
+                containers[tab.id] = container
+                sessionManager.applySitePermissions(tab.id, sitePermissionStore.profileFor(tab.url))
+            }
             BrowserTab(
                 id = tab.id,
                 containerId = container?.id.orEmpty(),
@@ -416,6 +420,7 @@ class BrowserViewModel @Inject constructor(
 
     private fun loadPage(tab: BrowserTab, input: String, preferredContainer: WebAppContainer? = null) {
         pendingNavigation.remove(tab.id)?.cancel()
+        if (_uiState.value.pendingPermission?.tabId == tab.id) dismissPendingPermission()
         if (_uiState.value.activeTabId == tab.id) toggleFindInPage(false)
         _uiState.update { state ->
             state.copy(
@@ -427,7 +432,9 @@ class BrowserViewModel @Inject constructor(
             try {
                 val target = urlResolver.resolveInputToUrl(input, preferencesRepository.preferencesFlow.first().searchEngineTemplate)
                 val domain = ContainerSessionManager.extractDomain(target)
-                val current = containers[tab.id]?.takeIf { it.domain == domain }
+                val current = containers[tab.id]?.takeIf {
+                    it.domain == domain || ContainerSessionManager.extractDomain(tab.url) == domain
+                }
                 val container = preferredContainer ?: current ?: if (tab.isPrivate) {
                     WebAppContainer(id = tab.id, domain = domain, displayName = "")
                 } else {
@@ -435,6 +442,8 @@ class BrowserViewModel @Inject constructor(
                 }
                 val recreate = !tab.isPrivate && containers[tab.id]?.contextId != container.contextId
                 if (recreate) sessionManager.closeTabSession(tab.id)
+                val profile = sitePermissionStore.profileFor(target)
+                sessionManager.applySitePermissions(tab.id, profile)
                 containers[tab.id] = container
                 updateTab(tab.id) {
                     it.copy(
@@ -476,6 +485,7 @@ class BrowserViewModel @Inject constructor(
         if (container?.neverSignOutEnabled == true) SessionHealthStatus.PROTECTED_ACTIVE else SessionHealthStatus.DISABLED
 
     fun showHome() {
+        dismissPendingPermission()
         toggleFindInPage(false)
         _uiState.update { it.copy(showHome = true) }
     }
@@ -486,6 +496,7 @@ class BrowserViewModel @Inject constructor(
     }
 
     private fun activateTab(tab: BrowserTab?) {
+        if (_uiState.value.pendingPermission?.tabId != tab?.id) dismissPendingPermission()
         toggleFindInPage(false)
         _uiState.update {
             it.copy(
@@ -493,6 +504,7 @@ class BrowserViewModel @Inject constructor(
                 activeContainer = tab?.id?.let(containers::get),
                 showHome = tab?.url.isNullOrBlank() && tab?.isLoading != true,
                 contextTarget = null,
+                activePermissionProfile = tab?.id?.let(sessionManager::permissionProfileOf),
             )
         }
     }
@@ -501,10 +513,11 @@ class BrowserViewModel @Inject constructor(
         val state = _uiState.value
         val tab = state.tabs.firstOrNull { it.id == tabId } ?: return
         rememberClosedTab(tab)
+        val opener = popupOpeners[tabId]
         releaseTab(tabId)
         val remaining = state.tabs.filterNot { it.id == tabId }
         _uiState.update { it.copy(tabs = remaining, canReopenTab = recentlyClosed.isNotEmpty()) }
-        if (state.activeTabId == tabId) activateTab(remaining.lastOrNull())
+        if (state.activeTabId == tabId) activateTab(remaining.firstOrNull { it.id == opener } ?: remaining.lastOrNull())
         if (state.showHome) showHome()
     }
 
@@ -529,6 +542,8 @@ class BrowserViewModel @Inject constructor(
     }
 
     private fun releaseTab(tabId: String) {
+        if (_uiState.value.pendingPermission?.tabId == tabId) dismissPendingPermission()
+        popupOpeners.remove(tabId)
         pendingNavigation.remove(tabId)?.cancel()
         containers.remove(tabId)
         sessionManager.closeTabSession(tabId)
@@ -573,6 +588,7 @@ class BrowserViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        dismissPendingPermission()
         if (codeListenerStarted) loginWatcher.stopSmsListening()
         _uiState.value.tabs.forEach { sessionManager.closeTabSession(it.id) }
         super.onCleared()
@@ -755,94 +771,110 @@ class BrowserViewModel @Inject constructor(
         _uiState.update { if (it.addressFocused == focused) it else it.copy(addressFocused = focused) }
     }
 
-    fun onPopupRequest(request: com.marble098.marblebr.engine.PopupPermissionRequest) {
-        if (_uiState.value.activeTabId != request.tabId) {
-            request.respond(false)
-            return
-        }
-        if (!request.shouldPrompt) {
-            openPopupTargetInTab(request.tabId, request.targetUri)
-            request.respond(false)
-            return
-        }
-        _uiState.update {
-            it.copy(
-                pendingPermission = PendingSitePermission(
-                    kind = PendingSitePermission.Kind.POPUP,
-                    tabId = request.tabId,
+    internal fun browserSession(
+        tab: BrowserTab,
+        container: WebAppContainer,
+        openedByGecko: Boolean = false,
+    ): org.mozilla.geckoview.GeckoSession = sessionManager.getOrCreateGeckoSession(
+        tabId = tab.id,
+        container = container,
+        initialUrl = tab.url,
+        isPrivate = tab.isPrivate,
+        isDesktopMode = tab.isDesktopMode,
+        adBlockEnabled = preferences.value.adBlockEnabled,
+        onLocationChanged = { url, secure -> onPageLocationChanged(tab.id, url, secure) },
+        onTitleChanged = { title -> onPageTitleChanged(tab.id, title) },
+        onProgressChanged = { progress, loading -> onPageProgressChanged(tab.id, progress, loading) },
+        onNavStateChanged = { back, fwd -> onNavStateChanged(tab.id, back, fwd) },
+        onHealthRestored = ::onHealthRestored,
+        onServerRevokedFallbackRequired = ::onServerRevokedFallbackRequired,
+        onDownloadRequested = { url, _ -> if (!tab.isPrivate) enqueueDownload(url) },
+        onContextMenu = { target -> onPageContextMenu(tab.id, target) },
+        onPopupRequest = ::onPopupRequest,
+        onContentPermissionRequest = ::onContentPermissionRequest,
+        onAndroidPermissionRequest = ::onAndroidPermissionRequest,
+        onWindowClose = { if (openedByGecko) closeTab(tab.id) },
+        openedByGecko = openedByGecko,
+    )
+
+    private fun onPopupRequest(request: com.marble098.marblebr.engine.PopupPermissionRequest) {
+        val respond: (Boolean) -> Unit = { allow ->
+            val source = _uiState.value.activeWebTab()?.takeIf { it.id == request.tabId }
+            val container = source?.let { containers[it.id] }
+            if (allow && source != null && container != null) {
+                val tab = source.copy(
+                    id = UUID.randomUUID().toString(),
                     url = request.targetUri,
-                    respond = request.respond,
-                ),
-            )
+                    title = "",
+                    isLoading = true,
+                    progress = 0,
+                    isSecure = false,
+                    canGoBack = false,
+                    canGoForward = false,
+                )
+                containers[tab.id] = container
+                popupOpeners[tab.id] = source.id
+                val session = browserSession(tab, container, openedByGecko = true)
+                _uiState.update { it.copy(tabs = it.tabs + tab) }
+                request.respond(session)
+                activateTab(tab)
+            } else {
+                request.respond(null)
+            }
         }
-    }
-
-    private fun openPopupTargetInTab(sourceTabId: String, targetUrl: String) {
-        val url = targetUrl.trim()
-        if (!url.startsWith("https://", true) && !url.startsWith("http://", true)) return
-        val sourceTab = _uiState.value.tabs.firstOrNull { it.id == sourceTabId } ?: return
-        // Treat an approved popup as a regular tab in the same site context. This browser's tab
-        // model has no separate Gecko popup window host; never leak private/account state.
-        openLinkInNewTab(url, sourceTab.id)
-    }
-
-    fun onContentPermissionRequest(request: ContentPermissionRequest) {
-        if (_uiState.value.activeTabId != request.tabId) {
-            request.respond(false)
-            return
-        }
-        _uiState.update {
-            it.copy(
-                pendingPermission = PendingSitePermission(
-                    kind = PendingSitePermission.Kind.CONTENT,
-                    tabId = request.tabId,
-                    url = request.url,
-                    permission = request.permission,
-                    respond = request.respond,
-                ),
-            )
-        }
-    }
-
-    fun onAndroidPermissionRequest(request: com.marble098.marblebr.engine.AndroidPermissionRequest) {
-        _uiState.update {
-            it.copy(
-                pendingPermission = PendingSitePermission(
-                    kind = PendingSitePermission.Kind.ANDROID,
-                    tabId = request.tabId,
-                    url = "",
-                    androidPermissions = request.permissions,
-                    respond = request.respond,
-                ),
-            )
-        }
-    }
-
-    /** پاسخِ کاربر به پرسشِ دسترسی؛ برای پرسشِ «اجازهٔ گوشی» فقط دیالوگِ سیستم را باز می‌کند. */
-    fun resolvePendingPermission(allow: Boolean) {
-        val pending = _uiState.value.pendingPermission ?: return
-        if (pending.kind == PendingSitePermission.Kind.ANDROID) {
-            // SitePermissionPromptHost calls this only after Android's permission activity
-            // returns; the result must reach Gecko's original callback on both outcomes.
-            pending.respond(allow)
-            _uiState.update { it.copy(pendingPermission = null) }
-            return
-        }
-        if (pending.kind == PendingSitePermission.Kind.POPUP) {
-            // Popup sessions are not allowed to escape the owning site context. Treat an
-            // approved popup as a regular isolated browser tab instead; Gecko's native
-            // onNewSession path is intentionally not used by this tab model.
-            if (allow) openPopupTargetInTab(pending.tabId, pending.url)
-            pending.respond(false)
+        if (!request.shouldPrompt && canAcceptPermissionFrom(request.tabId)) {
+            respond(true)
         } else {
-            pending.respond(allow)
+            val displayUrl = request.targetUri.takeUnless { it == "about:blank" }
+                ?: _uiState.value.activeWebTab()?.url.orEmpty()
+            offerPermission(PendingSitePermission(PendingSitePermission.Kind.POPUP, request.tabId, displayUrl, respond = respond))
         }
+    }
+
+    private fun onContentPermissionRequest(request: ContentPermissionRequest) {
+        offerPermission(
+            PendingSitePermission(
+                kind = PendingSitePermission.Kind.CONTENT,
+                tabId = request.tabId,
+                url = request.url,
+                permission = request.permission,
+                respond = request.respond,
+            ),
+        )
+    }
+
+    private fun onAndroidPermissionRequest(request: com.marble098.marblebr.engine.AndroidPermissionRequest) {
+        offerPermission(
+            PendingSitePermission(
+                kind = PendingSitePermission.Kind.ANDROID,
+                tabId = request.tabId,
+                url = "",
+                androidPermissions = request.permissions,
+                respond = request.respond,
+            ),
+        )
+    }
+
+    private fun canAcceptPermissionFrom(tabId: String): Boolean = _uiState.value.let {
+        it.activeTabId == tabId && !it.showHome && it.pendingPermission == null
+    }
+
+    private fun offerPermission(request: PendingSitePermission) {
+        if (canAcceptPermissionFrom(request.tabId)) {
+            _uiState.update { it.copy(pendingPermission = request) }
+        } else {
+            request.respond(false)
+        }
+    }
+
+    internal fun resolvePendingPermission(request: PendingSitePermission, allow: Boolean) {
+        if (_uiState.value.pendingPermission !== request) return
         _uiState.update { it.copy(pendingPermission = null) }
+        request.respond(allow)
     }
 
     fun dismissPendingPermission() {
-        _uiState.value.pendingPermission?.respond(false)
-        _uiState.update { it.copy(pendingPermission = null) }
+        _uiState.value.pendingPermission?.let { resolvePendingPermission(it, false) }
     }
 
     /* ------------------------------------------ کتابخانه (نشان‌ها/تاریخچه) ------------------------------------------ */
@@ -957,10 +989,14 @@ class BrowserViewModel @Inject constructor(
     fun onPageLocationChanged(tabId: String, url: String, isSecure: Boolean) {
         if (!url.startsWith("https://", ignoreCase = true) && !url.startsWith("http://", ignoreCase = true)) return
         val tab = _uiState.value.tabs.firstOrNull { it.id == tabId } ?: return
+        if (ContainerSessionManager.extractDomain(tab.url) != ContainerSessionManager.extractDomain(url) &&
+            _uiState.value.pendingPermission?.tabId == tabId
+        ) dismissPendingPermission()
         updateTab(tabId) { it.copy(url = url, isSecure = isSecure) }
         // دسترسی‌های همان دامنه روی نشست اعمال می‌شوند (جاوااسکریپت/پخش خودکار/دیالوگ‌ها).
         viewModelScope.launch {
             val profile = sitePermissionStore.profileFor(url)
+            if (_uiState.value.tabs.none { it.id == tabId && it.url == url }) return@launch
             sessionManager.applySitePermissions(tabId, profile)
             _uiState.update { state ->
                 if (state.activeTabId == tabId) state.copy(activePermissionProfile = profile) else state
@@ -1084,10 +1120,11 @@ class BrowserViewModel @Inject constructor(
         viewModelScope.launch {
             val tab = _uiState.value.activeWebTab() ?: return@launch
             sitePermissionStore.reset(tab.url)
-            sessionManager.applySitePermissions(tab.id, SitePermissionProfile(domain = ""))
+            val profile = sitePermissionStore.profileFor(tab.url)
+            sessionManager.applySitePermissions(tab.id, profile)
             _uiState.update {
                 it.copy(
-                    activePermissionProfile = SitePermissionProfile(domain = ""),
+                    activePermissionProfile = profile,
                 )
             }
             showLocalizedBanner { it.sitePermissionsResetDone }

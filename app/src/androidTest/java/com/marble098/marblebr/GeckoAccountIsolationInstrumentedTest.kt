@@ -10,6 +10,7 @@ import com.marble098.marblebr.core.i18n.LocalizationManager
 import com.marble098.marblebr.core.model.WebAppContainer
 import com.marble098.marblebr.core.preferences.BrowserPreferencesRepository
 import com.marble098.marblebr.engine.ContainerSessionManager
+import com.marble098.marblebr.engine.PopupPermissionRequest
 import com.marble098.marblebr.engine.LightweightAdBlocker
 import com.marble098.marblebr.engine.SessionHealthGuard
 import com.marble098.marblebr.vault.AesGcmVaultCipher
@@ -92,6 +93,32 @@ class GeckoAccountIsolationInstrumentedTest {
                 navigate(manager, "second", "${site.origin}/observe-page?tag=second-check")
                 assertAccount(site.observe("second-check"), "second")
 
+                val popupRequests = LinkedBlockingQueue<PopupPermissionRequest>()
+                instrumentation.runOnMainSync {
+                    manager.getOrCreateGeckoSession(
+                        tabId = "popup-parent",
+                        container = first,
+                        initialUrl = "${site.origin}/popup-parent",
+                        adBlockEnabled = false,
+                        onPopupRequest = { popupRequests.add(it) },
+                    ).setActive(true)
+                }
+                val popup = requireNotNull(popupRequests.poll(25, TimeUnit.SECONDS)) { "Gecko did not request a popup" }
+                assertTrue(popup.shouldPrompt)
+                assertEquals("${site.origin}/popup-child", popup.targetUri)
+                instrumentation.runOnMainSync {
+                    popup.respond(
+                        manager.getOrCreateGeckoSession(
+                            tabId = "popup-child",
+                            container = first,
+                            initialUrl = popup.targetUri,
+                            adBlockEnabled = false,
+                            openedByGecko = true,
+                        ),
+                    )
+                }
+                assertAccount(site.observe("popup-with-opener"), "first")
+
                 // Closing and recreating a tab must retain its named account, not the other account.
                 instrumentation.runOnMainSync { manager.closeTabSession("first") }
                 open(manager, first, "first", "${site.origin}/observe-page?tag=first-reopen")
@@ -128,6 +155,8 @@ class GeckoAccountIsolationInstrumentedTest {
                 instrumentation.runOnMainSync {
                     manager.closeTabSession("first")
                     manager.closeTabSession("second")
+                    manager.closeTabSession("popup-child")
+                    manager.closeTabSession("popup-parent")
                 }
                 db.close()
                 prefsScope.cancel()
@@ -225,6 +254,8 @@ private class LocalTestSite : Closeable {
                 "/login-page" -> loginPage(query["who"].orEmpty())
                 "/observe-page" -> observePage(query["tag"].orEmpty())
                 "/clear-page" -> clearPage()
+                "/popup-parent" -> popupParentPage()
+                "/popup-child" -> popupChildPage()
                 else -> "<!doctype html><title>MarbleBr test</title>"
             }
             val headers = when (path) {
@@ -254,6 +285,25 @@ private class LocalTestSite : Closeable {
     private fun observePage(tag: String) = """
         <!doctype html><title>Test observation</title><script>
         fetch('/observe?tag=$tag&identity=' + (localStorage.getItem('identity') || 'none'));
+        </script>
+    """.trimIndent()
+
+    private fun popupParentPage() = """
+        <!doctype html><title>Sign-in popup opener</title><script>
+        window.addEventListener('message', event => {
+          if (event.origin === location.origin && event.data === 'popup-ready') {
+            fetch('/observe?tag=popup-with-opener&identity=' + localStorage.getItem('identity'));
+          }
+        });
+        window.open('/popup-child', 'signin');
+        </script>
+    """.trimIndent()
+
+    private fun popupChildPage() = """
+        <!doctype html><title>Sign-in popup</title><script>
+        if (localStorage.getItem('identity') === 'first') {
+          window.opener?.postMessage('popup-ready', location.origin);
+        }
         </script>
     """.trimIndent()
 

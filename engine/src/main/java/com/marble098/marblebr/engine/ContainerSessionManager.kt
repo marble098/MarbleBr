@@ -58,7 +58,7 @@ data class PopupPermissionRequest(
     val tabId: String,
     val targetUri: String,
     val shouldPrompt: Boolean = true,
-    val respond: (Boolean) -> Unit,
+    val respond: (GeckoSession?) -> Unit,
 )
 
 /** درخواستِ یک دسترسیِ محتوایی (موقعیت، اعلان، دوربین/میکروفون، …). */
@@ -307,9 +307,11 @@ class ContainerSessionManager @Inject constructor(
         onServerRevokedFallbackRequired: (domain: String) -> Unit = {},
         onDownloadRequested: (url: String, userAgent: String?) -> Unit = { _, _ -> },
         onContextMenu: (PageContextTarget) -> Unit = {},
-        onPopupRequest: (PopupPermissionRequest) -> Unit = {},
+        onPopupRequest: (PopupPermissionRequest) -> Unit = { it.respond(null) },
         onContentPermissionRequest: (ContentPermissionRequest) -> Unit = {},
         onAndroidPermissionRequest: (AndroidPermissionRequest) -> Unit = {},
+        onWindowClose: () -> Unit = {},
+        openedByGecko: Boolean = false,
     ): GeckoSession {
         activeSessions[tabId]?.let { return it }
 
@@ -317,6 +319,7 @@ class ContainerSessionManager @Inject constructor(
             .usePrivateMode(isPrivate)
             .contextId(if (isPrivate) null else container.contextId)
             .useTrackingProtection(adBlockEnabled)
+            .allowJavascript(permissionProfileOf(tabId).javascriptAllowed())
             .userAgentMode(
                 if (isDesktopMode) {
                     GeckoSessionSettings.USER_AGENT_MODE_DESKTOP
@@ -341,19 +344,37 @@ class ContainerSessionManager @Inject constructor(
             onServerRevokedFallbackRequired = onServerRevokedFallbackRequired,
             onDownloadRequested = onDownloadRequested,
             onContextMenu = onContextMenu,
+            tabId = tabId,
+            onPopupRequest = onPopupRequest,
+            onWindowClose = onWindowClose,
         )
 
         attachPermissionDelegates(
             session = session,
             tabId = tabId,
-            onPopupRequest = onPopupRequest,
             onContentPermissionRequest = onContentPermissionRequest,
             onAndroidPermissionRequest = onAndroidPermissionRequest,
         )
 
+        if (isHttpUrl(initialUrl)) lastKnownUrls[session] = initialUrl
         activeSessions[tabId] = session
-        sessionContainers[session] = container.id
+        if (!isPrivate) sessionContainers[session] = container.id
         if (isPrivate) privateSessions.add(tabId) else privateSessions.remove(tabId)
+        if (openedByGecko) {
+            if (!isPrivate) {
+                val available = installedExtension
+                if (available != null) {
+                    attachSessionExtensionBridge(session, available, container, onHealthRestored, onServerRevokedFallbackRequired)
+                } else {
+                    extensionReady?.accept({ extension ->
+                        if (extension != null && activeSessions[tabId] === session) {
+                            attachSessionExtensionBridge(session, extension, container, onHealthRestored, onServerRevokedFallbackRequired)
+                        }
+                    }, {})
+                }
+            }
+            return session
+        }
         session.open(runtime)
         if (isPrivate) {
             session.loadUri(initialUrl)
@@ -577,24 +598,9 @@ class ContainerSessionManager @Inject constructor(
         }
     }
 
-    /**
-     * دسترسی‌های هر نشست: popup، دسترسی‌های محتوایی و دسترسی‌های اندروید.
-     *
-     * **نقدِ نسخهٔ قبل:** سه مشکل واقعی داشت:
-     * ۱. `onPopupPrompt` اصلاً پیاده‌سازی نشده بود؛ پس هر popup (پرداخت بانکی، ورود با گوگل،
-     *    پیش‌نمایش فایل) بی‌صدا بلاک می‌شد و کاربر فقط صفحهٔ سفید می‌دید.
-     * ۲. برای حالتِ ASK مقدارِ `VALUE_PROMPT` برمی‌گشت، ولی هیچ پنجره‌ای نمایش داده نمی‌شد؛
-     *    یعنی «بپرس» عملاً «بلاک» بود.
-     * ۳. `onAndroidPermissionsRequest` پیاده‌سازی نشده بود؛ بنابراین حتی با اجازهٔ کاربر،
-     *    دوربین/میکروفون/موقعیت هیچ‌وقت به Gecko نمی‌رسید.
-     *
-     * حالا هر سه مسیر یک درخواستِ صریح به رابط کاربر می‌فرستند و پاسخِ کاربر با همان
-     * `GeckoResult`/callback به Gecko برمی‌گردد.
-     */
     private fun attachPermissionDelegates(
         session: GeckoSession,
         tabId: String,
-        onPopupRequest: (PopupPermissionRequest) -> Unit,
         onContentPermissionRequest: (ContentPermissionRequest) -> Unit,
         onAndroidPermissionRequest: (AndroidPermissionRequest) -> Unit,
     ) {
@@ -602,28 +608,15 @@ class ContainerSessionManager @Inject constructor(
             override fun onPopupPrompt(
                 session: GeckoSession,
                 prompt: GeckoSession.PromptDelegate.PopupPrompt,
-            ): GeckoResult<GeckoSession.PromptDelegate.PromptResponse>? {
-                val state = permissionProfiles[tabId]?.stateOf(SitePermission.POPUPS)
-                if (state == PermissionState.BLOCK) {
-                    return GeckoResult.fromValue(prompt.confirm(AllowOrDeny.DENY))
+            ): GeckoResult<GeckoSession.PromptDelegate.PromptResponse> {
+                // Gecko calls this for its built-in popup blocker only. onNewSession
+                // is the final gate for both blocked and user-initiated windows.
+                val decision = if (popupPolicy(tabId, session) == PermissionState.BLOCK) {
+                    AllowOrDeny.DENY
+                } else {
+                    AllowOrDeny.ALLOW
                 }
-                val result = GeckoResult<GeckoSession.PromptDelegate.PromptResponse>()
-                onPopupRequest(
-                    PopupPermissionRequest(
-                        tabId = tabId,
-                        targetUri = prompt.targetUri.orEmpty(),
-                        shouldPrompt = state != PermissionState.ALLOW,
-                        respond = { allow ->
-                            val response = if (allow) {
-                                prompt.confirm(AllowOrDeny.ALLOW)
-                            } else {
-                                prompt.confirm(AllowOrDeny.DENY)
-                            }
-                            result.complete(response)
-                        },
-                    ),
-                )
-                return result
+                return GeckoResult.fromValue(prompt.confirm(decision))
             }
         }
 
@@ -807,6 +800,7 @@ class ContainerSessionManager @Inject constructor(
 
     fun closeTabSession(tabId: String) {
         pendingInitialLoads.remove(tabId)
+        permissionProfiles.remove(tabId)
         privateSessions.remove(tabId)
         runCatching { loginWatcher.get().forget(tabId) }
         val session = activeSessions.remove(tabId) ?: return
@@ -815,7 +809,7 @@ class ContainerSessionManager @Inject constructor(
         capturePorts.remove(session)?.disconnect()
         snapshotRequests.remove(session)?.response?.complete(false)
         restoreRequests.remove(session)?.response?.complete(VaultRestoreOutcome())
-        session.close()
+        if (session.isOpen) session.close()
     }
 
     /**
@@ -1166,6 +1160,12 @@ class ContainerSessionManager @Inject constructor(
         return true
     }
 
+    private fun popupPolicy(tabId: String, session: GeckoSession): PermissionState {
+        val domain = lastKnownUrls[session]?.let(::extractDomain)
+        return permissionProfiles[tabId]?.takeIf { it.domain == domain }?.stateOf(SitePermission.POPUPS)
+            ?: PermissionState.ASK
+    }
+
     private fun attachSessionDelegates(
         session: GeckoSession,
         container: WebAppContainer,
@@ -1179,12 +1179,31 @@ class ContainerSessionManager @Inject constructor(
         onServerRevokedFallbackRequired: (domain: String) -> Unit,
         onDownloadRequested: (url: String, userAgent: String?) -> Unit,
         onContextMenu: (PageContextTarget) -> Unit,
+        tabId: String,
+        onPopupRequest: (PopupPermissionRequest) -> Unit,
+        onWindowClose: () -> Unit,
     ) {
         var previousUrl = ""
         var canBack = false
         var canFwd = false
 
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
+            override fun onNewSession(session: GeckoSession, uri: String): GeckoResult<GeckoSession>? {
+                val state = popupPolicy(tabId, session)
+                if (state == PermissionState.BLOCK || (uri != "about:blank" && !isHttpUrl(uri))) return null
+                val result = GeckoResult<GeckoSession>()
+                onPopupRequest(
+                    PopupPermissionRequest(
+                        tabId = tabId,
+                        targetUri = uri,
+                        shouldPrompt = state == PermissionState.ASK,
+                        respond = { result.complete(it) },
+                    ),
+                )
+                return result
+            }
+
+
             override fun onLoadRequest(
                 session: GeckoSession,
                 request: GeckoSession.NavigationDelegate.LoadRequest,
@@ -1276,6 +1295,9 @@ class ContainerSessionManager @Inject constructor(
         }
 
         session.contentDelegate = object : GeckoSession.ContentDelegate {
+            override fun onCloseRequest(session: GeckoSession) = onWindowClose()
+
+
             override fun onContextMenu(
                 session: GeckoSession,
                 screenX: Int,

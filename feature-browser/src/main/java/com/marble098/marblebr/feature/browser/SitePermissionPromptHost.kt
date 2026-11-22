@@ -11,6 +11,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -30,24 +32,27 @@ import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
 @Composable
 internal fun SitePermissionPromptHost(
     pending: PendingSitePermission?,
-    onAllow: () -> Unit,
-    onDeny: () -> Unit,
+    onResolve: (PendingSitePermission, Boolean) -> Unit,
 ) {
     val strings = LocalMarbleStrings.current
 
+    val inFlight = remember { mutableStateOf<PendingSitePermission?>(null) }
     val androidLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
     ) { results ->
-        val allGranted = results.values.all { it }
-        if (allGranted) onAllow() else onDeny()
+        val request = inFlight.value
+        inFlight.value = null
+        if (request != null) onResolve(request, request.androidPermissions.all { results[it] == true })
     }
 
-    LaunchedEffect(pending?.kind) {
+    LaunchedEffect(pending, inFlight.value) {
         val current = pending ?: return@LaunchedEffect
-        if (current.kind == PendingSitePermission.Kind.ANDROID) {
-            // درخواستِ دسترسیِ اندروید: دیالوگِ سیستم، نه یک دیالوگِ دومِ درون‌برنامه‌ای.
-            val permissions = current.androidPermissions.ifEmpty { return@LaunchedEffect }
-            androidLauncher.launch(permissions.toTypedArray())
+        if (current.kind != PendingSitePermission.Kind.ANDROID || inFlight.value != null) return@LaunchedEffect
+        if (current.androidPermissions.isEmpty()) {
+            onResolve(current, false)
+        } else {
+            inFlight.value = current
+            androidLauncher.launch(current.androidPermissions.toTypedArray())
         }
     }
 
@@ -69,7 +74,7 @@ internal fun SitePermissionPromptHost(
     }
 
     AlertDialog(
-        onDismissRequest = onDeny,
+        onDismissRequest = { onResolve(current, false) },
         shape = RoundedCornerShape(22.dp),
         title = {
             Text(
@@ -103,12 +108,12 @@ internal fun SitePermissionPromptHost(
             }
         },
         confirmButton = {
-            TextButton(onClick = onAllow) {
+            TextButton(onClick = { onResolve(current, true) }) {
                 Text(if (current.kind == PendingSitePermission.Kind.POPUP) strings.libraryOpenInNewTab else strings.permissionAllow)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDeny) { Text(strings.permissionBlock) }
+            TextButton(onClick = { onResolve(current, false) }) { Text(strings.permissionBlock) }
         },
     )
 }
