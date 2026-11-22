@@ -162,6 +162,7 @@ class PasswordStudio @Inject constructor(
                 activeAccountId = null
                 // شاید این صفحه یک صفحهٔ کدِ تأیید است (مثلاً بعد از ورودِ قبلی): کد آماده است؟
                 offerOneTimeCodeIfPossible(pageUrl, isPrivateTab)
+                LoginPageDirective.None
             }
         }
     }
@@ -347,7 +348,8 @@ class PasswordStudio @Inject constructor(
                 }
             }
 
-            SubmissionVerdict.UNKNOWN -> null
+            // «هنوز چیزی نشده» و هر داوریِ تازه‌ای که بعداً اضافه شود.
+            else -> null
         }
     }
 
