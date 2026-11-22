@@ -105,7 +105,7 @@ class GeckoAccountIsolationInstrumentedTest {
                 }
                 val popup = requireNotNull(popupRequests.poll(25, TimeUnit.SECONDS)) { "Gecko did not request a popup" }
                 assertTrue(popup.shouldPrompt)
-                assertTrue(popup.targetUri in setOf("about:blank", "${site.origin}/popup-child"))
+                assertTrue(popup.targetUri in setOf("about:blank", "${site.origin}/oauth/authorize"))
                 instrumentation.runOnMainSync {
                     popup.respond(
                         manager.getOrCreateGeckoSession(
@@ -255,7 +255,7 @@ private class LocalTestSite : Closeable {
                 "/observe-page" -> observePage(query["tag"].orEmpty())
                 "/clear-page" -> clearPage()
                 "/popup-parent" -> popupParentPage()
-                "/popup-child" -> popupChildPage()
+                "/oauth/authorize" -> popupChildPage()
                 else -> "<!doctype html><title>MarbleBr test</title>"
             }
             val headers = when (path) {
@@ -295,7 +295,7 @@ private class LocalTestSite : Closeable {
             fetch('/observe?tag=popup-with-opener&identity=' + localStorage.getItem('identity'));
           }
         });
-        window.open('/popup-child', 'signin');
+        window.open('/oauth/authorize', 'signin');
         </script>
     """.trimIndent()
 

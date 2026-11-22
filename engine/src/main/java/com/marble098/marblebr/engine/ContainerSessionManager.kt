@@ -1213,7 +1213,11 @@ class ContainerSessionManager @Inject constructor(
                     return GeckoResult.fromValue(AllowOrDeny.DENY)
                 }
 
-                if (!isPrivate && healthGuard.isSuspiciousLoginRedirect(previousUrl, request.uri)) {
+                // User-initiated sign-in and cross-origin SSO are normal navigation.
+                if (!isPrivate && request.isRedirect && sameOrigin(previousUrl, request.uri) &&
+                    extractDomain(request.uri) == container.domain &&
+                    healthGuard.isSuspiciousLoginRedirect(previousUrl, request.uri)
+                ) {
                     engineScope.launch {
                         val freshContainer = containerDao.getById(container.id)?.toDomain() ?: container
                         val assessment = healthGuard.evaluateSignal(
