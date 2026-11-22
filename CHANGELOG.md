@@ -2,6 +2,16 @@
 
 تمامی تغییرات مهم پروژه **MarbleBr** در این فایل به زبان فارسی و با دسته‌بندی استاندارد ثبت می‌شوند.
 
+## [1.9.3] - ۲۰۲۶-۱۱-۲۲
+
+### 🐛 رفع باگ
+- **کرش `IllegalThreadStateException` هنگامِ پایشِ کدِ یکبارمصرف بسته شد:** `GeckoSession.isOpen` از تردِ `DefaultDispatcher-worker-*` خوانده می‌شد («Expected thread 2 (main)»)؛ حالا `hasOpenSession` همیشه روی `Dispatchers.Main.immediate` می‌خواند و باقیِ لمس‌های GeckoSession مثل `closeTabSession` و `savePageAsPdf` هم روی تردِ Main تضمین می‌شوند (در صورتِ تماس از تردِ دیگر به Main منتقل می‌شوند) و خواندن‌های `isOpen` در اسنپ‌شات/بازگردانی هم همین‌طور.
+- **کرش `ExceptionInInitializerError` هنگامِ ساختِ GeckoRuntime (از `DebugConfig.fromFile` تا `ca4.<clinit>`) بسته شد:** R8 همهٔ کلاس‌های SnakeYAML و بستهٔ آن‌ها را (`org.yaml.snakeyaml.**` + `-keeppackagenames`) نگه می‌دارد؛ پیش‌تر فقط دو کلاسِ logger نگه داشته می‌شد و کرش به کلاسِ بعدیِ unpinned منتقل می‌شد. کلاس‌های داخلیِ GeckoView (`org.mozilla.gecko.**`) هم صراحتاً در `proguard-rules.pro` نگه داشته می‌شوند تا بازتابِ SnakeYAML روی `DebugConfig` هرگز از دست نرود.
+
+### 🛠 بهبود
+- **نوسانِ IME کمتر شد:** گزارشِ فوکوسِ تکراری از مسیرِ `LaunchedEffect` حذف شد؛ پیش‌تر علاوه بر `onFocusChanged` در فیلد، روی هر تغییرِ متن دوباره `onFocusChanged(focused)` ارسال می‌شد که بازترکیب و «show/hide»های بیهوده می‌ساخت (بخشی از لاگ‌های `ALREADY_HIDDEN`). گزارشِ فوکوس حالا فقط از خودِ فیلد می‌آید. یادآوری: `onTrimMemory(40)` فقط یک هشدارِ مدیریتِ حافظه از سمتِ سیستم است و نیازی به تغییرِ کد ندارد.
+- **Workflowهای CI سریع‌تر شدند:** ktlint و detekt در یک فراخوانیِ Gradle اجرا می‌شوند (یک daemon به‌اشتراک؛ هم‌راستا با `build.yml`)، **Configuration Cache** در حالتِ امن (`problems=warn`) فعال شد تا هر فراخوانیِ Gradle phaseِ configuration را بازیابی کند، و تستِ ایمولاتور برای Draft PRها رد می‌شود (تا حدود ۴۰ دقیقه صرفه‌جویی در هر تغییرِ پیش از آماده‌شدن).
+
 ## [1.9.2] - ۲۰۲۶-۱۱-۲۲
 
 ### 🐛 رفع باگ

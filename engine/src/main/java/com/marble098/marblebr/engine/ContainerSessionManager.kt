@@ -2,6 +2,8 @@ package com.marble098.marblebr.engine
 
 import android.content.Context
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import com.marble098.marblebr.core.database.ContainerDao
 import com.marble098.marblebr.core.database.ContainerEntity
 import com.marble098.marblebr.core.i18n.LocalizationManager
@@ -409,6 +411,11 @@ class ContainerSessionManager @Inject constructor(
 
     /** The system document picker supplies the destination; PDF bytes never leave the device by us. */
     fun savePageAsPdf(tabId: String, destination: Uri, onComplete: (Boolean) -> Unit) {
+        // GeckoSession فقط روی تردِ Main لمس می‌شود؛ اگر از ترد دیگری صدا زده شد، خودِ فراخوانی به Main منتقل می‌شود.
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            Handler(Looper.getMainLooper()).post { savePageAsPdf(tabId, destination, onComplete) }
+            return
+        }
         val session = activeSessions[tabId]
         if (session == null || !session.isOpen) {
             onComplete(false)
@@ -557,8 +564,15 @@ class ContainerSessionManager @Inject constructor(
         }
     }
 
-    /** آیا تبِ داده‌شده در همین لحظه نشستِ باز دارد؟ (برای جلوگیری از اجرا روی تبِ بسته) */
-    fun hasOpenSession(tabId: String): Boolean = activeSessions[tabId]?.isOpen == true
+    /**
+     * آیا تبِ داده‌شده در همین لحظه نشستِ باز دارد؟ (برای جلوگیری از اجرا روی تبِ بسته)
+     *
+     * `GeckoSession.isOpen` فقط روی تردِ Main معتبر است؛ فراخوانی از هر ترد دیگری با
+     * `IllegalThreadStateException` اپ را می‌بندد (کرش لاگِ «Expected thread 2 (main)»).
+     * به همین دلیل این تابع `suspend` است و خواندن را همیشه روی Main انجام می‌دهد.
+     */
+    suspend fun hasOpenSession(tabId: String): Boolean =
+        withContext(Dispatchers.Main.immediate) { activeSessions[tabId]?.isOpen == true }
 
     /** آدرسِ آخری که برای این تب دیده شده (بدونِ محتوای صفحه). */
     fun lastKnownUrl(tabId: String): String =
@@ -809,7 +823,14 @@ class ContainerSessionManager @Inject constructor(
         capturePorts.remove(session)?.disconnect()
         snapshotRequests.remove(session)?.response?.complete(false)
         restoreRequests.remove(session)?.response?.complete(VaultRestoreOutcome())
-        if (session.isOpen) session.close()
+        // GeckoSession فقط روی تردِ Main معتبر است؛ اگر تماس از ترد دیگری آمد، بستن روی Main انجام می‌شود.
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            if (session.isOpen) session.close()
+        } else {
+            Handler(Looper.getMainLooper()).post {
+                runCatching { if (session.isOpen) session.close() }
+            }
+        }
     }
 
     /**
@@ -819,8 +840,10 @@ class ContainerSessionManager @Inject constructor(
      * صورت مقدار «موفق» را برنمی‌گرداند چون داده‌ای برای ذخیره وجود ندارد.
      */
     suspend fun captureSiteSnapshotNow(container: WebAppContainer): Boolean {
-        val match = capturePorts.entries.firstOrNull { (session, port) ->
-            session.isOpen && sessionContainers[session] == container.id && extractDomain(port.sender.url) == container.domain
+        val match = withContext(Dispatchers.Main.immediate) {
+            capturePorts.entries.firstOrNull { (session, port) ->
+                session.isOpen && sessionContainers[session] == container.id && extractDomain(port.sender.url) == container.domain
+            }
         } ?: return false
         val tabId = activeSessions.entries.firstOrNull { it.value === match.key }?.key ?: return false
         return capturePageSnapshot(tabId, match.value.sender.url, manual = true)
@@ -830,11 +853,15 @@ class ContainerSessionManager @Inject constructor(
     suspend fun restoreSnapshotOnOpenTab(snapshot: SessionSnapshotMeta): VaultRestoreOutcome {
         val payload = vaultManager.restoreSnapshotById(snapshot.id)
             ?: return VaultRestoreOutcome(payloadUnavailable = true)
-        val session = capturePorts.entries.firstOrNull { (candidate, port) ->
-            candidate.isOpen && sessionContainers[candidate] == snapshot.containerId && sameOrigin(port.sender.url, payload.origin)
+        val session = withContext(Dispatchers.Main.immediate) {
+            capturePorts.entries.firstOrNull { (candidate, port) ->
+                candidate.isOpen && sessionContainers[candidate] == snapshot.containerId && sameOrigin(port.sender.url, payload.origin)
+            }
         }?.key ?: return VaultRestoreOutcome(openTabMissing = true)
         val applied = applyPayloadToSession(session, payload)
-        if (applied.cookiesRestored > 0 || applied.storageKeysRestored > 0) session.reload()
+        if (applied.cookiesRestored > 0 || applied.storageKeysRestored > 0) {
+            withContext(Dispatchers.Main.immediate) { session.reload() }
+        }
         return applied
     }
 

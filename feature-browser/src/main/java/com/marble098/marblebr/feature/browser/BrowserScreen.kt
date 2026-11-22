@@ -1305,10 +1305,12 @@ fun BrowserAddressField(
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
-    // به‌روزرسانیِ لحظه‌ای: هر تغییرِ متن/فوکوس به لایهٔ داده می‌رود تا پیشنهادها ساخته شوند.
-    LaunchedEffect(input.text, focused) {
+    // به‌روزرسانیِ لحظه‌ای: متنِ تایپ‌شده به لایهٔ داده می‌رود تا پیشنهادها ساخته شوند.
+    // (فوکوس فقط از مسیرِ `onFocusChanged` در BasicTextField گزارش می‌شود؛ قبلاً اینجا هم
+    // روی هر تغییرِ متن دوباره `onFocusChanged(focused)` ارسال می‌شد که بازترکیب‌های بیهوده
+    // و «show/hide»های تکراریِ IME («ALREADY_HIDDEN») می‌ساخت.)
+    LaunchedEffect(input.text) {
         onQueryChanged(input.text)
-        onFocusChanged(focused)
     }
 
     LaunchedEffect(url, focused) {
