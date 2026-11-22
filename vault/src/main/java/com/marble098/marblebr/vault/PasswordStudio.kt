@@ -713,4 +713,3 @@ data class OneTimeCodeCapability(
     /** آیا حداقل یک مسیرِ خودکار برای رساندنِ کد وجود دارد؟ */
     val hasAutomaticSource: Boolean get() = smsPermissionGranted || notificationAccessGranted
 }
-
