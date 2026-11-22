@@ -38,7 +38,7 @@ import com.marble098.marblebr.engine.LoginWatcher
 import com.marble098.marblebr.engine.PageContextTarget
 import com.marble098.marblebr.core.model.CredentialCaptureHeuristics
 import com.marble098.marblebr.core.model.PasswordNotice
-import com.marble098.marblebr.core.model.LoginActivity
+import com.marble098.marblebr.vault.LoginActivity
 import com.marble098.marblebr.vault.LoginPageDirective
 import com.marble098.marblebr.vault.OneTimeCodeCapability
 import com.marble098.marblebr.vault.PasswordSavePrompt
@@ -162,12 +162,13 @@ class BrowserViewModel @Inject constructor(
      * منوی سایت با همین پرچم، «پر کردنِ فرم» را نشان می‌دهد؛ یعنی هیچ‌وقت دکمه‌ای نمی‌بینیم که
      * کار نکند. دامنه‌ها با همان قاعدهٔ مخزن سنجیده می‌شوند (زیردامنه‌ها پذیرفته‌اند).
      */
-    private val loginDomains: StateFlow<Set<String>> = run {
+    private val hasStoredLoginForCurrentSite: StateFlow<Boolean> = run {
         val domains = passwordStudio.candidatesForHome()
             .map { candidates -> candidates.map { it.domain.lowercase() }.toSet() }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet<String>())
         combine(domains, uiState) { known, state ->
-            val site = state.activeWebTab()?.url?.let(CredentialCaptureHeuristics::domainOf) ?: return@combine false
+            val site = state.activeWebTab()?.url?.let(CredentialCaptureHeuristics::domainOf)
+                ?: return@combine false
             known.any { it == site || site.endsWith(".$it") || it.endsWith(".$site") }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
     }
@@ -212,7 +213,7 @@ class BrowserViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            loginDomains.collect { hasStored ->
+            hasStoredLoginForCurrentSite.collect { hasStored ->
                 _uiState.update { it.copy(hasStoredLoginForCurrentSite = hasStored) }
             }
         }
