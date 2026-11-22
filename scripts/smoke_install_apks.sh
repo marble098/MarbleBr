@@ -80,15 +80,20 @@ wait_for_process() {
 
 launch() {
     local attempt result
+    # Activity Manager can stall after an APK replacement. Bound each command so the next attempt can run.
     for ((attempt = 1; attempt <= launch_attempts; attempt++)); do
-        adb shell am force-stop "$package" >/dev/null 2>&1 || true
-        result="$(adb shell am start -W -a android.intent.action.VIEW -d https://example.invalid/ \
-            -n "$package/.MainActivity" 2>&1 | tr -d '\r')" || true
-        echo "$result"
-        if grep -q '^Status: ok' <<< "$result" && wait_for_process; then
-            return 0
+        if timeout "${launch_timeout}s" adb shell am force-stop "$package" >/dev/null 2>&1; then
+            if result="$(timeout "${launch_timeout}s" adb shell am start -W -a android.intent.action.VIEW -d https://example.invalid/ \
+                -n "$package/.MainActivity" 2>&1 | tr -d '\r')"; then
+                echo "$result"
+                if grep -q '^Status: ok' <<< "$result" && wait_for_process; then
+                    return 0
+                fi
+            else
+                echo "$result"
+            fi
         fi
-        echo "Launch attempt $attempt/$launch_attempts finished without a live app process; retrying..." >&2
+        echo "Launch attempt $attempt/$launch_attempts did not complete with a live app process; retrying..." >&2
         sleep 2
     done
 

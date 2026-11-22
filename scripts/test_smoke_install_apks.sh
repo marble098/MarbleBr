@@ -35,6 +35,10 @@ case "$*" in
         ;;
     'shell am force-stop '*) exit 0 ;;
     'shell am start -W '*)
+        if [[ "${MOCK_PIDOF_MODE:-ok}" == stalled && ! -f "$state/launch_stalled" ]]; then
+            touch "$state/launch_stalled"
+            sleep 30
+        fi
         echo 'Starting: Intent { act=android.intent.action.VIEW }'
         echo 'Status: ok'
         echo 'LaunchState: UNKNOWN (0)'
@@ -79,6 +83,14 @@ run_smoke flaky > "$tmp/flaky.log" 2>&1 || {
     echo "Smoke test must tolerate a delayed app process" >&2
     exit 1
 }
+
+echo "▶️ Scenario: first launch command stalls (must retry and pass)"
+run_smoke stalled > "$tmp/stalled.log" 2>&1 || {
+    cat "$tmp/stalled.log" >&2
+    echo "Smoke test must retry a stalled launch command" >&2
+    exit 1
+}
+grep -q 'Launch attempt 1/2 did not complete' "$tmp/stalled.log"
 
 echo "▶️ Scenario: app process never appears (must fail)"
 if run_smoke never > "$tmp/never.log" 2>&1; then
