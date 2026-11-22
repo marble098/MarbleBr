@@ -17,6 +17,7 @@ enum class SitePermission {
     CAMERA,
     MICROPHONE,
     NOTIFICATIONS,
+
     /** باز کردنِ پنجرهٔ تازه (popup) از سوی صفحه. */
     POPUPS,
 }

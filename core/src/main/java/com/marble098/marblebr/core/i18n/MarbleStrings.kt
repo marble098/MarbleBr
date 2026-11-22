@@ -705,7 +705,6 @@ abstract class MarbleStrings {
     protected abstract val reasonServerRevoked: String
     protected abstract val reasonUnknown: String
 
-
     // ------------------------------------------------- دسترسی‌ها و پاپ‌آپ
     abstract val permissionPopups: String
     abstract val permissionPopupTitle: String
