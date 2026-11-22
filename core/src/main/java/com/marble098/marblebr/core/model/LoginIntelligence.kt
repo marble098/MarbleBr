@@ -344,9 +344,14 @@ class LoginIntelligence(
         dismissals = dismissals - CredentialCaptureHeuristics.domainOf(url)
     }
 
-    /** کاربر گفت «الآن نه». */
+    /** کاربر گفت «الآن نه»؛ فقط برای مدتِ [CredentialSavePolicy.DISMISS_COOLDOWN_MILLIS]. */
     fun markDismissed(url: String) {
         dismissals = dismissals + (CredentialCaptureHeuristics.domainOf(url) to nowEpochMillis)
+    }
+
+    /** کاربر گفت «برای این سایت دیگر نپرس»؛ بی‌پایان و تا وقتی خودش ذخیره کند. */
+    fun markNeverAskAgain(url: String) {
+        dismissals = dismissals + (CredentialCaptureHeuristics.domainOf(url) to CredentialSavePolicy.NEVER_ASK_SENTINEL)
     }
 
     /** پس از بازکردنِ بیومتریک، تا پایانِ همین نشست دوباره پرسیده نمی‌شود. */

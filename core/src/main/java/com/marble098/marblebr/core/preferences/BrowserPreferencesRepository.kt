@@ -10,6 +10,7 @@ import com.marble098.marblebr.core.i18n.AppLanguage
 import com.marble098.marblebr.core.model.BackButtonBehavior
 import com.marble098.marblebr.core.model.ChromeBarStyle
 import com.marble098.marblebr.core.model.CredentialSaveMode
+import com.marble098.marblebr.core.model.CredentialSavePolicy
 import com.marble098.marblebr.core.model.ColorPalette
 import com.marble098.marblebr.core.model.DnsMode
 import com.marble098.marblebr.core.model.HomeShortcutPosition
@@ -204,7 +205,13 @@ class BrowserPreferencesRepository @Inject constructor(
         }.getOrDefault(emptyMap())
     }
 
-    /** ثبتِ «الآن نه» برای یک دامنه؛ رکوردهای قدیمی‌تر از ۳۰ روز خودبه‌خود حذف می‌شوند. */
+    /**
+     * ثبتِ «الآن نه» برای یک دامنه؛ رکوردهای قدیمی‌تر از ۳۰ روز خودبه‌خود حذف می‌شوند.
+     *
+     * مقدارِ [CredentialSavePolicy.NEVER_ASK_SENTINEL] («برای این سایت دیگر نپرس») هرگز
+     * هرس نمی‌شود؛ وگرنه همان لحظهٔ ثبت، به‌عنوانِ یک تاریخِ ۵۱ سال پیش دور ریخته می‌شد و
+     * دکمهٔ «دیگر نپرس» عملاً هیچ کاری نمی‌کرد.
+     */
     suspend fun rememberLoginDismissal(domain: String, atEpochMillis: Long) {
         if (domain.isBlank()) return
         dataStore.edit { prefs ->
@@ -212,7 +219,10 @@ class BrowserPreferencesRepository @Inject constructor(
                 runCatching { Json.decodeFromString<Map<String, Long>>(raw) }.getOrNull()
             }.orEmpty()
             val fresh = current
-                .filterValues { atEpochMillis - it < DISMISSAL_RETENTION_MILLIS }
+                .filterValues { value ->
+                    value == CredentialSavePolicy.NEVER_ASK_SENTINEL ||
+                        atEpochMillis - value < DISMISSAL_RETENTION_MILLIS
+                }
                 .toMutableMap()
             fresh[domain] = atEpochMillis
             prefs[Keys.LOGIN_DISMISSALS] = Json.encodeToString(fresh.toMap())

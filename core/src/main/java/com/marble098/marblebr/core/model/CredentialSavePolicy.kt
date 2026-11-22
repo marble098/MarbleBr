@@ -80,9 +80,13 @@ object CredentialSavePolicy {
     /** فاصلهٔ احترام به «الآن نه»ِ کاربر برای همان سایت. */
     const val DISMISS_COOLDOWN_MILLIS = 12L * 60L * 60L * 1000L
 
+    /** آیا کاربر برای همیشه گفته «برای این سایت دیگر نپرس»؟ */
+    const val NEVER_ASK_SENTINEL = -1L
+
     /**
      * @param knownAccounts همهٔ حساب‌های ذخیره‌شدهٔ همین دامنه (نه همهٔ سایت‌ها)
-     * @param dismissedAt آخرین بارِ «الآن نه» برای همین دامنه (`null` یعنی هرگز)
+     * @param dismissedAt آخرین بارِ «الآن نه» برای همین دامنه (`null` یعنی هرگز،
+     *   [NEVER_ASK_SENTINEL] یعنی «برای همیشه نپرس»)
      */
     fun decide(
         username: String,
@@ -105,9 +109,18 @@ object CredentialSavePolicy {
 
         val sameAccount = knownAccounts.firstOrNull { normalizeUsername(it.username) == normalizeUsername(username) }
 
-        if (dismissedAtEpochMillis != null && nowEpochMillis - dismissedAtEpochMillis in 0 until DISMISS_COOLDOWN_MILLIS) {
+        // «برای همیشه نپرس» با هر ورودی‌ای بی‌صدا می‌ماند؛ حتی گذرواژهٔ تازه کارت نمی‌سازد
+        // (در حالتِ «ذخیرهٔ خودکار» هم ذخیرهٔ خودکار انجام نمی‌شود تا کاربر غافلگیر نشود).
+        if (dismissedAtEpochMillis == NEVER_ASK_SENTINEL) {
+            return SaveOfferAction.Suppressed(SuppressReason.RECENTLY_DISMISSED)
+        }
+
+        // «الآن نه» فقط تا پایانِ مهلتش احترام دارد.
+        val coolingDown = dismissedAtEpochMillis != null &&
+            nowEpochMillis - dismissedAtEpochMillis in 0 until DISMISS_COOLDOWN_MILLIS
+        if (coolingDown && sameAccount == null) {
             // اگر کاربر بعد از ردکردن، گذرواژه را عوض کرده باشد، پیشنهادِ تازه معنا دارد.
-            if (sameAccount == null) return SaveOfferAction.Suppressed(SuppressReason.RECENTLY_DISMISSED)
+            return SaveOfferAction.Suppressed(SuppressReason.RECENTLY_DISMISSED)
         }
 
         // همان حسابِ ذخیره‌شده: فقط اگر گذرواژه واقعاً عوض شده باشد پیشنهاد/ذخیرهٔ تازه معنا دارد.

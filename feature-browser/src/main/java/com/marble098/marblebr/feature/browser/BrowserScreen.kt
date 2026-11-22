@@ -697,9 +697,7 @@ fun BrowserScreen(
             dismissButton = {
                 Column(horizontalAlignment = Alignment.End) {
                     TextButton(onClick = viewModel::dismissPasswordPrompt) { Text(strings.saveLoginNotNow) }
-                    TextButton(onClick = {
-                        viewModel.dismissPasswordPrompt()
-                    }) {
+                    TextButton(onClick = viewModel::neverAskForSiteAgain) {
                         Text(strings.saveLoginNeverAgain, style = MaterialTheme.typography.labelSmall)
                     }
                 }

@@ -1043,6 +1043,13 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
+    /** «برای این سایت دیگر نپرس»: ردِ همیشگی، نه فقط مهلتِ چندساعتهٔ «الآن نه». */
+    fun neverAskForSiteAgain() {
+        viewModelScope.launch {
+            passwordStudio.neverAskForSiteAgain()
+        }
+    }
+
     fun consumePasswordNotice() {
         passwordStudio.consumeNotice()
     }

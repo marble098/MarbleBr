@@ -2,6 +2,7 @@ package com.marble098.marblebr.vault
 
 import com.marble098.marblebr.core.model.AutofillCandidate
 import com.marble098.marblebr.core.model.CredentialCaptureHeuristics
+import com.marble098.marblebr.core.model.CredentialSavePolicy
 import com.marble098.marblebr.core.model.KnownAccount
 import com.marble098.marblebr.core.model.LoginAccount
 import com.marble098.marblebr.core.model.LoginAdvance
@@ -12,9 +13,11 @@ import com.marble098.marblebr.core.model.LoginIntelligence
 import com.marble098.marblebr.core.model.LoginNotice
 import com.marble098.marblebr.core.model.LoginPolicy
 import com.marble098.marblebr.core.model.LoginSubmissionVerifier
+import com.marble098.marblebr.core.model.SubmittedLogin
 import com.marble098.marblebr.core.model.LoginOriginGuard
 import com.marble098.marblebr.core.model.OneTimeCodeHit
 import com.marble098.marblebr.core.model.OneTimeCodeSource
+import com.marble098.marblebr.core.model.OtpFieldDescriptor
 import com.marble098.marblebr.core.model.OtpFieldMatcher
 import com.marble098.marblebr.core.model.OtpFieldProbe
 import com.marble098.marblebr.core.model.OtpFillPlan
@@ -193,7 +196,7 @@ class PasswordStudio @Inject constructor(
         isPrivateTab: Boolean = false,
     ): LoginOneTimeCodeDirective = mutex.withLock {
         if (isPrivateTab) return@withLock LoginOneTimeCodeDirective.Unavailable("PRIVATE_TAB")
-        val fields = com.marble098.marblebr.core.model.OtpFieldDescriptor.parseAll(fieldsRaw)
+        val fields = OtpFieldDescriptor.parseAll(fieldsRaw)
         val hit = findOneTimeCode(pageUrl)
             ?: return@withLock LoginOneTimeCodeDirective.Unavailable("NO_CODE")
         val plan = OtpFieldMatcher.plan(fields, hit.code)
@@ -229,7 +232,7 @@ class PasswordStudio @Inject constructor(
 
     /** آیا صفحهٔ فعلی اصلاً کادرِ کد دارد؟ (برای اینکه هر صفحه‌ای کد نخواهد) */
     suspend fun hasCodeField(fieldsRaw: String?, pageUrl: String): Boolean {
-        val fields = com.marble098.marblebr.core.model.OtpFieldDescriptor.parseAll(fieldsRaw)
+        val fields = OtpFieldDescriptor.parseAll(fieldsRaw)
         if (fields.isEmpty()) return false
         // کدِ فرضی ۶ رقمی رایج‌ترین حالت است؛ فقط برای سنجشِ وجودِ کادر.
         val plan = OtpFieldMatcher.plan(fields, "123456")
@@ -359,7 +362,7 @@ class PasswordStudio @Inject constructor(
             LoginFlowRequest(
                 step = LoginFlowStep.FORM_SUBMITTED,
                 url = pending.url,
-                submitted = com.marble098.marblebr.core.model.SubmittedLogin(
+                submitted = SubmittedLogin(
                     username = pending.username,
                     password = pending.password,
                 ),
@@ -422,8 +425,8 @@ class PasswordStudio @Inject constructor(
         val result = runCatching {
             val existing = credentialVault.loginAccountIndex().firstOrNull {
                 it.domain.equals(prompt.site, ignoreCase = true) &&
-                    com.marble098.marblebr.core.model.CredentialSavePolicy.normalizeUsername(it.fields.username) ==
-                    com.marble098.marblebr.core.model.CredentialSavePolicy.normalizeUsername(username)
+                    CredentialSavePolicy.normalizeUsername(it.fields.username) ==
+                    CredentialSavePolicy.normalizeUsername(username)
             }
             saveCaptured(prompt.url, username, prompt.password, existing?.id)
         }
@@ -440,18 +443,32 @@ class PasswordStudio @Inject constructor(
         }
     }
 
-    /** کاربر گفت «الآن نه»؛ تصمیم **ماندگار** می‌شود تا بعد از راه‌اندازیِ مجدد هم یادش بماند. */
-    suspend fun dismissPendingPrompt(): Boolean {
-        val prompt = _pendingPrompt.value ?: return false
-        _pendingPrompt.value = null
+    /**
+     * کاربر گفت «الآن نه»؛ تصمیم **ماندگار** می‌شود تا بعد از راه‌اندازیِ مجدد هم یادش بماند.
+     *
+     * این مسیر عمداً «موقت» است: فقط [CredentialSavePolicy.DISMISS_COOLDOWN_MILLIS] احترام
+     * می‌گیرد. ردِ همیشگی مسیرِ جداگانه‌ای دارد ([neverAskForSiteAgain]) چون کاربر بینِ «حالا
+     * نه» و «هرگز» فرق می‌گذارد و یکی‌کردنِ این دو، یا پرسشِ آزاردهنده می‌سازد یا سکوتِ ناخواسته.
+     */
+    suspend fun dismissPendingPrompt(): Boolean = discardPendingPrompt { prompt ->
         intelligence.markDismissed(prompt.url)
-        prompt.password.toCharArray().fill('\u0000')
         runCatching { settings.rememberDismissal(prompt.site, System.currentTimeMillis()) }
-        return true
     }
 
-    /** «برای این سایت دیگر نپرس» = ردِ دائمی با همان سازوکارِ ماندگار. */
-    suspend fun forgetSitePrompt(): Boolean = dismissPendingPrompt()
+    /** «برای این سایت دیگر نپرس»: ردِ همیشگی؛ فقط با ذخیرهٔ صریحِ بعدی پاک می‌شود. */
+    suspend fun neverAskForSiteAgain(): Boolean = discardPendingPrompt { prompt ->
+        intelligence.markNeverAskAgain(prompt.url)
+        runCatching { settings.rememberDismissal(prompt.site, CredentialSavePolicy.NEVER_ASK_SENTINEL) }
+    }
+
+    /** کارتِ ذخیره را برمی‌دارد و گذرواژهٔ نگه‌داشته‌شده را از حافظه پاک می‌کند. */
+    private fun discardPendingPrompt(persist: (PasswordSavePrompt) -> Unit): Boolean {
+        val prompt = _pendingPrompt.value ?: return false
+        _pendingPrompt.value = null
+        persist(prompt)
+        prompt.password.toCharArray().fill('\u0000')
+        return true
+    }
 
     fun consumeNotice() {
         _notice.value = null

@@ -110,6 +110,78 @@ class CredentialSavePolicyTest {
     }
 
     @Test
+    fun `never ask again stays silent forever even with a new password`() {
+        // «دیگر نپرس» باید بی‌پایان باشد، نه یک مهلتِ دوازده‌ساعته؛ وگرنه دکمه هیچ کاری نمی‌کند.
+        val sentinel = CredentialSavePolicy.NEVER_ASK_SENTINEL
+        val farFuture = now + 5L * 365L * 24L * 60L * 60L * 1000L
+        assertEquals(
+            SaveOfferAction.Suppressed(SuppressReason.RECENTLY_DISMISSED),
+            CredentialSavePolicy.decide(
+                username = "user@example.com",
+                password = "vT7#qLm2!xR9pWs4",
+                isPrivateTab = false,
+                saveEnabled = true,
+                mode = CredentialSaveMode.ASK,
+                knownAccounts = emptyList(),
+                dismissedAtEpochMillis = sentinel,
+                nowEpochMillis = farFuture,
+            ),
+        )
+        // حتی با گذرواژهٔ تازه روی حسابِ ذخیره‌شده هم کارتی ساخته نمی‌شود.
+        val known = listOf(KnownAccount(username = "user@example.com", site = "example.com"))
+        assertEquals(
+            SaveOfferAction.Suppressed(SuppressReason.RECENTLY_DISMISSED),
+            CredentialSavePolicy.decide(
+                username = "user@example.com",
+                password = "vT7#qLm2!xR9pWs4",
+                isPrivateTab = false,
+                saveEnabled = true,
+                mode = CredentialSaveMode.AUTO_SAVE,
+                knownAccounts = known,
+                dismissedAtEpochMillis = sentinel,
+                nowEpochMillis = farFuture,
+            ),
+        )
+    }
+
+    @Test
+    fun `temporary dismissal still expires while never ask does not`() {
+        val known = listOf(
+            KnownAccount(username = "user@example.com", site = "example.com", passwordFingerprint = "abcd1234"),
+        )
+        val cooling = now - 60_000L
+        // در مهلتِ «الآن نه» و بدونِ حسابِ ذخیره‌شده: سکوت.
+        assertTrue(decide(dismissedAt = cooling) is SaveOfferAction.Suppressed)
+        // ولی برای حسابِ ذخیره‌شده‌ای که گذرواژه‌اش عوض شده، مهلت جلوی به‌روزرسانی را نمی‌گیرد
+        // (این رفتارِ عمدی است: گذرواژهٔ تازه باید ذخیره شود).
+        assertTrue(
+            CredentialSavePolicy.decide(
+                username = "user@example.com",
+                password = "vT7#qLm2!xR9pWs4",
+                isPrivateTab = false,
+                saveEnabled = true,
+                mode = CredentialSaveMode.ASK,
+                knownAccounts = known,
+                dismissedAtEpochMillis = cooling,
+                nowEpochMillis = now,
+            ) is SaveOfferAction.Offer,
+        )
+        // پس از پایانِ مهلت، گذرواژهٔ تازه دوباره کارت می‌سازد.
+        assertTrue(
+            CredentialSavePolicy.decide(
+                username = "user@example.com",
+                password = "vT7#qLm2!xR9pWs4",
+                isPrivateTab = false,
+                saveEnabled = true,
+                mode = CredentialSaveMode.ASK,
+                knownAccounts = known,
+                dismissedAtEpochMillis = now - CredentialSavePolicy.DISMISS_COOLDOWN_MILLIS - 1,
+                nowEpochMillis = now,
+            ) is SaveOfferAction.Offer,
+        )
+    }
+
+    @Test
     fun `private tabs unsafe origins and otp only submissions are never offered`() {
         assertEquals(
             SaveOfferAction.Suppressed(SuppressReason.PRIVATE_TAB),
