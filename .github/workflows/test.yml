@@ -66,21 +66,14 @@ jobs:
           cache-provider: "basic"
           validate-wrappers: false
 
-      - name: Run ktlint formatting checks
+      # ktlint و detekt در یک فراخوانی Gradle اجرا می‌شوند: یک daemon راه‌اندازی و یک
+      # configuration به‌اشتراک گذاشته می‌شود (در CI حدود یک تا دو دقیقه سریع‌تر است).
+      - name: Run ktlint & detekt static analysis
         run: |
           set -o pipefail
-          if ! ./scripts/gradle_retry.sh /tmp/ktlint.log ktlintCheck --stacktrace; then
-            ERR_SUMMARY=$(grep -E "e:|error:|FAILURE:|What went wrong:|\.kt:[0-9]+|\.kts:[0-9]+|Execution failed" /tmp/ktlint.log | tail -n 30 | tr '\n' ' ')
-            echo "::error title=KtlintFailure::${ERR_SUMMARY}"
-            exit 1
-          fi
-
-      - name: Run detekt static analysis
-        run: |
-          set -o pipefail
-          if ! ./scripts/gradle_retry.sh /tmp/detekt.log detekt --stacktrace; then
-            ERR_SUMMARY=$(grep -E "e:|error:|FAILURE:|What went wrong:|\.kt:[0-9]+|\.kts:[0-9]+|Execution failed" /tmp/detekt.log | tail -n 30 | tr '\n' ' ')
-            echo "::error title=DetektFailure::${ERR_SUMMARY}"
+          if ! ./scripts/gradle_retry.sh /tmp/lint.log ktlintCheck detekt --stacktrace; then
+            ERR_SUMMARY=$(grep -E "e:|error:|FAILURE:|What went wrong:|\.kt:[0-9]+|\.kts:[0-9]+|Execution failed" /tmp/lint.log | tail -n 30 | tr '\n' ' ')
+            echo "::error title=StaticAnalysisFailure::${ERR_SUMMARY}"
             exit 1
           fi
 
