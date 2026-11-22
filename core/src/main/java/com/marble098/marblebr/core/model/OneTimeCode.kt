@@ -107,8 +107,8 @@ object OneTimeCodeExtractor {
     /** حالتِ گروه‌بندی‌شده: «۱۲۳-۴۵۶»، «123 456»، «12 34 56». */
     private val GROUPED_CODE = Regex("""\d{2,4}(?:[ -]\d{2,4}){1,2}""")
 
-    private val PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹"
-    private val ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩"
+    private const val PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹"
+    private const val ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩"
 
     /**
      * ارقامِ فارسی/عربی را به لاتین تبدیل می‌کند و فاصله‌های غیرِ معمول (NBSP، نیم‌فاصله) را

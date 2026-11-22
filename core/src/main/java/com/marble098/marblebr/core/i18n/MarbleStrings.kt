@@ -1258,13 +1258,17 @@ private object PersianStrings : MarbleStrings() {
     override val autofillFillNow = "پر کردن با این حساب"
     override val codeFieldChip = "کد را بگذار"
     override val codeUnavailableTitle = "کدی پیدا نشد"
-    override val codeUnavailableBody = "پیامک یا اعلانِ تازه‌ای با رمزِ یکبارمصرف نبود. دسترسیِ پیامک/اعلان را در تنظیمات بررسی کن یا کد را کپی کن و در کادر بچسبان."
+    override val codeUnavailableBody =
+        "پیامک یا اعلانِ تازه‌ای با رمزِ یکبارمصرف نبود. دسترسیِ پیامک/اعلان را در تنظیمات بررسی کن " +
+            "یا کد را کپی کن و در کادر بچسبان."
     override val codeFilled = "کد در کادر نوشته شد."
     override val codeSmsPermission = "خواندنِ پیامک (اختیاری)"
     override val codeNotificationAccess = "دسترسی به اعلان‌ها (اختیاری)"
     override val codeOpenSettings = "باز کردنِ تنظیمات"
     override val codeHowTitle = "رمزِ یکبارمصرف چطور پر می‌شود؟"
-    override val codeHowBody = "وقتی صفحه‌ای کد بخواهد، MarbleBr پیامک و اعلان‌های همین گوشی را نگاه می‌کند، فقط عددِ کد را برمی‌دارد و در کادرِ درست می‌نویسد. پیام‌ها ذخیره یا ارسال نمی‌شوند."
+    override val codeHowBody =
+        "وقتی صفحه‌ای کد بخواهد، MarbleBr پیامک و اعلان‌های همین گوشی را نگاه می‌کند، " +
+            "فقط عددِ کد را برمی‌دارد و در کادرِ درست می‌نویسد. پیام‌ها ذخیره یا ارسال نمی‌شوند."
     override val codePasteFromClipboard = "چسباندن از کلیپ‌بورد"
     override val codeClipboardEmpty = "کلیپ‌بورد کدِ معتبری ندارد."
     override val codeManualHint = "اگر اجازهٔ خواندن ندهی، همیشه می‌توانی کد را کپی کنی و از دکمهٔ زیر بچسبانی."
@@ -1879,13 +1883,18 @@ private object EnglishStrings : MarbleStrings() {
     override val autofillFillNow = "Fill with this account"
     override val codeFieldChip = "Fill code"
     override val codeUnavailableTitle = "No code found"
-    override val codeUnavailableBody = "No recent SMS or notification carried a one-time code. Check the SMS/notification access, or copy the code and paste it."
+    override val codeUnavailableBody =
+        "No recent SMS or notification carried a one-time code. " +
+            "Check the SMS/notification access, or copy the code and paste it."
     override val codeFilled = "Code written into the box."
     override val codeSmsPermission = "Read SMS (optional)"
     override val codeNotificationAccess = "Notification access (optional)"
     override val codeOpenSettings = "Open settings"
     override val codeHowTitle = "How is the one-time code filled?"
-    override val codeHowBody = "When a page asks for a code, MarbleBr looks at SMS and notifications on this phone, keeps only the numeric code and writes it into the right box. Messages are never stored or sent."
+    override val codeHowBody =
+        "When a page asks for a code, MarbleBr looks at SMS and notifications on this phone, " +
+            "keeps only the numeric code and writes it into the right box. " +
+            "Messages are never stored or sent."
     override val codePasteFromClipboard = "Paste from clipboard"
     override val codeClipboardEmpty = "The clipboard has no valid code."
     override val codeManualHint = "If you don't grant access, you can always copy the code and paste it with the button below."
