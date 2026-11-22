@@ -7,6 +7,14 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="com.android.launcher.permission.INSTALL_SHORTCUT" />
 
+    <!--
+      «رمزِ یکبارمصرف»: خواندنِ پیامکِ تازه فقط برای همان لحظه‌ای که کاربر روی صفحهٔ کد است.
+      این مجوز اختیاری است؛ اگر کاربر ندهد، مسیرِ «اعلان‌ها» و «جای‌گذاریِ دستی» کار می‌کند.
+      هیچ پیامکی ذخیره یا به هیچ سروری ارسال نمی‌شود (AGENTS.md: عدم خروج داده).
+    -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name=".MarbleBrApplication"
         android:allowBackup="false"
@@ -40,6 +48,20 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+
+        <!--
+          سرویسِ «دسترسی به اعلان‌ها» نسخهٔ اندروید برای استخراجِ کد از اعلان (واتساپ، تلگرام،
+          اپ‌های بانکی). کاربر آن را در تنظیماتِ سیستم روشن می‌کند و اپ متنِ اعلان را ذخیره نمی‌کند.
+        -->
+        <service
+            android:name="com.marble098.marblebr.vault.MarbleNotificationListener"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
 
         <!-- Disable default WorkManager initializer so HiltWorkerFactory is used -->
         <provider

@@ -176,7 +176,35 @@
       if (typeof document.querySelectorAll !== "function") return null;
       const visible = el => !!(el.getClientRects && el.getClientRects().length) || !!el.offsetParent;
       const passwords = [].slice.call(document.querySelectorAll("input[type=password]")).filter(visible);
-      if (!passwords.length) return null;
+      const otp = [].slice.call(document.querySelectorAll(
+        "input[autocomplete=one-time-code],input[inputmode=numeric],input[maxlength='1'],input[maxlength='2']"
+      )).filter(visible);
+      const otpHint = [].slice.call(document.querySelectorAll("input")).filter(el => {
+        if (!visible(el)) return false;
+        const type = (el.getAttribute("type") || "text").toLowerCase();
+        if (type === "password" || type === "hidden" || type === "email") return false;
+        const hay = ((el.getAttribute("name") || "") + " " + (el.getAttribute("id") || "") + " " +
+          (el.getAttribute("placeholder") || "") + " " + (el.getAttribute("autocomplete") || "")).toLowerCase();
+        return /otp|one[-_ ]?time|verif|sms|token|passcode|auth|pin|2fa|mfa|code|کد|رمز|تایید|تأیید/.test(hay);
+      });
+      const otpCount = Math.max(otp.length, otpHint.length);
+      // خطاهای رایجِ ورود، مستقل از زبان: عناصری با نقش هشدار/متنِ قرمز که پیام کوتاه دارند.
+      let errorVisible = false;
+      try {
+        const alerts = [].slice.call(document.querySelectorAll("[role=alert],[aria-live=assertive],.error,.error-message,.alert,.invalid-feedback"));
+        errorVisible = alerts.some(el => visible(el) && ((el.innerText || "").trim().length >= 4));
+        if (!errorVisible) {
+          const lowered = (document.body ? (document.body.innerText || "") : "").toLowerCase();
+          errorVisible = /(رمز|گذرواژه|password|credentials?).{0,24}(اشتباه|نادرست|نامعتبر|incorrect|invalid|wrong|mismatch)/i.test(lowered);
+        }
+      } catch (_) {}
+      if (!passwords.length) {
+        // فرمِ بدونِ گذرواژه (مثلاً فقط کدِ پیامکی): فقط برای تصمیمِ «کد را بگذار» ارزش دارد.
+        if (otpCount > 0) {
+          return { username: "", password: "", otpFields: otpCount, otpOnly: true, errorVisible: errorVisible };
+        }
+        return null;
+      }
       const password = passwords[0];
       if (!password.value) return null;
       const form = (password.closest && password.closest("form")) || document;
@@ -188,15 +216,26 @@
           "input[type=text],input[type=email],input[type=tel],input[autocomplete=username]"
         )).filter(visible);
       }
-      const otp = [].slice.call(document.querySelectorAll(
-        "input[autocomplete=one-time-code],input[inputmode=numeric]"
-      )).filter(visible);
+      const usernameValue = users.length ? (users[0].value || "") : "";
       return {
-        username: users.length ? (users[0].value || "") : "",
+        username: String(usernameValue).slice(0, 320),
         password: password.value,
-        otpFields: otp.length
+        otpFields: otpCount,
+        otpOnly: false,
+        errorVisible: errorVisible
       };
     } catch (_) { return null; }
+  }
+
+  function postValues(values) {
+    return {
+      event: "LOGIN_SUBMIT",
+      url: location.href,
+      username: values.username,
+      password: values.password,
+      otpFields: values.otpFields,
+      errorVisible: values.errorVisible === true
+    };
   }
 
   function reportLoginSubmit() {
@@ -206,15 +245,7 @@
     const values = readableLoginValues();
     if (!values) return;
     lastSubmitAt = now;
-    try {
-      port.postMessage({
-        event: "LOGIN_SUBMIT",
-        url: location.href,
-        username: values.username,
-        password: values.password,
-        otpFields: values.otpFields
-      });
-    } catch (_) {}
+    try { port.postMessage(postValues(values)); } catch (_) {}
   }
 
   try {
@@ -260,7 +291,62 @@
     } catch (_) {}
   }, true);
 
+  // ---------------------------------------------------------------------------
+  // «رمزِ یکبارمصرف»: به‌محضِ دیده‌شدنِ کادرِ کد، به اپ خبر می‌دهیم تا کد را از پیامک/اعلان
+  // پیدا کند و بنویسد. هیچ کدی این‌جا خوانده یا منتقل نمی‌شود؛ فقط یک اعلانِ «کادر آماده است».
+  // ---------------------------------------------------------------------------
+  let lastOtpNoticeAt = 0;
+  const OTP_NOTICE_DEDUPE_MS = 2000;
+
+  function looksLikeCodeScreen() {
+    try {
+      if (typeof document.querySelectorAll !== "function") return false;
+      if (location.pathname && /verify|verification|otp|2fa|mfa|code|confirm|تایید|تأیید/.test(location.href) === false) {
+        // ادامه می‌دهیم؛ خودِ کادرها معیارِ اصلی‌اند.
+      }
+      const inputs = [].slice.call(document.querySelectorAll("input")).filter(el => {
+        if (!el.getClientRects || !(el.getClientRects().length || el.offsetParent)) return false;
+        const type = (el.getAttribute("type") || "text").toLowerCase();
+        return type !== "password" && type !== "hidden" && type !== "email" && type !== "file";
+      });
+      if (!inputs.length) return false;
+      const passwordVisible = [].slice.call(document.querySelectorAll("input[type=password]"))
+        .some(el => !!(el.getClientRects && el.getClientRects().length) || !!el.offsetParent);
+      if (passwordVisible) return false;
+      return inputs.some(el => {
+        const max = parseInt(el.getAttribute("maxlength") || "0", 10) || 0;
+        const ac = (el.getAttribute("autocomplete") || "").toLowerCase();
+        const hay = ((el.getAttribute("name") || "") + " " + (el.getAttribute("id") || "") + " " +
+          (el.getAttribute("placeholder") || "") + " " + ac + " " + (el.getAttribute("inputmode") || "")).toLowerCase();
+        return ac === "one-time-code" || max === 1 || max === 2 ||
+          /otp|one[-_ ]?time|verif|sms|token|passcode|auth|pin|2fa|mfa|code|کد|رمز|تایید|تأیید|پویا|پیامک/.test(hay);
+      });
+    } catch (_) { return false; }
+  }
+
+  function announceCodeScreen() {
+    if (!port) return;
+    const now = Date.now();
+    if (now - lastOtpNoticeAt < OTP_NOTICE_DEDUPE_MS) return;
+    if (!looksLikeCodeScreen()) return;
+    lastOtpNoticeAt = now;
+    try { port.postMessage({ event: "OTP_SCREEN_READY", url: location.href }); } catch (_) {}
+  }
+
   window.addEventListener("DOMContentLoaded", () => setTimeout(sendSnapshot, 1200));
+  window.addEventListener("DOMContentLoaded", () => setTimeout(announceCodeScreen, 1500));
+  window.addEventListener("load", () => setTimeout(announceCodeScreen, 800));
+  // صفحه‌های SPA کادرِ کد را بعد از کلیک می‌سازند؛ تغییراتِ DOM را سبک دنبال می‌کنیم.
+  try {
+    let pending = null;
+    const observer = new MutationObserver(() => {
+      if (pending) return;
+      pending = setTimeout(() => { pending = null; announceCodeScreen(); }, 1200);
+    });
+    if (document.documentElement) {
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+    }
+  } catch (_) {}
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") sendSnapshot(); });
   // SPA sign-ins can happen well after DOMContentLoaded.
   setInterval(() => { if (document.visibilityState === "visible") sendSnapshot(); }, 60000);

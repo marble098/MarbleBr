@@ -7,7 +7,8 @@ import com.marble098.marblebr.core.model.SiteAdditionPlan
 import com.marble098.marblebr.core.model.SiteAdditionPlanner
 import com.marble098.marblebr.core.model.SiteBlocker
 import com.marble098.marblebr.core.model.SiteRoute
-import com.marble098.marblebr.vault.PasswordStudio
+import com.marble098.marblebr.core.model.CredentialCaptureHeuristics
+import com.marble098.marblebr.core.model.PasswordQualityChecker
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -21,16 +22,15 @@ data class TabSiteState(
 )
 
 /**
- * پلِ «افزودن هر سایتی» و «ذخیرهٔ هوشمند گذرواژه» بین مرورگر و موتور.
+ * پلِ «افزودن هر سایتی» بین مرورگر و موتور.
  *
  * چرا یک کلاس جدا؟ چون [ContainerSessionManager] باید فقط ناوبری و نشست را بداند. این کلاس
- * تصمیم‌های «چه چیزی در صفحه است»، «کدام راهِ جایگزین بمانَد» و «آیا باید پیشنهادِ ذخیره بدهم»
- * را نگه می‌دارد و از همان [PasswordStudio] استفاده می‌کند که مخزن را می‌شناسد.
+ * تصمیم‌های «چه چیزی در صفحه است» و «کدام راهِ جایگزین بمانَد» را نگه می‌دارد. تصمیم‌های
+ * «ورود/ذخیره/کد» جای دیگری هستند ([com.marble098.marblebr.vault.PasswordStudio] و
+ * [LoginWatcher]) تا هر کلاس یک مسئولیت داشته باشد.
  */
 @Singleton
-class SiteCompatibilityEngine @Inject constructor(
-    val passwordStudio: PasswordStudio,
-) {
+class SiteCompatibilityEngine @Inject constructor() {
     private val tabStates = ConcurrentHashMap<String, TabSiteState>()
 
     fun stateOf(tabId: String): TabSiteState = tabStates[tabId] ?: TabSiteState()
@@ -80,5 +80,5 @@ class SiteCompatibilityEngine @Inject constructor(
 
     /** کیفیتِ گذرواژه برای فرمِ ورودِ دستی در مخزن. */
     fun evaluatePassword(password: String, username: String, site: String): PasswordStrength =
-        passwordStudio.evaluate(password, username, site)
+        PasswordQualityChecker.evaluate(password, username, CredentialCaptureHeuristics.domainOf(site))
 }

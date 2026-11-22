@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.InstallMobile
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Pin
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
@@ -89,6 +91,10 @@ internal data class BrowserMenuState(
     val hasPage: Boolean = false,
     val canManageSiteAccounts: Boolean = false,
     val downloadsCount: Int = 0,
+    /** آیا در این صفحه ورودِ ذخیره‌شده‌ای برای پرکردن هست؟ */
+    val hasSavedLogin: Boolean = false,
+    /** آیا این صفحه کادرِ رمزِ یکبارمصرف دارد؟ */
+    val acceptsOneTimeCode: Boolean = false,
 )
 
 /** کارهایی که منو انجام می‌دهد؛ یک شیء تا امضای نوار بالا کوتاه بماند. */
@@ -112,6 +118,9 @@ internal data class BrowserMenuActions(
     // قابلیت تازه: به اشتراک‌گذاشتن صفحه و نشان کردن در نشان‌ها.
     val onSharePage: () -> Unit = {},
     val onBookmarkPage: () -> Unit = {},
+    // ورودِ هوشمند: پرکردنِ فرم و گذاشتنِ کدِ یکبارمصرف.
+    val onAutofillLogin: () -> Unit = {},
+    val onFillOneTimeCode: () -> Unit = {},
 )
 
 @Composable
@@ -240,6 +249,24 @@ internal fun BrowserOverflowMenu(
 
                 if (state.hasPage && !state.isPrivate) {
                     MenuSectionTitle(strings.menuSectionProtection)
+                    if (state.hasSavedLogin) {
+                        MenuRow(
+                            icon = Icons.Default.Key,
+                            title = strings.autofillFillNow,
+                            subtitle = strings.autofillConfirmBody,
+                            accent = colors.primary,
+                            testTag = "menu_autofill_login",
+                        ) { onDismiss(); actions.onAutofillLogin() }
+                    }
+                    if (state.acceptsOneTimeCode) {
+                        MenuRow(
+                            icon = Icons.Default.Pin,
+                            title = strings.codeFieldChip,
+                            subtitle = strings.codeManualHint,
+                            accent = colors.tertiary,
+                            testTag = "menu_fill_code",
+                        ) { onDismiss(); actions.onFillOneTimeCode() }
+                    }
                     if (state.canManageSiteAccounts) {
                         MenuRow(
                             icon = Icons.Default.People,

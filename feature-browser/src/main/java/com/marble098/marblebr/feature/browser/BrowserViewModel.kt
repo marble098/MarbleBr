@@ -36,8 +36,13 @@ import com.marble098.marblebr.engine.ContainerSessionManager
 import com.marble098.marblebr.engine.LightweightAdBlocker
 import com.marble098.marblebr.engine.LoginWatcher
 import com.marble098.marblebr.engine.PageContextTarget
-import com.marble098.marblebr.vault.PasswordNotice
+import com.marble098.marblebr.core.model.CredentialCaptureHeuristics
+import com.marble098.marblebr.core.model.PasswordNotice
+import com.marble098.marblebr.core.model.LoginActivity
+import com.marble098.marblebr.vault.LoginPageDirective
+import com.marble098.marblebr.vault.OneTimeCodeCapability
 import com.marble098.marblebr.vault.PasswordSavePrompt
+import com.marble098.marblebr.vault.PasswordSaveResult
 import com.marble098.marblebr.vault.PasswordStudio
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -85,6 +90,10 @@ data class BrowserUiState(
     val sitePlanTitle: String? = null,
     /** پنلِ «چطور وارد شویم» و پرکردنِ دستی. */
     val showSiteCompatibilitySheet: Boolean = false,
+    /** پرسشِ «برای پرکردنِ ورود، اثر انگشت» باز است؟ */
+    val showAutofillUnlockPrompt: Boolean = false,
+    /** آیا برای دامنهٔ همین صفحه، ورودِ ذخیره‌شده داریم؟ (برای منوی «پر کردن») */
+    val hasStoredLoginForCurrentSite: Boolean = false,
 ) {
     val activeTab: BrowserTab?
         get() = tabs.firstOrNull { it.id == activeTabId } ?: tabs.firstOrNull()
@@ -147,6 +156,22 @@ class BrowserViewModel @Inject constructor(
         .map { it.size }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
+    /**
+     * آیا برای دامنهٔ صفحهٔ فعلی، ورودِ ذخیره‌شده‌ای داریم؟
+     *
+     * منوی سایت با همین پرچم، «پر کردنِ فرم» را نشان می‌دهد؛ یعنی هیچ‌وقت دکمه‌ای نمی‌بینیم که
+     * کار نکند. دامنه‌ها با همان قاعدهٔ مخزن سنجیده می‌شوند (زیردامنه‌ها پذیرفته‌اند).
+     */
+    private val loginDomains: StateFlow<Set<String>> = run {
+        val domains = passwordStudio.candidatesForHome()
+            .map { candidates -> candidates.map { it.domain.lowercase() }.toSet() }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+        combine(domains, uiState) { known, state ->
+            val site = state.activeWebTab()?.url?.let(CredentialCaptureHeuristics::domainOf) ?: return@combine false
+            known.any { it == site || site.endsWith(".$it") || it.endsWith(".$site") }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    }
+
     /** تعدادِ سایت‌هایی که «مراقبت از ورود» روی آن‌ها روشن است. */
     val protectedSiteCount: StateFlow<Int> = containerDao.observeAll()
         .map { entries -> entries.count { it.neverSignOutEnabled } }
@@ -186,6 +211,11 @@ class BrowserViewModel @Inject constructor(
     private val restore = viewModelScope.launch { restoreTabs() }
 
     init {
+        viewModelScope.launch {
+            loginDomains.collect { hasStored ->
+                _uiState.update { it.copy(hasStoredLoginForCurrentSite = hasStored) }
+            }
+        }
         viewModelScope.launch {
             restore.join()
             containerDao.observeAll().collect { entities ->
@@ -383,6 +413,14 @@ class BrowserViewModel @Inject constructor(
         job.start()
     }
 
+    private fun BrowserPreferences.toLoginPolicy() = com.marble098.marblebr.core.model.LoginPolicy(
+        saveMode = credentialSaveMode,
+        autoFillEnabled = autoFillCredentials,
+        loginGuardEnabled = loginGuardEnabled,
+        otpAssistEnabled = otpAssistEnabled,
+        biometricLockRequired = biometricLockRequired,
+    )
+
     private fun healthStatus(container: WebAppContainer?): SessionHealthStatus =
         if (container?.neverSignOutEnabled == true) SessionHealthStatus.PROTECTED_ACTIVE else SessionHealthStatus.DISABLED
 
@@ -484,6 +522,7 @@ class BrowserViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        if (codeListenerStarted) loginWatcher.stopSmsListening()
         _uiState.value.tabs.forEach { sessionManager.closeTabSession(it.id) }
         super.onCleared()
     }
@@ -703,8 +742,18 @@ class BrowserViewModel @Inject constructor(
         updateTab(tabId) { it.copy(title = TabTitleEngine.smartTabTitle(title, it.url)) }
     }
 
+    /**
+     * پیشرفتِ بارگذاری؛ پایانِ بارگذاری نقطهٔ شروعِ همهٔ تصمیم‌های «ورود» است.
+     *
+     * چرا همین‌جا و نه در `LoginWatcher`؟ چون این لایه از نوعِ تب و وضعیتِ فعال/خصوصی باخبر است و
+     * می‌تواند دکمهٔ «کد را بگذار» را هم به‌روز کند. تصمیم‌گیری همچنان در لایهٔ موتور است.
+     */
     fun onPageProgressChanged(tabId: String, progress: Int, isLoading: Boolean) {
         updateTab(tabId) { it.copy(progress = progress, isLoading = isLoading) }
+        if (!isLoading) {
+            val tab = _uiState.value.tabs.firstOrNull { it.id == tabId } ?: return
+            if (tab.url.startsWith("http")) onPageSettled(tabId, tab.url)
+        }
     }
 
     fun onNavStateChanged(tabId: String, canGoBack: Boolean, canGoForward: Boolean) {
@@ -842,31 +891,155 @@ class BrowserViewModel @Inject constructor(
     /** کارتِ «این ورود را ذخیره کنم؟» که از موتورِ ورود می‌آید. */
     val savePrompt: StateFlow<PasswordSavePrompt?> = passwordStudio.pendingPrompt
 
-    /** تذکر/هشدارِ کوتاه (گذرواژهٔ ضعیف‌تر یا دامنهٔ بدل). */
+    /** تذکر/هشدارِ کوتاه (ذخیره شد، کد نوشته شد، دامنهٔ بدل، …). */
     val passwordNotice: StateFlow<PasswordNotice?> = passwordStudio.notice
 
+    /** وضعیتِ زندهٔ ورود در همین تب (برای نوارِ بالای مرورگر). */
+    val loginActivity: StateFlow<LoginActivity?> = passwordStudio.activity
+
+    private var codeListenerStarted = false
+
+    /** آیا این صفحه کادرِ رمزِ یکبارمصرف دارد؟ دکمهٔ «کد را بگذار» با همین نمایش داده می‌شود. */
+    private val _codeFieldAvailable = MutableStateFlow(false)
+    val codeFieldAvailable: StateFlow<Boolean> = _codeFieldAvailable.asStateFlow()
+
+    /** دستورِ پرکردنِ منتظرِ تأییدِ بیومتریک. */
+    private var pendingFill: LoginPageDirective.FillCredentials? = null
+
     /**
-     * ارسالِ فرمِ ورود را بررسی می‌کند و در صورت لزوم کارتِ ذخیره را نشان می‌دهد.
+     * پس از هر بار کامل‌شدنِ صفحه (از نوار پیشرفتِ مرورگر).
      *
-     * چه زمان صدا زده می‌شود؟ پس از هر بار کامل‌شدنِ صفحه؛ اگر کاربر همین حالا فرم را فرستاده
-     * باشد، content script مقادیر را یک بار خوانده و در حافظه نگه داشته است.
+     * اگر استودیو یک دستورِ پرکردن داده باشد و قفلِ بیومتریک لازم باشد، همین‌جا درخواستِ
+     * اثر انگشت آماده می‌شود؛ در غیرِ این صورت اجرا انجام می‌شود. این همان حلقه‌ای است که در
+     * نسخهٔ قبلی نبود و «پرکردنِ خودکار» را عملاً بی‌اثر می‌کرد.
      */
-    fun checkForSubmittableLogin() {
-        val tab = _uiState.value.activeWebTab() ?: return
-        if (tab.isPrivate || tab.url.isBlank()) return
-        loginWatcher.captureCurrentForm(tabId = tab.id, url = tab.url)
+    fun onPageSettled(tabId: String, url: String) {
+        viewModelScope.launch {
+            val directive = loginWatcher.consumeFillDirective() ?: run {
+                _codeFieldAvailable.value = loginWatcher.pageAcceptsOneTimeCode(tabId, url)
+                return@launch
+            }
+            pendingFill = directive
+            if (directive.needsBiometricConfirmation) {
+                _uiState.update { it.copy(showAutofillUnlockPrompt = true) }
+            } else {
+                applyPendingFill()
+            }
+            _codeFieldAvailable.value = loginWatcher.pageAcceptsOneTimeCode(tabId, url)
+        }
     }
 
-    /** تأییدِ کاربر: ذخیرهٔ ورود در مخزنِ رمزنگاری‌شده. */
-    fun acceptPasswordPrompt() {
+    /**
+     * «این ورود را با اثر انگشت پر کن» — کاری که منوی میانبر و نوارِ ورود انجام می‌دهند.
+     * اگر اعتمادِ بیومتریک در همین نشست هست، بدونِ پرسش دوباره پر می‌کند.
+     */
+    fun requestAutofill() {
         viewModelScope.launch {
-            val saved = passwordStudio.acceptPendingPrompt()
-            showLocalizedBanner { if (saved) it.saveLoginSaved else it.saveLoginFailed }
+            val tab = _uiState.value.activeWebTab() ?: return@launch
+            val url = tab.url
+            if (url.isBlank()) return@launch
+            val accounts = passwordStudio.candidatesFor(url)
+            if (accounts.isEmpty()) {
+                showLocalizedBanner { it.saveLoginNoStored }
+                return@launch
+            }
+            if (passwordStudio.requiresBiometricForFill()) {
+                _uiState.update { it.copy(showAutofillUnlockPrompt = true) }
+            } else {
+                autofillFromVault(accounts.first().id)
+            }
+        }
+    }
+
+    /** لایهٔ رابط پس از تأییدِ بیومتریک این را صدا می‌زند. */
+    fun onBiometricConfirmedForAutofill() {
+        passwordStudio.onBiometricConfirmed()
+        _uiState.update { it.copy(showAutofillUnlockPrompt = false) }
+        val directive = pendingFill
+        if (directive != null) {
+            applyPendingFill()
+        } else {
+            requestAutofillDirect()
+        }
+    }
+
+    fun dismissAutofillUnlock() {
+        passwordStudio.onBiometricDeclined()
+        pendingFill = null
+        _uiState.update { it.copy(showAutofillUnlockPrompt = false) }
+    }
+
+    private fun requestAutofillDirect() {
+        viewModelScope.launch {
+            val tab = _uiState.value.activeWebTab() ?: return@launch
+            val candidate = passwordStudio.candidatesFor(tab.url).firstOrNull() ?: return@launch
+            autofillFromVault(candidate.id)
+        }
+    }
+
+    private fun applyPendingFill() {
+        // `pendingFill` فقط وقتی پاک می‌شود که واقعاً اجرا شود؛ اگر تبی در کار نباشد، دستور
+        // برای بارِ بعد می‌ماند (مثلاً کاربر هنگامِ پرسشِ اثر انگشت به صفحهٔ دیگری رفته است).
+        val directive = pendingFill ?: return
+        val tab = _uiState.value.activeWebTab() ?: return
+        if (tab.isPrivate) {
+            pendingFill = null
+            return
+        }
+        pendingFill = null
+        viewModelScope.launch {
+            val filled = loginWatcher.executeAutofill(tab.id, directive.script)
+            if (filled) {
+                // «پر شد» بدونِ نامِ کاربری: هیچ شناسه‌ای در نوارِ بالای صفحه دیده نمی‌شود.
+                showLocalizedBanner { it.saveLoginFillAction }
+            } else {
+                // صفحه عوض شده یا فرمی نبوده؛ دکمهٔ «کد را بگذار» را به‌روز می‌کنیم و ساکت می‌مانیم.
+                _codeFieldAvailable.value = loginWatcher.pageAcceptsOneTimeCode(tab.id, tab.url)
+            }
+        }
+    }
+
+    /** دکمهٔ «کد را بگذار»: کد را از پیامک/اعلان پیدا و در کادر می‌نویسد. */
+    fun fillOneTimeCodeNow() {
+        val tab = _uiState.value.activeWebTab() ?: return
+        viewModelScope.launch {
+            val filled = loginWatcher.fillOneTimeCodeNow(tab.id, tab.url)
+            if (!filled) {
+                // «کدی پیدا نشد» یا «کادرِ کد نبود» — دو پیامِ متفاوت، نه یک متنِ مبهم.
+                showLocalizedBanner { it.codeUnavailableTitle }
+            }
+        }
+    }
+
+    /**
+     * شروعِ گوش‌دادن به پیامک‌های تازه (اگر دسترسی باشد). کم‌هزینه است: یک گیرندهٔ برادکست که
+     * فقط تا وقتی «رمزِ یکبارمصرف» روشن است زنده می‌ماند، و در `onCleared` بسته می‌شود.
+     */
+    fun startCodeListening() {
+        if (codeListenerStarted) return
+        codeListenerStarted = true
+        loginWatcher.startSmsListening { hit -> passwordStudio.onCodeArrived(hit) }
+    }
+
+    /** آیا اپ می‌تواند کد را از پیامک/اعلان بخواند؟ برای راهنمای تنظیمات. */
+    fun oneTimeCodeCapability(): OneTimeCodeCapability =
+        passwordStudio.oneTimeCodeCapability(preferences.value.toLoginPolicy())
+
+    /** تأییدِ کاربر: ذخیرهٔ ورود در مخزنِ رمزنگاری‌شده. */
+    fun acceptPasswordPrompt(editedUsername: String? = null) {
+        viewModelScope.launch {
+            when (passwordStudio.acceptPendingPrompt(editedUsername)) {
+                is PasswordSaveResult.Saved -> showLocalizedBanner { it.saveLoginSaved }
+                PasswordSaveResult.Failed -> showLocalizedBanner { it.saveLoginFailed }
+                PasswordSaveResult.NothingToSave -> Unit
+            }
         }
     }
 
     fun dismissPasswordPrompt() {
-        passwordStudio.dismissPendingPrompt()
+        viewModelScope.launch {
+            passwordStudio.dismissPendingPrompt()
+        }
     }
 
     fun consumePasswordNotice() {
@@ -882,9 +1055,8 @@ class BrowserViewModel @Inject constructor(
                 showLocalizedBanner { it.saveLoginNoStored }
                 return@launch
             }
-            loginWatcher.runInPage(tab.id, script) { raw ->
-                if (raw != "filled") showLocalizedBanner { it.saveLoginNoStored }
-            }
+            val filled = loginWatcher.executeAutofill(tab.id, script)
+            if (!filled) showLocalizedBanner { it.saveLoginNoStored }
         }
     }
 
@@ -982,6 +1154,16 @@ class BrowserViewModel @Inject constructor(
     /** کاندیدهای پرکردن برای پنلِ دستی (بدونِ گذرواژه). */
     suspend fun siteCandidates(url: String): List<AutofillCandidate> = passwordStudio.candidatesFor(url)
 
+    /**
+     * «همین فرم را ذخیره کن» — برای وقتی که کاربر می‌داند ورودش موفق بوده ولی کارت نیامده
+     * (مثلاً سایت با لایهٔ جاوااسکریپت ناوبری می‌کند و رویدادِ پایانِ بارگذاری نمی‌آید).
+     */
+    fun checkForSubmittableLogin() {
+        val tab = _uiState.value.activeWebTab() ?: return
+        if (tab.isPrivate) return
+        loginWatcher.captureCurrentForm(tab.id, tab.url)
+    }
+
     private fun routeLabel(route: SiteRoute?, strings: MarbleStrings): String = when (route) {
         SiteRoute.DIRECT -> strings.routeDirect
         SiteRoute.DESKTOP_USER_AGENT -> strings.routeDesktop
@@ -993,7 +1175,7 @@ class BrowserViewModel @Inject constructor(
         null -> strings.routeDirect
     }
 
-    private fun showBanner(message: String) {
+    fun showBanner(message: String) {
         _uiState.update { it.copy(bannerMessage = message) }
     }
 

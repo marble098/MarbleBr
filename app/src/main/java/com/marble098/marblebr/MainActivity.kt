@@ -265,6 +265,23 @@ fun MarbleBrAppNavHost(
                     }
                 },
                 renderGeckoWebView = renderGeckoWebView,
+                onRequestBiometricUnlock = { title, onSuccess ->
+                    coroutineScope.launch {
+                        when (
+                            biometricVaultLock.authenticate(
+                                activity = activity,
+                                title = title,
+                                subtitle = strings.autofillConfirmBody,
+                            )
+                        ) {
+                            is BiometricAuthResult.Authenticated -> onSuccess()
+                            is BiometricAuthResult.NotAvailableOrNotEnrolled ->
+                                Toast.makeText(activity, strings.credentialLockUnavailable, Toast.LENGTH_LONG).show()
+
+                            is BiometricAuthResult.Failed -> Unit
+                        }
+                    }
+                },
             )
         }
 
