@@ -74,6 +74,7 @@ import com.marble098.marblebr.core.i18n.MarbleStrings
 import com.marble098.marblebr.core.model.BackButtonBehavior
 import com.marble098.marblebr.core.model.ChromeBarStyle
 import com.marble098.marblebr.core.model.ColorPalette
+import com.marble098.marblebr.core.model.CredentialSaveMode
 import com.marble098.marblebr.core.model.DnsMode
 import com.marble098.marblebr.core.model.HomeShortcutPosition
 import com.marble098.marblebr.core.model.MarbleLinks
@@ -522,11 +523,24 @@ private fun LazyListScope.protectionTab(
                 checked = prefs.credentialFallbackEnabled,
                 onCheckedChange = viewModel::setCredentialFallbackEnabled,
             )
+            // سه حالتِ روشن به‌جای یک کلیدِ مبهم: «همیشه بپرس»، «خودکارِ مواردِ روشن»، «هرگز».
+            // متنِ هر گزینه می‌گوید دقیقاً چه می‌شود، چون این تصمیم روی حریم خصوصی اثر دارد.
+            SettingChoice(
+                title = strings.saveModeTitle,
+                description = strings.saveModeAskBody,
+                options = listOf(
+                    strings.saveModeAsk to CredentialSaveMode.ASK,
+                    strings.saveModeAuto to CredentialSaveMode.AUTO_SAVE,
+                    strings.saveModeOff to CredentialSaveMode.DISABLED,
+                ),
+                selected = prefs.credentialSaveMode,
+                onSelect = viewModel::setCredentialSaveMode,
+            )
             SettingSwitch(
-                title = strings.saveLoginAutoTitle,
-                description = strings.saveLoginAutoBody,
-                checked = prefs.autoSaveCredentials,
-                onCheckedChange = viewModel::setAutoSaveCredentials,
+                title = strings.otpAssistTitle,
+                description = strings.otpAssistBody,
+                checked = prefs.otpAssistEnabled,
+                onCheckedChange = viewModel::setOtpAssistEnabled,
             )
             SettingSwitch(
                 title = strings.autoFillEnabledTitle,
@@ -832,6 +846,54 @@ private fun SettingSwitch(
             checked = checked,
             onCheckedChange = onCheckedChange,
         )
+    }
+}
+
+/**
+ * انتخابِ یکی از چند گزینه با رادیو.
+ *
+ * چرا به‌جای «چند کلیدِ روشن/خاموش»؟ چون حالتِ ذخیرهٔ ورود سه وضعیتِ متقابلاً ناسازگار است و
+ * دو سوییچِ مستقل، کاربر را به ترکیبِ بی‌معنا (مثلاً «بپرس» و «هرگز» هم‌زمان) می‌رساند.
+ */
+@Composable
+private fun <T> SettingChoice(
+    title: String,
+    description: String,
+    options: List<Pair<String, T>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        Text(text = title, style = MaterialTheme.typography.bodyLarge)
+        if (description.isNotBlank()) {
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Column(modifier = Modifier.padding(top = 4.dp)) {
+            options.forEach { (label, value) ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.medium)
+                        .clickable { if (value != selected) onSelect(value) }
+                        .padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(
+                        selected = value == selected,
+                        onClick = { if (value != selected) onSelect(value) },
+                    )
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f).padding(start = 4.dp),
+                    )
+                }
+            }
+        }
     }
 }
 

@@ -83,6 +83,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -136,7 +137,9 @@ import com.marble098.marblebr.core.model.SiteAdditionPlan
 import com.marble098.marblebr.core.model.SiteBlocker
 import com.marble098.marblebr.core.model.SiteRoute
 import com.marble098.marblebr.core.designsystem.MarbleGlassIconButton
-import com.marble098.marblebr.vault.PasswordNotice
+import com.marble098.marblebr.core.model.OfferReason
+import com.marble098.marblebr.core.model.PasswordNotice
+import com.marble098.marblebr.core.model.isTransient
 import com.marble098.marblebr.core.designsystem.MarbleLayout
 import com.marble098.marblebr.core.designsystem.SiteBadgeLogo
 import com.marble098.marblebr.core.designsystem.liquidGlass
@@ -184,6 +187,13 @@ fun BrowserScreen(
     onOpenSettings: () -> Unit,
     onTriggerBiometricPasskeyRelogin: (domain: String) -> Unit,
     renderGeckoWebView: Boolean = true,
+    /**
+     * قفلِ بیومتریکِ اپ را می‌طلبد و در صورتِ موفقیت [onSuccess] را صدا می‌زند.
+     *
+     * چرا از بیرون تزریق می‌شود؟ چون `BiometricPrompt` به `FragmentActivity` نیاز دارد و لایهٔ
+     * قابلیت نباید به Activity وابسته شود. پیش‌فرضِ خالی، پیش‌نمایش و آزمون را ساده می‌کند.
+     */
+    onRequestBiometricUnlock: (title: String, onSuccess: () -> Unit) -> Unit = { _, onSuccess -> onSuccess() },
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val prefs by viewModel.preferences.collectAsState()
@@ -193,11 +203,36 @@ fun BrowserScreen(
     val siteAccounts by viewModel.siteAccounts.collectAsState()
     val savePrompt by viewModel.savePrompt.collectAsState()
     val passwordNotice by viewModel.passwordNotice.collectAsState()
+    val codeFieldAvailable by viewModel.codeFieldAvailable.collectAsState()
     val passwordCount by viewModel.storedPasswordCount.collectAsState()
     val protectedSiteCount by viewModel.protectedSiteCount.collectAsState()
     val pulseDomains by viewModel.pulseDomains.collectAsState()
     val blockedAdsCount by viewModel.adBlocker.blockedCount.collectAsState()
     val strings = LocalMarbleStrings.current
+    // خبرهای کوتاهِ ورود (کد نوشته شد، فرم پر شد، …) در نوارِ بالای صفحه دیده می‌شوند،
+    // نه در دیالوگ؛ سپس پیام پاک می‌شود تا تکرار نشود.
+    LaunchedEffect(passwordNotice) {
+        val notice = passwordNotice ?: return@LaunchedEffect
+        if (!notice.isTransient) return@LaunchedEffect
+        val text = when (notice) {
+            is PasswordNotice.CodeFilled -> strings.codeFilled
+            PasswordNotice.CodeNotFound -> strings.codeUnavailableTitle
+            PasswordNotice.CodeFieldNotFound -> strings.codeManualHint
+            is PasswordNotice.Filled -> strings.autofillUseNow
+            PasswordNotice.NoStoredLogin -> strings.saveLoginNoStored
+            else -> strings.saveLoginSaved
+        }
+        viewModel.showBanner(text)
+        viewModel.consumePasswordNotice()
+    }
+
+    // اگر کاربر «رمزِ یکبارمصرف» را روشن کرده باشد، همین‌جا (و فقط همین‌جا) اجازه‌های اختیاری
+    // پیامک/اعلان پرسیده می‌شوند؛ ردکردن باعثِ هیچ خطایی نمی‌شود.
+    LoginAssistPermissionEffect(otpAssistEnabled = prefs.otpAssistEnabled)
+    LaunchedEffect(prefs.otpAssistEnabled) {
+        if (prefs.otpAssistEnabled) viewModel.startCodeListening()
+    }
+
     val keyboardController = LocalSoftwareKeyboardController.current
 
     val showHome = uiState.showHome
@@ -275,6 +310,8 @@ fun BrowserScreen(
         hasPage = hasPage && !showHome,
         canManageSiteAccounts = uiState.activeAccountForCurrentSite() != null,
         downloadsCount = downloads.size,
+        hasSavedLogin = uiState.hasStoredLoginForCurrentSite,
+        acceptsOneTimeCode = codeFieldAvailable,
     )
     val menuActions = BrowserMenuActions(
         onCopyLink = {
@@ -296,6 +333,8 @@ fun BrowserScreen(
         onOpenTimeMachine = { onOpenVaultDashboard(activeTab?.containerId) },
         onInstallShortcut = viewModel::installCurrentSiteAsPwa,
         onDuplicateTab = viewModel::duplicateTab,
+        onAutofillLogin = viewModel::requestAutofill,
+        onFillOneTimeCode = viewModel::fillOneTimeCodeNow,
         onOpenDownloads = { showDownloadsSheet = true },
         onFreeSpace = viewModel::clearCacheWithoutTouchingSessions,
         onOpenSettings = onOpenSettings,
@@ -584,69 +623,153 @@ fun BrowserScreen(
         )
     }
 
-    // «ذخیرهٔ هوشمندِ ورود»: کارتِ تأیید پس از ارسالِ موفقِ فرم. گذرواژه فقط در همان
-    // لحظه در حافظه است و با تأییدِ کاربر به مخزنِ رمزنگاری‌شده می‌رود.
+    // «ذخیرهٔ هوشمندِ ورود»: کارتِ تأیید با هشدارهای روشن و امکانِ اصلاحِ نامِ حساب.
+    // مقادیر از پیش پر شده‌اند (یکی از سه درخواستِ اصلیِ کاربر) و با یک ضربه ذخیره می‌شوند.
     savePrompt?.let { prompt ->
+        var editUsername by remember(prompt.username) { mutableStateOf(prompt.username) }
+        var showUsernameField by remember(prompt.username) { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = viewModel::dismissPasswordPrompt,
             icon = { Icon(Icons.Default.Lock, contentDescription = null) },
             title = { Text(strings.saveLoginTitle) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(strings.saveLoginBody)
                     Text(
-                        text = prompt.site + " · " + prompt.username,
-                        style = MaterialTheme.typography.bodyMedium,
+                        text = prompt.site,
+                        style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary,
                     )
+                    if (showUsernameField) {
+                        OutlinedTextField(
+                            value = editUsername,
+                            onValueChange = { editUsername = it },
+                            label = { Text(strings.credentialUsername) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("save_login_username"),
+                        )
+                    } else {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text(
+                                text = editUsername.ifBlank { prompt.maskedUsername },
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = { showUsernameField = true }) {
+                                Text(strings.credentialEdit)
+                            }
+                        }
+                    }
+                    if (prompt.alternatives.isNotEmpty()) {
+                        Text(
+                            text = strings.autofillAlternatives,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        prompt.alternatives.firstOrNull { it != editUsername }?.let { other ->
+                            TextButton(onClick = { editUsername = other }) { Text(other) }
+                        }
+                    }
+                    // دلیلِ پرسیدن؛ «چرا این کارت آمد؟» باید همیشه روشن باشد.
                     Text(
-                        text = strings.passwordStrengthLabel(
-                            strengthLabel(prompt.strength.level, strings),
-                        ),
-                        style = MaterialTheme.typography.labelLarge,
+                        text = when (prompt.reason) {
+                            OfferReason.FIRST_ACCOUNT -> strings.saveLoginFirstAccountHint
+                            OfferReason.ANOTHER_ACCOUNT -> strings.saveLoginAnotherAccount
+                            OfferReason.PASSWORD_CHANGED -> strings.saveLoginPasswordChangedHint
+                        },
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    PasswordStrengthRow(prompt.strength, strings)
                 }
             },
             confirmButton = {
-                Button(onClick = viewModel::acceptPasswordPrompt) { Text(strings.saveLoginConfirm) }
+                Button(
+                    onClick = { viewModel.acceptPasswordPrompt(editUsername) },
+                    modifier = Modifier.testTag("save_login_confirm"),
+                ) {
+                    Text(strings.saveLoginConfirmPrefilled)
+                }
             },
             dismissButton = {
-                TextButton(onClick = viewModel::dismissPasswordPrompt) { Text(strings.saveLoginNotNow) }
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(onClick = viewModel::dismissPasswordPrompt) { Text(strings.saveLoginNotNow) }
+                    TextButton(onClick = viewModel::neverAskForSiteAgain) {
+                        Text(strings.saveLoginNeverAgain, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
             },
         )
     }
 
-    // تذکرِ گذرواژهٔ ضعیف‌تر یا هشدارِ دامنهٔ بدل؛ هر دو فقط اطلاع‌رسانی‌اند.
-    passwordNotice?.let { notice ->
-        val warning = notice as? PasswordNotice.PhishingWarning
+    // هشدارهای «نگه‌داشتنی»: دامنهٔ بدل، گذرواژهٔ ضعیف‌تر، ذخیرهٔ ناموفق، ورودِ ردشده.
+    // خبرهای کوتاه (کد نوشته شد، کدی پیدا نشد، فرم پر شد) در نوارِ بالای صفحه می‌آیند و
+    // همین‌جا دیالوگ نمی‌سازند تا تایپ و پیمایشِ کاربر قطع نشود.
+    passwordNotice?.takeIf { !it.isTransient }?.let { notice ->
         AlertDialog(
             onDismissRequest = viewModel::consumePasswordNotice,
             icon = {
                 Icon(
-                    if (warning != null) Icons.Default.Shield else Icons.Default.Security,
+                    imageVector = if (notice is PasswordNotice.PhishingWarning) Icons.Default.Shield else Icons.Default.Lock,
                     contentDescription = null,
                 )
             },
             title = {
-                Text(if (warning != null) strings.phishingWarningTitle else strings.saveLoginWeakerTitle)
+                Text(
+                    when (notice) {
+                        is PasswordNotice.PhishingWarning -> strings.phishingWarningTitle
+                        is PasswordNotice.Weaker -> strings.saveLoginWeakerTitle
+                        PasswordNotice.LoginRejected -> strings.loginRejectedNotice
+                        PasswordNotice.SaveFailed -> strings.saveLoginFailed
+                        else -> strings.saveLoginWeakerTitle
+                    },
+                )
             },
             text = {
                 Text(
-                    if (warning != null) {
-                        strings.phishingWarningBody(
-                            warning.host,
-                            warning.impersonated ?: strings.originLookalike,
-                        )
-                    } else {
-                        strings.saveLoginWeakerBody
+                    when (notice) {
+                        is PasswordNotice.PhishingWarning ->
+                            strings.phishingWarningBody(notice.host, notice.impersonated ?: strings.originLookalike)
+
+                        is PasswordNotice.Weaker -> strings.saveLoginWeakerBody
+                        PasswordNotice.LoginRejected -> strings.loginRejectedNotice
+                        PasswordNotice.SaveFailed -> strings.saveLoginFailed
+                        else -> strings.saveLoginWeakerBody
                     },
                 )
             },
             confirmButton = {
                 TextButton(onClick = viewModel::consumePasswordNotice) {
-                    Text(if (warning != null) strings.phishingWarningDismiss else strings.close)
+                    Text(if (notice is PasswordNotice.PhishingWarning) strings.phishingWarningDismiss else strings.close)
                 }
+            },
+        )
+    }
+
+    // پرسشِ اثر انگشت برای پرکردنِ ورود.
+    if (uiState.showAutofillUnlockPrompt) {
+        AlertDialog(
+            onDismissRequest = viewModel::dismissAutofillUnlock,
+            icon = { Icon(Icons.Default.Fingerprint, contentDescription = null) },
+            title = { Text(strings.autofillConfirmTitle) },
+            text = { Text(strings.autofillConfirmBody) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onRequestBiometricUnlock(strings.autofillConfirmAction) {
+                            viewModel.onBiometricConfirmedForAutofill()
+                        }
+                    },
+                    modifier = Modifier.testTag("autofill_unlock_confirm"),
+                ) {
+                    Text(strings.autofillConfirmAction)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissAutofillUnlock) { Text(strings.later) }
             },
         )
     }

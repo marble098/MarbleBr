@@ -101,9 +101,11 @@ class ContainerSessionManager @Inject constructor(
     private val localizationManager: LocalizationManager,
     private val preferencesRepository: com.marble098.marblebr.core.preferences.BrowserPreferencesRepository,
     /**
-     * پلِ «افزودن هر سایتی» و «ذخیرهٔ هوشمند گذرواژه».
-     * Provider است تا وابستگیِ چرخه‌ای نسازد و آخرین پارامتر مانده تا فراخوانی‌های موجود
-     * (از جمله تست‌های ابزاری) بدونِ تغییر معتبر بمانند.
+     * رصدگرِ ورود؛ رویدادهای «صفحه کامل شد»، «فرم ارسال شد» و «صفحهٔ کد باز شد» به او می‌رسند.
+     *
+     * چرا `Provider`؟ چون `LoginWatcher` خودش به همین کلاس وابسته است؛ تزریقِ مستقیم یک چرخهٔ
+     * ساخت می‌سازد. Provider چرخه را می‌شکند (هنگامِ ساختِ این کلاس فراخوانی نمی‌شود) و مقدارِ
+     * پیش‌فرض هم فقط برای تست‌های ابزاری است که این کلاس را دستی می‌سازند.
      */
     private val loginWatcher: Provider<LoginWatcher> = Provider { throw UnsupportedOperationException("LoginWatcher not wired") },
 ) {
@@ -117,6 +119,9 @@ class ContainerSessionManager @Inject constructor(
 
     /** پروفایلِ دسترسی‌های هر تب؛ delegate هر نشست همین را می‌خواند. */
     private val permissionProfiles = ConcurrentHashMap<String, SitePermissionProfile>()
+
+    /** تب‌هایی که خصوصی‌اند؛ هیچ ورودی از آن‌ها ذخیره یا پر نمی‌شود. */
+    private val privateSessions = java.util.Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
 
     // پورت‌ها از تردِ Gecko هم لمس می‌شوند؛ نگه‌داشتن آن‌ها در ConcurrentHashMap از
     // ConcurrentModificationException و نشتِ پورتِ بسته‌شده جلوگیری می‌کند.
@@ -302,6 +307,7 @@ class ContainerSessionManager @Inject constructor(
 
         activeSessions[tabId] = session
         sessionContainers[session] = container.id
+        if (isPrivate) privateSessions.add(tabId) else privateSessions.remove(tabId)
         session.open(runtime)
         if (isPrivate) {
             session.loadUri(initialUrl)
@@ -467,6 +473,33 @@ class ContainerSessionManager @Inject constructor(
         onResult: (String?) -> Unit,
     ) = evaluateInPage(tabId, script, SCRIPT_TIMEOUT_MILLIS, onResult)
 
+    /**
+     * نسخهٔ suspend از اجرای اسکریپت در صفحه.
+     *
+     * چرا لازم شد؟ منطقِ ورود (کاوشِ فرم، انتخابِ کادرِ کد، پرکردن) به‌صورتِ زنجیرهٔ مرحله‌به‌مرحله
+     * نوشته شده و با کال‌بک‌های تودرتو هم خواندنش سخت می‌شد و هم ترتیبِ اجرا تضمین نداشت. این
+     * نسخه همان مسیرِ امنِ پورتِ افزونه را استفاده می‌کند و فقط شکلِ فراخوانی عوض شده است.
+     */
+    internal suspend fun evalInPageForLogin(
+        tabId: String,
+        script: String,
+        timeoutMillis: Long = SCRIPT_TIMEOUT_MILLIS,
+    ): String? = kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+        evaluateInPage(tabId, script, timeoutMillis) { result ->
+            if (continuation.isActive) continuation.resumeWith(Result.success(result))
+        }
+    }
+
+    /** آیا تبِ داده‌شده در همین لحظه نشستِ باز دارد؟ (برای جلوگیری از اجرا روی تبِ بسته) */
+    fun hasOpenSession(tabId: String): Boolean = activeSessions[tabId]?.isOpen == true
+
+    /** آدرسِ آخری که برای این تب دیده شده (بدونِ محتوای صفحه). */
+    fun lastKnownUrl(tabId: String): String =
+        activeSessions[tabId]?.let { lastKnownUrls[it] }.orEmpty()
+
+    /** آیا این تب خصوصی است؟ (فقط برای تصمیمِ «هیچ‌چیز ذخیره نشود») */
+    fun isPrivateSession(tabId: String): Boolean = privateSessions.contains(tabId)
+
     private fun evaluateInPage(
         tabId: String,
         script: String,
@@ -567,6 +600,7 @@ class ContainerSessionManager @Inject constructor(
 
     fun closeTabSession(tabId: String) {
         pendingInitialLoads.remove(tabId)
+        privateSessions.remove(tabId)
         runCatching { loginWatcher.get().forget(tabId) }
         val session = activeSessions.remove(tabId) ?: return
         sessionContainers.remove(session)
@@ -786,8 +820,18 @@ class ContainerSessionManager @Inject constructor(
                                     }
                                 }
 
+                                // صفحه آمادهٔ کدِ یکبارمصرف است: پیامک/اعلان را دنبال کن.
+                                OTP_SCREEN_READY_EVENT -> {
+                                    if (!sameOrigin(port.sender.url, json.optString("url"))) return
+                                    val tabId = activeSessions.entries.firstOrNull { it.value === session }?.key ?: return
+                                    val pageUrl = json.optString("url").ifBlank { port.sender.url.orEmpty() }
+                                    engineScope.launch {
+                                        runCatching { loginWatcher.get().watchForOneTimeCode(tabId, pageUrl) }
+                                    }
+                                }
+
                                 // «ذخیرهٔ هوشمندِ ورود»: لحظهٔ ارسالِ فرم. مقادیر فقط در حافظه
-                                // به PasswordStudio می‌روند و تصمیمِ ذخیره با کاربر است.
+                                // می‌مانند و تصمیمِ ذخیره پس از تأییدِ موفقیت گرفته می‌شود.
                                 LOGIN_SUBMIT_EVENT -> {
                                     if (!sameOrigin(port.sender.url, json.optString("url"))) return
                                     val tabId = activeSessions.entries.firstOrNull {
@@ -796,12 +840,15 @@ class ContainerSessionManager @Inject constructor(
                                     val pageUrl = json.optString("url")
                                     engineScope.launch {
                                         runCatching {
+                                            // پیامِ خطای دیده‌شده همان لحظه، این ارسال را رد می‌کند.
+                                            // (بدونِ این پرچم، فرمِ ردشده هم کارتِ ذخیره می‌ساخت.)
                                             loginWatcher.get().captureSubmitted(
                                                 tabId = tabId,
                                                 url = pageUrl,
                                                 username = json.optString("username"),
                                                 password = json.optString("password"),
                                                 otpFieldCount = json.optInt("otpFields"),
+                                                errorVisible = json.optBoolean("errorVisible"),
                                             )
                                         }
                                     }
@@ -1172,6 +1219,9 @@ class ContainerSessionManager @Inject constructor(
 
         /** لحظهٔ ارسالِ فرمِ ورود در صفحه؛ برای پیشنهادِ «ذخیرهٔ این ورود». */
         const val LOGIN_SUBMIT_EVENT = "LOGIN_SUBMIT"
+
+        /** صفحه کادرِ رمزِ یکبارمصرف دارد و منتظرِ کد است. */
+        const val OTP_SCREEN_READY_EVENT = "OTP_SCREEN_READY"
 
         /** مهلتِ پاسخِ صفحه به درخواستِ اجرای اسکریپت (حالت مطالعه/بلندخوانی). */
         const val SCRIPT_TIMEOUT_MILLIS = 2_500L

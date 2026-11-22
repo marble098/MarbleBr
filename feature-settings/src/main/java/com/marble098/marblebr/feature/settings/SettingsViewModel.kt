@@ -8,6 +8,7 @@ import com.marble098.marblebr.core.i18n.LocalizationManager
 import com.marble098.marblebr.core.model.BackButtonBehavior
 import com.marble098.marblebr.core.model.ChromeBarStyle
 import com.marble098.marblebr.core.model.ColorPalette
+import com.marble098.marblebr.core.model.CredentialSaveMode
 import com.marble098.marblebr.core.model.DnsMode
 import com.marble098.marblebr.core.model.HomeShortcutPosition
 import com.marble098.marblebr.core.model.ProxyDnsConfig
@@ -102,9 +103,19 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun setAutoSaveCredentials(enabled: Boolean) {
+    /**
+     * حالتِ ذخیرهٔ ورود. سه گزینه است و هر سه در مخزنِ رمز اثر می‌گذارند، پس تغییر فوراً در
+     * DataStore نوشته می‌شود و `PasswordStudio` در اولین تصمیمِ بعدی آن را می‌خواند.
+     */
+    fun setCredentialSaveMode(mode: CredentialSaveMode) {
         viewModelScope.launch {
-            preferencesRepository.setAutoSaveCredentials(enabled)
+            preferencesRepository.setCredentialSaveMode(mode)
+        }
+    }
+
+    fun setOtpAssistEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setOtpAssistEnabled(enabled)
         }
     }
 

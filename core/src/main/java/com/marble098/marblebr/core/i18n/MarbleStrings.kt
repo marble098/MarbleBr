@@ -361,6 +361,45 @@ abstract class MarbleStrings {
     abstract val saveLoginNoStored: String
     abstract val saveLoginWeakerTitle: String
     abstract val saveLoginWeakerBody: String
+
+    /* ------------------------- «ورودِ هوشمند» و «رمزِ یکبارمصرف» ------------------------- */
+    abstract val saveLoginUsernameTitle: String
+    abstract val saveLoginConfirmPrefilled: String
+    abstract val saveLoginAnotherAccount: String
+    abstract val saveLoginPasswordChangedHint: String
+    abstract val saveLoginFirstAccountHint: String
+    abstract val saveLoginAccountAdded: String
+    abstract val autofillConfirmTitle: String
+    abstract val autofillConfirmBody: String
+    abstract val autofillConfirmAction: String
+    abstract val autofillUseNow: String
+    abstract val autofillAlternatives: String
+    abstract val autofillFillNow: String
+    abstract val codeFieldChip: String
+    abstract val codeUnavailableTitle: String
+    abstract val codeUnavailableBody: String
+    abstract val codeFilled: String
+    abstract val codeSmsPermission: String
+    abstract val codeNotificationAccess: String
+    abstract val codeOpenSettings: String
+    abstract val codeHowTitle: String
+    abstract val codeHowBody: String
+    abstract val codePasteFromClipboard: String
+    abstract val codeClipboardEmpty: String
+    abstract val codeManualHint: String
+    abstract val loginRejectedNotice: String
+    abstract val saveLoginNeverAgain: String
+    abstract val saveModeTitle: String
+    abstract val saveModeAsk: String
+    abstract val saveModeAskBody: String
+    abstract val saveModeAuto: String
+    abstract val saveModeAutoBody: String
+    abstract val saveModeOff: String
+    abstract val saveModeOffBody: String
+    abstract val otpAssistTitle: String
+    abstract val otpAssistBody: String
+    abstract fun otpSourceSummary(source: String): String
+    abstract val otpManualAlwaysTitle: String
     abstract fun passwordStrengthLabel(level: String): String
     abstract val passwordStrengthVeryWeak: String
     abstract val passwordStrengthWeak: String
@@ -1205,6 +1244,47 @@ private object PersianStrings : MarbleStrings() {
     override val saveLoginNoStored = "برای این سایت ورودی ذخیره نشده است."
     override val saveLoginWeakerTitle = "گذرواژهٔ تازه ضعیف‌تر است"
     override val saveLoginWeakerBody = "گذرواژه‌ای که ساختی از قبلی ضعیف‌تر است؛ مطمئنی می‌خواهی عوضش کنی؟"
+    override val saveLoginUsernameTitle = "این حساب را ذخیره کنم؟"
+    override val saveLoginConfirmPrefilled = "ذخیره و پرکردنِ بعدی"
+    override val saveLoginAnotherAccount = "این حساب برای این سایت تازه است؛ مطمئن باش حسابِ درست را انتخاب کرده‌ای."
+    override val saveLoginPasswordChangedHint = "گذرواژهٔ این حساب عوض شده است. نسخهٔ تازه را جایگزین کنم؟"
+    override val saveLoginFirstAccountHint = "اولین حسابِ این سایت است؛ از دفعهٔ بعد فرم را خودمان پر می‌کنیم."
+    override val saveLoginAccountAdded = "حساب به مخزن اضافه شد."
+    override val autofillConfirmTitle = "ورودِ ذخیره‌شده پیدا شد"
+    override val autofillConfirmBody = "برای پرکردنِ نام کاربری و گذرواژه، اثر انگشت یا قفل گوشی را تأیید کن."
+    override val autofillConfirmAction = "پر کردن با اثر انگشت"
+    override val autofillUseNow = "همین حالا پر کن"
+    override val autofillAlternatives = "حساب‌های دیگر این سایت"
+    override val autofillFillNow = "پر کردن با این حساب"
+    override val codeFieldChip = "کد را بگذار"
+    override val codeUnavailableTitle = "کدی پیدا نشد"
+    override val codeUnavailableBody =
+        "پیامک یا اعلانِ تازه‌ای با رمزِ یکبارمصرف نبود. دسترسیِ پیامک/اعلان را در تنظیمات بررسی کن " +
+            "یا کد را کپی کن و در کادر بچسبان."
+    override val codeFilled = "کد در کادر نوشته شد."
+    override val codeSmsPermission = "خواندنِ پیامک (اختیاری)"
+    override val codeNotificationAccess = "دسترسی به اعلان‌ها (اختیاری)"
+    override val codeOpenSettings = "باز کردنِ تنظیمات"
+    override val codeHowTitle = "رمزِ یکبارمصرف چطور پر می‌شود؟"
+    override val codeHowBody =
+        "وقتی صفحه‌ای کد بخواهد، MarbleBr پیامک و اعلان‌های همین گوشی را نگاه می‌کند، " +
+            "فقط عددِ کد را برمی‌دارد و در کادرِ درست می‌نویسد. پیام‌ها ذخیره یا ارسال نمی‌شوند."
+    override val codePasteFromClipboard = "چسباندن از کلیپ‌بورد"
+    override val codeClipboardEmpty = "کلیپ‌بورد کدِ معتبری ندارد."
+    override val codeManualHint = "اگر اجازهٔ خواندن ندهی، همیشه می‌توانی کد را کپی کنی و از دکمهٔ زیر بچسبانی."
+    override val loginRejectedNotice = "ورود پذیرفته نشد؛ چیزی ذخیره نکردیم."
+    override val saveLoginNeverAgain = "برای این سایت دیگر نپرس"
+    override val saveModeTitle = "ذخیرهٔ ورودها"
+    override val saveModeAsk = "همیشه بپرس"
+    override val saveModeAskBody = "پس از هر ورودِ موفق، خودت تصمیم می‌گیری ذخیره شود یا نه."
+    override val saveModeAuto = "ذخیرهٔ خودکارِ مواردِ روشن"
+    override val saveModeAutoBody = "ورودِ اول به یک سایت بی‌صدا ذخیره می‌شود؛ مواردِ مبهم هنوز می‌پرسند."
+    override val saveModeOff = "هرگز ذخیره نکن"
+    override val saveModeOffBody = "هیچ ورودی ذخیره نمی‌شود؛ فرم‌های موجود در مخزن دست‌نخورده می‌مانند."
+    override val otpAssistTitle = "رمزِ یکبارمصرف"
+    override val otpAssistBody = "کدِ پیامک یا اعلان را در کادرِ صفحه بنویس؛ اگر اجازه ندهی، خودت می‌چسبانی."
+    override fun otpSourceSummary(source: String) = "منبعِ خودکار: $source"
+    override val otpManualAlwaysTitle = "همیشه می‌توانی دستی بچسبانی"
     override fun passwordStrengthLabel(level: String) = "قدرت گذرواژه: $level"
     override val passwordStrengthVeryWeak = "بسیار ضعیف"
     override val passwordStrengthWeak = "ضعیف"
@@ -1789,6 +1869,48 @@ private object EnglishStrings : MarbleStrings() {
     override val saveLoginNoStored = "No saved sign-in for this site yet."
     override val saveLoginWeakerTitle = "The new password is weaker"
     override val saveLoginWeakerBody = "The password you just used is weaker than the saved one. Replace it anyway?"
+    override val saveLoginUsernameTitle = "Save this sign-in?"
+    override val saveLoginConfirmPrefilled = "Save and fill next time"
+    override val saveLoginAnotherAccount = "This is a new account for this site — make sure it is the right one."
+    override val saveLoginPasswordChangedHint = "This account's password changed. Replace the saved one?"
+    override val saveLoginFirstAccountHint = "First account for this site; from now on we fill the form for you."
+    override val saveLoginAccountAdded = "Account added to the vault."
+    override val autofillConfirmTitle = "Saved sign-in found"
+    override val autofillConfirmBody = "Confirm your fingerprint or device lock to fill the username and password."
+    override val autofillConfirmAction = "Fill with fingerprint"
+    override val autofillUseNow = "Fill now"
+    override val autofillAlternatives = "Other accounts for this site"
+    override val autofillFillNow = "Fill with this account"
+    override val codeFieldChip = "Fill code"
+    override val codeUnavailableTitle = "No code found"
+    override val codeUnavailableBody =
+        "No recent SMS or notification carried a one-time code. " +
+            "Check the SMS/notification access, or copy the code and paste it."
+    override val codeFilled = "Code written into the box."
+    override val codeSmsPermission = "Read SMS (optional)"
+    override val codeNotificationAccess = "Notification access (optional)"
+    override val codeOpenSettings = "Open settings"
+    override val codeHowTitle = "How is the one-time code filled?"
+    override val codeHowBody =
+        "When a page asks for a code, MarbleBr looks at SMS and notifications on this phone, " +
+            "keeps only the numeric code and writes it into the right box. " +
+            "Messages are never stored or sent."
+    override val codePasteFromClipboard = "Paste from clipboard"
+    override val codeClipboardEmpty = "The clipboard has no valid code."
+    override val codeManualHint = "If you don't grant access, you can always copy the code and paste it with the button below."
+    override val loginRejectedNotice = "Sign-in was rejected; nothing was saved."
+    override val saveLoginNeverAgain = "Never ask for this site"
+    override val saveModeTitle = "Saving sign-ins"
+    override val saveModeAsk = "Always ask"
+    override val saveModeAskBody = "After every successful sign-in you decide whether to save it."
+    override val saveModeAuto = "Auto-save clear cases"
+    override val saveModeAutoBody = "A site's first sign-in is saved silently; ambiguous cases still ask."
+    override val saveModeOff = "Never save"
+    override val saveModeOffBody = "Nothing new is saved; credentials already in the vault stay untouched."
+    override val otpAssistTitle = "One-time codes"
+    override val otpAssistBody = "Writes the SMS/notification code into the page's box; if you decline access you paste it yourself."
+    override fun otpSourceSummary(source: String) = "Automatic source: $source"
+    override val otpManualAlwaysTitle = "You can always paste it yourself"
     override fun passwordStrengthLabel(level: String) = "Password strength: $level"
     override val passwordStrengthVeryWeak = "Very weak"
     override val passwordStrengthWeak = "Weak"
