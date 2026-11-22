@@ -991,7 +991,9 @@ class BrowserViewModel @Inject constructor(
         val tab = _uiState.value.tabs.firstOrNull { it.id == tabId } ?: return
         if (ContainerSessionManager.extractDomain(tab.url) != ContainerSessionManager.extractDomain(url) &&
             _uiState.value.pendingPermission?.tabId == tabId
-        ) dismissPendingPermission()
+        ) {
+            dismissPendingPermission()
+        }
         updateTab(tabId) { it.copy(url = url, isSecure = isSecure) }
         // دسترسی‌های همان دامنه روی نشست اعمال می‌شوند (جاوااسکریپت/پخش خودکار/دیالوگ‌ها).
         viewModelScope.launch {
