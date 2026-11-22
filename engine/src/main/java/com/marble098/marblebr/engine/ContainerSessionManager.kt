@@ -1190,19 +1190,19 @@ class ContainerSessionManager @Inject constructor(
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
             override fun onNewSession(session: GeckoSession, uri: String): GeckoResult<GeckoSession>? {
                 val state = popupPolicy(tabId, session)
-                if (state == PermissionState.BLOCK || (uri != "about:blank" && !isHttpUrl(uri))) return null
+                val target = uri.ifBlank { "about:blank" }
+                if (state == PermissionState.BLOCK || (target != "about:blank" && !isHttpUrl(target))) return null
                 val result = GeckoResult<GeckoSession>()
                 onPopupRequest(
                     PopupPermissionRequest(
                         tabId = tabId,
-                        targetUri = uri,
+                        targetUri = target,
                         shouldPrompt = state == PermissionState.ASK,
                         respond = { result.complete(it) },
                     ),
                 )
                 return result
             }
-
 
             override fun onLoadRequest(
                 session: GeckoSession,
@@ -1296,7 +1296,6 @@ class ContainerSessionManager @Inject constructor(
 
         session.contentDelegate = object : GeckoSession.ContentDelegate {
             override fun onCloseRequest(session: GeckoSession) = onWindowClose()
-
 
             override fun onContextMenu(
                 session: GeckoSession,
@@ -1437,9 +1436,9 @@ class ContainerSessionManager @Inject constructor(
             }
             // خالی‌کردنِ هر فهرستِ استثنای قبلی؛ وگرنه پروکسی برای بعضی دامنه‌ها اعمال نمی‌شد.
             appendLine("  network.proxy.no_proxies_on: \"\"")
-            // لازمهٔ کارکردِ `onPopupPrompt`: Gecko بدون این پرچم popup را بی‌صدا باز/بسته می‌کند
-            // و هیچ فرصتی برای پرسیدنِ کاربر باقی نمی‌گذارد.
-            appendLine("  dom.disable_open_during_load: true")
+            // Let the navigation delegate decide before Gecko creates the original window.
+            // The built-in blocker replays window.open asynchronously and loses its return value.
+            appendLine("  dom.disable_open_during_load: false")
         }
         file.writeText(yaml)
         return file

@@ -105,7 +105,7 @@ class GeckoAccountIsolationInstrumentedTest {
                 }
                 val popup = requireNotNull(popupRequests.poll(25, TimeUnit.SECONDS)) { "Gecko did not request a popup" }
                 assertTrue(popup.shouldPrompt)
-                assertEquals("${site.origin}/popup-child", popup.targetUri)
+                assertTrue(popup.targetUri in setOf("about:blank", "${site.origin}/popup-child"))
                 instrumentation.runOnMainSync {
                     popup.respond(
                         manager.getOrCreateGeckoSession(
