@@ -394,8 +394,7 @@ fun BrowserScreen(
 
         SitePermissionPromptHost(
             pending = uiState.pendingPermission,
-            onAllow = { viewModel.resolvePendingPermission(true) },
-            onDeny = { viewModel.dismissPendingPermission() },
+            onResolve = viewModel::resolvePendingPermission,
         )
 
         // نشانگر «حالت مطالعه روشن است»: یک نوار نازک با دکمهٔ خاموش‌کردن، تا کاربر بداند
@@ -1580,25 +1579,7 @@ private fun GeckoSessionWebView(
         modifier = Modifier.fillMaxSize(),
         factory = { ctx ->
             GeckoView(ctx).apply {
-                val geckoSession = viewModel.sessionManager.getOrCreateGeckoSession(
-                    tabId = tab.id,
-                    container = container,
-                    initialUrl = tab.url,
-                    isPrivate = tab.isPrivate,
-                    isDesktopMode = tab.isDesktopMode,
-                    adBlockEnabled = viewModel.preferences.value.adBlockEnabled,
-                    onLocationChanged = { url, secure -> viewModel.onPageLocationChanged(tab.id, url, secure) },
-                    onTitleChanged = { title -> viewModel.onPageTitleChanged(tab.id, title) },
-                    onProgressChanged = { progress, loading -> viewModel.onPageProgressChanged(tab.id, progress, loading) },
-                    onNavStateChanged = { back, fwd -> viewModel.onNavStateChanged(tab.id, back, fwd) },
-                    onHealthRestored = viewModel::onHealthRestored,
-                    onServerRevokedFallbackRequired = viewModel::onServerRevokedFallbackRequired,
-                    onDownloadRequested = { url, _ -> if (!tab.isPrivate) viewModel.enqueueDownload(url) },
-                    onContextMenu = { target -> viewModel.onPageContextMenu(tab.id, target) },
-                    onPopupRequest = viewModel::onPopupRequest,
-                    onContentPermissionRequest = viewModel::onContentPermissionRequest,
-                    onAndroidPermissionRequest = viewModel::onAndroidPermissionRequest,
-                )
+                val geckoSession = viewModel.browserSession(tab, container)
                 ctx.findActivity()?.let { activity ->
                     geckoSession.selectionActionDelegate = PageSelectionDelegate(
                         activity, strings.contextShareText, strings.contextSavePdf, onSavePdf,
