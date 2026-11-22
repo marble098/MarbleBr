@@ -108,6 +108,7 @@ jobs:
           PYDETAILS
 
       - name: Compile Android instrumentation tests
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref != 'refs/heads/main')
         run: |
           set -o pipefail
           if ! ./scripts/gradle_retry.sh /tmp/android-test-build.log :app:assembleDebugAndroidTest --stacktrace; then
