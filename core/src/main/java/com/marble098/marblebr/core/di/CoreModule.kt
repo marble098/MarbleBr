@@ -56,6 +56,22 @@ object CoreModule {
         }
     }
 
+    /**
+     * مهاجرتِ ۳ → ۴: ستونِ «تعداد بازدید» برای تاریخچه.
+     *
+     * پیش از این هر بازدیدِ دوباره فقط زمانِ آخرین بازدید را به‌روز می‌کرد و تعداد بازدیدها
+     * گم می‌شد؛ در نتیجه «پربازدیدترین‌ها» و پیشنهادهای نوار آدرس نمی‌توانستند بین یک سایتِ
+     * ده‌بار بازدیدشده و یک سایتِ تازه تفکیک کنند. مقدار پیش‌فرض ۱ است تا رکوردهای قدیمی
+     * معتبر بمانند.
+     */
+    private val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(connection: SQLiteConnection) {
+            connection.execSQL(
+                "ALTER TABLE history_items ADD COLUMN visitCount INTEGER NOT NULL DEFAULT 1",
+            )
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): MarbleBrDatabase =
@@ -64,7 +80,7 @@ object CoreModule {
             MarbleBrDatabase::class.java,
             "marblebr_vault.db",
         )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
             // آخرین سدِ دفاعی برای نسخه‌های نامعلوم/آینده؛ مسیر عادی همین مهاجرت است.
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()

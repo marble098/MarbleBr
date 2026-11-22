@@ -31,8 +31,23 @@ import javax.inject.Singleton
 class SmsOneTimeCodeReader @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
-    fun hasPermission(): Boolean = runCatching {
+    /**
+     * آیا اپ می‌تواند هم پیامکِ تازه را بگیرد و هم صندوقِ ورودی را بخواند؟
+     *
+     * نکتهٔ مهم: `RECEIVE_SMS` فقط برای دریافتِ broadcast است؛ خواندنِ `Telephony.Sms.Inbox`
+     * به `READ_SMS` نیاز دارد. پیش‌تر فقط `RECEIVE_SMS` بررسی می‌شد و در نتیجه
+     * `recentMessages()` همیشه خالی بود (یا SecurityException می‌داد) و کدِ پیامکی که چند
+     * ثانیه قبل از باز شدنِ صفحهٔ کد رسیده بود هرگز پیدا نمی‌شد.
+     */
+    fun hasPermission(): Boolean = hasReceivePermission() && hasReadPermission()
+
+    fun hasReceivePermission(): Boolean = runCatching {
         ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) ==
+            PackageManager.PERMISSION_GRANTED
+    }.getOrDefault(false)
+
+    fun hasReadPermission(): Boolean = runCatching {
+        ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) ==
             PackageManager.PERMISSION_GRANTED
     }.getOrDefault(false)
 
@@ -47,7 +62,7 @@ class SmsOneTimeCodeReader @Inject constructor(
         lookBackMillis: Long = DEFAULT_LOOKBACK_MILLIS,
         senderFilter: Set<String> = emptySet(),
     ): List<CodeMessage> {
-        if (!hasPermission()) return emptyList()
+        if (!hasReadPermission()) return emptyList()
         val cursor: Cursor = runCatching {
             context.contentResolver.query(
                 Telephony.Sms.Inbox.CONTENT_URI,

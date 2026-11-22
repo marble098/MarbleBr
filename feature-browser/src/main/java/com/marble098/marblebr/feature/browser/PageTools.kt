@@ -366,13 +366,14 @@ private fun PermissionRow(
     }
 }
 
-private fun permissionLabel(strings: MarbleStrings, permission: SitePermission): String = when (permission) {
+internal fun permissionLabel(strings: MarbleStrings, permission: SitePermission): String = when (permission) {
     SitePermission.JAVASCRIPT -> strings.permissionJavascript
     SitePermission.AUTOPLAY -> strings.permissionAutoplay
     SitePermission.GEOLOCATION -> strings.permissionGeolocation
     SitePermission.CAMERA -> strings.permissionCamera
     SitePermission.MICROPHONE -> strings.permissionMicrophone
     SitePermission.NOTIFICATIONS -> strings.permissionNotifications
+    SitePermission.POPUPS -> strings.permissionPopups
 }
 
 /**

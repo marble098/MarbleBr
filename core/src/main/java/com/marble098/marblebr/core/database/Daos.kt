@@ -82,8 +82,23 @@ interface BookmarkDao {
     @Query("SELECT * FROM bookmarks ORDER BY createdAtEpochMillis DESC")
     fun observeAll(): Flow<List<BookmarkEntity>>
 
+    @Query("SELECT * FROM bookmarks WHERE folder = :folder ORDER BY createdAtEpochMillis DESC")
+    fun observeFolder(folder: String): Flow<List<BookmarkEntity>>
+
+    @Query("SELECT * FROM bookmarks WHERE title LIKE '%' || :query || '%' OR url LIKE '%' || :query || '%' ORDER BY createdAtEpochMillis DESC")
+    suspend fun search(query: String): List<BookmarkEntity>
+
+    @Query("SELECT * FROM bookmarks WHERE id = :id LIMIT 1")
+    suspend fun getById(id: String): BookmarkEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(bookmark: BookmarkEntity)
+
+    @Query("UPDATE bookmarks SET title = :title, url = :url, folder = :folder WHERE id = :id")
+    suspend fun updateBookmark(id: String, title: String, url: String, folder: String)
+
+    @Query("UPDATE bookmarks SET folder = :folder WHERE id = :id")
+    suspend fun moveToFolder(id: String, folder: String)
 
     @Query("DELETE FROM bookmarks WHERE id = :id")
     suspend fun deleteById(id: String)
@@ -94,23 +109,38 @@ interface BookmarkDao {
 
 @Dao
 interface HistoryDao {
-    @Query("SELECT * FROM history_items ORDER BY visitedAtEpochMillis DESC LIMIT 500")
+    @Query("SELECT * FROM history_items ORDER BY visitedAtEpochMillis DESC LIMIT 1000")
     fun observeRecent(): Flow<List<HistoryEntity>>
 
     @Query("SELECT * FROM history_items ORDER BY visitedAtEpochMillis DESC LIMIT :limit")
     suspend fun getRecent(limit: Int): List<HistoryEntity>
 
-    @Query("SELECT * FROM history_items WHERE title LIKE '%' || :query || '%' OR url LIKE '%' || :query || '%' ORDER BY visitedAtEpochMillis DESC LIMIT 50")
+    @Query("SELECT * FROM history_items WHERE title LIKE '%' || :query || '%' OR url LIKE '%' || :query || '%' ORDER BY visitedAtEpochMillis DESC LIMIT 100")
     suspend fun search(query: String): List<HistoryEntity>
 
     @Query("SELECT * FROM history_items WHERE url = :url ORDER BY visitedAtEpochMillis DESC LIMIT 1")
     suspend fun getLatestByUrl(url: String): HistoryEntity?
 
+    @Query("SELECT * FROM history_items ORDER BY visitCount DESC, visitedAtEpochMillis DESC LIMIT :limit")
+    suspend fun getMostVisited(limit: Int): List<HistoryEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(item: HistoryEntity)
 
-    @Query("UPDATE history_items SET title = :title, visitedAtEpochMillis = :visitedAtEpochMillis WHERE id = :id")
+    @Query(
+        "UPDATE history_items SET title = :title, visitedAtEpochMillis = :visitedAtEpochMillis, " +
+            "visitCount = visitCount + 1 WHERE id = :id",
+    )
     suspend fun updateVisit(id: String, title: String, visitedAtEpochMillis: Long)
+
+    @Query("DELETE FROM history_items WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM history_items WHERE url = :url")
+    suspend fun deleteByUrl(url: String)
+
+    @Query("DELETE FROM history_items WHERE visitedAtEpochMillis < :beforeEpochMillis")
+    suspend fun deleteOlderThan(beforeEpochMillis: Long)
 
     @Query("DELETE FROM history_items")
     suspend fun clearAll()

@@ -705,6 +705,87 @@ abstract class MarbleStrings {
     protected abstract val reasonServerRevoked: String
     protected abstract val reasonUnknown: String
 
+
+    // ------------------------------------------------- دسترسی‌ها و پاپ‌آپ
+    abstract val permissionPopups: String
+    abstract val permissionPopupTitle: String
+    abstract val permissionPopupBody: String
+    abstract val permissionAllow: String
+    abstract val permissionBlock: String
+    abstract val permissionAskTitle: String
+    abstract fun permissionRequestBody(domain: String, permission: String): String
+    abstract val permissionAndroidRequired: String
+    abstract val permissionDenied: String
+
+    // ------------------------------------------------------- پروکسی
+    abstract val proxyHostInvalid: String
+    abstract val proxyPortInvalid: String
+    abstract val proxyRestartRequired: String
+
+    // ----------------------------------------------- پیشنهادهای نوار آدرس
+    abstract val suggestionHistory: String
+    abstract val suggestionBookmark: String
+    abstract val suggestionMostVisited: String
+    abstract val suggestionOpenTabs: String
+    abstract val suggestionsTitle: String
+    abstract val suggestionsEmpty: String
+
+    // ------------------------------------------- کتابخانه: نشان‌ها/تاریخچه
+    abstract val libraryTitle: String
+    abstract val libraryBookmarksTab: String
+    abstract val libraryHistoryTab: String
+    abstract val librarySearchHint: String
+    abstract val libraryAllBookmarks: String
+    abstract val libraryAddBookmark: String
+    abstract val libraryEditBookmark: String
+    abstract val librarySave: String
+    abstract val libraryBookmarkTitle: String
+    abstract val libraryBookmarkUrl: String
+    abstract val libraryBookmarkFolder: String
+    abstract val libraryNewFolder: String
+    abstract val libraryFolderName: String
+    abstract val libraryMoveToFolder: String
+    abstract val libraryDeleteBookmark: String
+    abstract val libraryDeleteBookmarkBody: String
+    abstract val libraryOpenInNewTab: String
+    abstract val libraryDeleteHistoryItem: String
+    abstract val libraryDeleteHistoryBody: String
+    abstract val libraryDeleteSiteHistory: String
+    abstract val libraryClearHistoryTitle: String
+    abstract val libraryClearHistoryBody: String
+    abstract val libraryToday: String
+    abstract val libraryYesterday: String
+    abstract val libraryThisWeek: String
+    abstract val libraryThisMonth: String
+    abstract val libraryOlder: String
+    abstract val librarySort: String
+    abstract val libraryMoreOptions: String
+    abstract val librarySortDate: String
+    abstract val librarySortVisits: String
+    abstract val librarySortTitle: String
+    abstract val libraryEmptyBookmarksSearch: String
+    abstract val libraryEmptyHistorySearch: String
+    abstract val libraryBookmarkSaved: String
+    abstract val libraryBookmarkUpdated: String
+    abstract val libraryBookmarkDeleted: String
+    abstract val libraryFolderCreated: String
+    abstract val libraryHistoryDeleted: String
+    abstract val librarySiteHistoryDeleted: String
+    abstract val libraryInvalidBookmark: String
+    abstract val libraryAllFolders: String
+    abstract val libraryFolderBookmarks: String
+    abstract val libraryClearOlder: String
+    abstract val libraryClearOlderBody: String
+    abstract val libraryClearOlder7: String
+    abstract val libraryClearOlder30: String
+
+    // ------------------------------------ داشبورد «وارد بمان» و ابزارها
+    abstract val vaultAdvancedTools: String
+    abstract val vaultAdvancedToolsBody: String
+    abstract val vaultHideAdvanced: String
+    abstract val vaultSignedInTitle: String
+    abstract val vaultSignedInBody: String
+
     companion object {
         fun forLanguage(
             language: AppLanguage,
@@ -1342,6 +1423,81 @@ private object PersianStrings : MarbleStrings() {
     override val pulseUrgencyHigh = "زودتر لازم است"
     override val pulseUrgencyCritical = "خیلی نزدیک به خروج"
     override val pulseDone = "بیدارسازی انجام شد."
+    override val permissionPopups = "باز کردن پنجرهٔ جدید"
+    override val permissionPopupTitle = "این سایت می‌خواهد پنجرهٔ تازه باز کند"
+    override val permissionPopupBody = "اگر منتظرِ پرداخت، ورود با گوگل یا پیش‌نمایشِ فایل هستی، اجازه بده."
+    override val permissionAllow = "اجازه"
+    override val permissionBlock = "بلاک"
+    override val permissionAskTitle = "دسترسی به گوشی"
+    override fun permissionRequestBody(domain: String, permission: String) =
+        "$domain می‌خواهد از $permission استفاده کند."
+    override val permissionAndroidRequired = "برای این کار، اجازهٔ گوشی هم لازم است."
+    override val permissionDenied = "دسترسی داده نشد."
+
+    override val proxyHostInvalid = "آدرس پروکسی معتبر نیست (مثلاً 127.0.0.1 یا proxy.example.com)"
+    override val proxyPortInvalid = "پورت باید بین ۱ تا ۶۵۵۳۵ باشد."
+    override val proxyRestartRequired = "برای اعمالِ پروکسی، برنامه را ببند و دوباره باز کن."
+
+    override val suggestionHistory = "بازدید اخیر"
+    override val suggestionBookmark = "نشان"
+    override val suggestionMostVisited = "پربازدید"
+    override val suggestionOpenTabs = "تب باز"
+    override val suggestionsTitle = "پیشنهادها"
+    override val suggestionsEmpty = "پیشنهادی پیدا نشد."
+
+    override val libraryTitle = "کتابخانه"
+    override val libraryBookmarksTab = "نشان‌ها"
+    override val libraryHistoryTab = "تاریخچه"
+    override val librarySearchHint = "جستجو در نشان‌ها و تاریخچه…"
+    override val libraryAllBookmarks = "همهٔ نشان‌ها"
+    override val libraryAddBookmark = "افزودن نشان"
+    override val libraryEditBookmark = "ویرایش نشان"
+    override val librarySave = "ذخیره"
+    override val libraryBookmarkTitle = "عنوان"
+    override val libraryBookmarkUrl = "آدرس"
+    override val libraryBookmarkFolder = "پوشه"
+    override val libraryNewFolder = "پوشهٔ تازه"
+    override val libraryFolderName = "نام پوشه"
+    override val libraryMoveToFolder = "انتقال به پوشه"
+    override val libraryDeleteBookmark = "حذف نشان"
+    override val libraryDeleteBookmarkBody = "این نشان برای همیشه حذف می‌شود."
+    override val libraryOpenInNewTab = "باز کردن در تب تازه"
+    override val libraryDeleteHistoryItem = "حذف از تاریخچه"
+    override val libraryDeleteHistoryBody = "این آدرس از تاریخچه حذف می‌شود؛ نشان‌ها دست‌نخورده می‌مانند."
+    override val libraryDeleteSiteHistory = "حذف همهٔ بازدیدهای این سایت"
+    override val libraryClearHistoryTitle = "پاک کردن تاریخچه"
+    override val libraryClearHistoryBody = "کل تاریخچهٔ مرور پاک می‌شود. نشان‌ها و ورودها دست‌نخورده می‌مانند."
+    override val libraryToday = "امروز"
+    override val libraryYesterday = "دیروز"
+    override val libraryThisWeek = "این هفته"
+    override val libraryThisMonth = "این ماه"
+    override val libraryOlder = "قدیمی‌تر"
+    override val librarySort = "مرتب‌سازی"
+    override val libraryMoreOptions = "گزینه‌های بیشتر"
+    override val librarySortDate = "تاریخ"
+    override val librarySortVisits = "تعداد بازدید"
+    override val librarySortTitle = "عنوان"
+    override val libraryEmptyBookmarksSearch = "نشانِ مطابقی پیدا نشد."
+    override val libraryEmptyHistorySearch = "تاریخچه‌ای مطابقی پیدا نشد."
+    override val libraryBookmarkSaved = "نشان ذخیره شد"
+    override val libraryBookmarkUpdated = "نشان به‌روز شد"
+    override val libraryBookmarkDeleted = "نشان حذف شد"
+    override val libraryFolderCreated = "پوشه ساخته شد"
+    override val libraryHistoryDeleted = "از تاریخچه حذف شد"
+    override val librarySiteHistoryDeleted = "بازدیدهای این سایت حذف شد"
+    override val libraryInvalidBookmark = "عنوان و آدرس را کامل وارد کنید."
+    override val libraryAllFolders = "همهٔ پوشه‌ها"
+    override val libraryFolderBookmarks = "نشان‌های این پوشه"
+    override val libraryClearOlder = "پاک‌سازیِ تاریخچهٔ قدیمی"
+    override val libraryClearOlderBody = "بازدیدهای قدیمی‌تر از بازهٔ انتخاب‌شده حذف می‌شوند؛ نشان‌ها دست‌نخورده می‌مانند."
+    override val libraryClearOlder7 = "قدیمی‌تر از ۷ روز"
+    override val libraryClearOlder30 = "قدیمی‌تر از ۳۰ روز"
+
+    override val vaultAdvancedTools = "ابزارهای بیشتر"
+    override val vaultAdvancedToolsBody = "پشتیبان‌گیری، نبض نشست و نگهبان انقضا"
+    override val vaultHideAdvanced = "بستن ابزارها"
+    override val vaultSignedInTitle = "همیشه وارد بمان"
+    override val vaultSignedInBody = "سایت‌های تازه با محافظت روشن ساخته می‌شوند؛ وضعیتِ هر سایتِ موجود را جداگانه مدیریت کن."
     override val pulseToggle = "نبضِ هوشمند"
 }
 
@@ -1968,5 +2124,80 @@ private object EnglishStrings : MarbleStrings() {
     override val pulseUrgencyHigh = "needed soon"
     override val pulseUrgencyCritical = "about to sign out"
     override val pulseDone = "Wake-up finished."
+    override val permissionPopups = "Open pop-up windows"
+    override val permissionPopupTitle = "This site wants to open a new window"
+    override val permissionPopupBody = "Allow it if you are expecting a payment, Google sign-in or a file preview."
+    override val permissionAllow = "Allow"
+    override val permissionBlock = "Block"
+    override val permissionAskTitle = "Device access"
+    override fun permissionRequestBody(domain: String, permission: String) =
+        "$domain wants to use $permission."
+    override val permissionAndroidRequired = "This also needs a phone permission."
+    override val permissionDenied = "Permission denied."
+
+    override val proxyHostInvalid = "Proxy address is invalid (for example 127.0.0.1 or proxy.example.com)"
+    override val proxyPortInvalid = "Port must be between 1 and 65535."
+    override val proxyRestartRequired = "To apply the proxy, close and reopen the app."
+
+    override val suggestionHistory = "Recent"
+    override val suggestionBookmark = "Bookmark"
+    override val suggestionMostVisited = "Most visited"
+    override val suggestionOpenTabs = "Open tab"
+    override val suggestionsTitle = "Suggestions"
+    override val suggestionsEmpty = "No suggestions found."
+
+    override val libraryTitle = "Library"
+    override val libraryBookmarksTab = "Bookmarks"
+    override val libraryHistoryTab = "History"
+    override val librarySearchHint = "Search bookmarks and history…"
+    override val libraryAllBookmarks = "All bookmarks"
+    override val libraryAddBookmark = "Add bookmark"
+    override val libraryEditBookmark = "Edit bookmark"
+    override val librarySave = "Save"
+    override val libraryBookmarkTitle = "Title"
+    override val libraryBookmarkUrl = "Address"
+    override val libraryBookmarkFolder = "Folder"
+    override val libraryNewFolder = "New folder"
+    override val libraryFolderName = "Folder name"
+    override val libraryMoveToFolder = "Move to folder"
+    override val libraryDeleteBookmark = "Delete bookmark"
+    override val libraryDeleteBookmarkBody = "This bookmark will be removed for good."
+    override val libraryOpenInNewTab = "Open in new tab"
+    override val libraryDeleteHistoryItem = "Remove from history"
+    override val libraryDeleteHistoryBody = "This address will be removed from history; bookmarks stay untouched."
+    override val libraryDeleteSiteHistory = "Remove all visits to this site"
+    override val libraryClearHistoryTitle = "Clear history"
+    override val libraryClearHistoryBody = "All browsing history will be cleared. Bookmarks and sign-ins stay untouched."
+    override val libraryToday = "Today"
+    override val libraryYesterday = "Yesterday"
+    override val libraryThisWeek = "This week"
+    override val libraryThisMonth = "This month"
+    override val libraryOlder = "Older"
+    override val librarySort = "Sort"
+    override val libraryMoreOptions = "More options"
+    override val librarySortDate = "Date"
+    override val librarySortVisits = "Visits"
+    override val librarySortTitle = "Title"
+    override val libraryEmptyBookmarksSearch = "No matching bookmarks."
+    override val libraryEmptyHistorySearch = "No matching history."
+    override val libraryBookmarkSaved = "Bookmark saved"
+    override val libraryBookmarkUpdated = "Bookmark updated"
+    override val libraryBookmarkDeleted = "Bookmark deleted"
+    override val libraryFolderCreated = "Folder created"
+    override val libraryHistoryDeleted = "Removed from history"
+    override val librarySiteHistoryDeleted = "Removed all visits to this site"
+    override val libraryInvalidBookmark = "Enter a title and a complete address."
+    override val libraryAllFolders = "All folders"
+    override val libraryFolderBookmarks = "Bookmarks in this folder"
+    override val libraryClearOlder = "Clear old history"
+    override val libraryClearOlderBody = "Visits older than the selected range are removed; bookmarks stay untouched."
+    override val libraryClearOlder7 = "Older than 7 days"
+    override val libraryClearOlder30 = "Older than 30 days"
+
+    override val vaultAdvancedTools = "More tools"
+    override val vaultAdvancedToolsBody = "Backup, session pulse and expiry guardian"
+    override val vaultHideAdvanced = "Hide tools"
+    override val vaultSignedInTitle = "Always stay signed in"
+    override val vaultSignedInBody = "New sites start protected; manage the sign-in setting for existing sites individually."
     override val pulseToggle = "Smart pulse"
 }

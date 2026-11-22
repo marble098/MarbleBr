@@ -96,7 +96,7 @@ class ReaderAndPermissionEnginesTest {
         assertEquals(1, SitePermissionPolicy.blockedCount(base))
         val blockedBoth = base.with(SitePermission.CAMERA, PermissionState.BLOCK)
         assertEquals(2, SitePermissionPolicy.blockedCount(blockedBoth))
-        assertEquals(6, SitePermissionPolicy.ordered.size)
+        assertEquals(7, SitePermissionPolicy.ordered.size)
     }
 
     /* ------------------------------------ نامِ هوشمند تب ------------------------------------ */

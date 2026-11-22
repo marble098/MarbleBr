@@ -17,6 +17,7 @@ import com.marble098.marblebr.core.model.SessionSnapshotMeta
 import com.marble098.marblebr.core.model.SiteUsagePattern
 import com.marble098.marblebr.core.model.SiteInsuranceCandidate
 import com.marble098.marblebr.core.model.WebAppContainer
+import com.marble098.marblebr.core.preferences.BrowserPreferencesRepository
 import com.marble098.marblebr.engine.ContainerSessionManager
 import com.marble098.marblebr.engine.KeepAliveScheduler
 import com.marble098.marblebr.vault.SessionVaultManager
@@ -101,6 +102,7 @@ class VaultDashboardViewModel @Inject constructor(
     private val healthEventDao: HealthEventDao,
     private val backupManager: VaultBackupManager,
     private val historyDao: com.marble098.marblebr.core.database.HistoryDao,
+    private val browserPreferencesRepository: BrowserPreferencesRepository,
 ) : ViewModel() {
 
     val containers: StateFlow<List<WebAppContainer>> = containerDao.observeAll()
@@ -489,6 +491,14 @@ class VaultDashboardViewModel @Inject constructor(
      * قبلاً برای هر سایت باید جداگانه به پنل جزئیات می‌رفت؛ این تابع همان تصمیم را برای
      * همهٔ سایت‌ها (آن‌هایی که با فیلتر فعلی دیده می‌شوند) یک‌جا اعمال می‌کند.
      */
+    /** Set the default protection applied to containers created from now on. */
+    fun setGlobalProtectionDefault(enabled: Boolean) {
+        viewModelScope.launch {
+            browserPreferencesRepository.setGlobalNeverSignOut(enabled)
+            _globalProtectionEnabled.value = enabled
+        }
+    }
+
     fun setProtectionForAll(enabled: Boolean) {
         runBusy("protect-all") {
             containers.value.forEach { container ->

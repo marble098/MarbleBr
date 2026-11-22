@@ -107,6 +107,22 @@ object OneTimeCodeExtractor {
     /** حالتِ گروه‌بندی‌شده: «۱۲۳-۴۵۶»، «123 456»، «12 34 56». */
     private val GROUPED_CODE = Regex("""\d{2,4}(?:[ -]\d{2,4}){1,2}""")
 
+    /**
+     * الگویِ «برچسبِ چسبیده به عدد» — دقیقاً همان چیزی که در پیامک‌های بانکی دیده می‌شود:
+     * «رمز 8504897»، «رمز: 482913»، «کد 12345»، «Your code is 123456».
+     *
+     * این الگو عمداً **فقط** فاصله/دونقطه/خط‌تیره/«is» را بینِ برچسب و عدد قبول می‌کند؛ پس
+     * «کد پیگیری 123456» یا «کد تخفیف 1400» هرگز با آن مطابقت نمی‌کنند (چون واژهٔ دیگری بین
+     * برچسب و عدد آمده). به همین دلیل یک بونوسِ قوی و بی‌خطر به کاندید می‌دهد.
+     */
+    private val LABELLED_CODE = Regex(
+        """(?i)(?<![\p{L}\p{N}])(?:رمز|کد|otp|one[ -]?time[ -]?(?:code|password)|""" +
+            """verification[ -]?code|security[ -]?code|login[ -]?code|sign[ -]?in[ -]?code|""" +
+            """auth(?:entication)?[ -]?code|access[ -]?code|confirm(?:ation)?[ -]?code|""" +
+            """passcode|pin[ -]?code|dynamic[ -]?password|password)""" +
+            """\s*(?:is|=|:|-|—)?\s*([0-9]{4,8})""",
+    )
+
     private const val PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹"
     private const val ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩"
 
@@ -119,6 +135,11 @@ object OneTimeCodeExtractor {
             when {
                 char in PERSIAN_DIGITS -> append('0' + PERSIAN_DIGITS.indexOf(char))
                 char in ARABIC_DIGITS -> append('0' + ARABIC_DIGITS.indexOf(char))
+                // Some banks/typesetters use Arabic letter variants (ي/ك) instead of Persian
+                // (ی/ک). Keywords are written with the Persian forms, so normalize both.
+                char == '\u064A' -> append('\u06CC') // Arabic yeh -> Persian yeh
+                char == '\u0643' -> append('\u06A9') // Arabic kaf -> Persian kaf
+                char == '\u06C0' -> append('\u0647') // heh with yeh -> heh
                 char == '\u00A0' || char == '\u200C' || char == '\u200F' || char == '\u200E' || char == '\t' -> append(' ')
                 char == '\u06F0' -> append('0')
                 else -> append(char)
@@ -278,6 +299,11 @@ object OneTimeCodeExtractor {
 
         var score = base + (positive?.weight ?: 0)
 
+        // A label directly glued to the digits is the strongest possible signal. This is what
+        // makes real bank SMS such as «رمز 8504897» reliable even when the same message also
+        // contains a card number, an amount and a tracking code.
+        if (isDirectlyLabelled(lower, candidate)) score += DIRECT_LABEL_BONUS
+
         val negative = nearestKeyword(lower, candidate, NEGATIVE_KEYWORDS)
         if (negative != null && negative.distance <= PENALTY_WINDOW) {
             val weight = negativePenalty(lower, negative)
@@ -289,7 +315,19 @@ object OneTimeCodeExtractor {
         return score.coerceAtMost(100)
     }
 
+    /** بونوسِ «برچسبِ چسبیده»؛ از بونوسِ کلیدواژهٔ معمولی جدا اعمال می‌شود. */
+    private const val DIRECT_LABEL_BONUS = 52
+
     private data class KeywordHit(val distance: Int, val weight: Int, val keyword: String)
+
+    /** آیا این کاندید دقیقاً با الگوی «رمز/کد + عدد» مطابقت دارد؟ */
+    private fun isDirectlyLabelled(lower: String, candidate: Candidate): Boolean {
+        LABELLED_CODE.findAll(lower).forEach { match ->
+            val digits = match.groups[1] ?: return@forEach
+            if (digits.value == candidate.code && digits.range.first == candidate.start) return true
+        }
+        return false
+    }
 
     /** نزدیک‌ترین تکرار از هر کلیدواژه (نه فقط اولین تکرار در متن). */
     private fun nearestKeyword(lower: String, candidate: Candidate, keywords: List<String>): KeywordHit? {

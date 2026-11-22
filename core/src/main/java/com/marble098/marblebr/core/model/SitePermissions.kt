@@ -17,6 +17,8 @@ enum class SitePermission {
     CAMERA,
     MICROPHONE,
     NOTIFICATIONS,
+    /** باز کردنِ پنجرهٔ تازه (popup) از سوی صفحه. */
+    POPUPS,
 }
 
 /** وضعیتِ یک دسترسی برای یک سایت. */
@@ -77,6 +79,7 @@ object SitePermissionPolicy {
         SitePermission.CAMERA to PermissionState.ASK,
         SitePermission.MICROPHONE to PermissionState.ASK,
         SitePermission.NOTIFICATIONS to PermissionState.ASK,
+        SitePermission.POPUPS to PermissionState.ASK,
     )
 
     /** انتخابِ بعدی هنگام لمسِ یک دسترسی (چرخهٔ سه‌حالته: اجازه → بپرس → بلاک). */
@@ -94,6 +97,7 @@ object SitePermissionPolicy {
         SitePermission.CAMERA,
         SitePermission.MICROPHONE,
         SitePermission.NOTIFICATIONS,
+        SitePermission.POPUPS,
     )
 
     /** یک‌خطِ خلاصه برای نشان دادن در کارت سایت (مثلاً «۲ دسترسی بسته»). */

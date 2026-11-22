@@ -12,6 +12,8 @@ import com.marble098.marblebr.core.model.CredentialSaveMode
 import com.marble098.marblebr.core.model.DnsMode
 import com.marble098.marblebr.core.model.HomeShortcutPosition
 import com.marble098.marblebr.core.model.ProxyDnsConfig
+import com.marble098.marblebr.core.model.ProxyValidation
+import com.marble098.marblebr.core.model.ProxyValidator
 import com.marble098.marblebr.core.model.ProxyType
 import com.marble098.marblebr.core.model.SearchEngine
 import com.marble098.marblebr.core.model.ThemeMode
@@ -174,6 +176,63 @@ class SettingsViewModel @Inject constructor(
     fun setAskBeforeClosingTabs(enabled: Boolean) {
         viewModelScope.launch { preferencesRepository.setAskBeforeClosingTabs(enabled) }
     }
+
+    /**
+     * اعتبارسنجیِ همین‌جا و پیش از ذخیره.
+     *
+     * **باگِ نسخهٔ قبل:** پورتِ نامعتبر با `?: 1080` بی‌صدا جایگزین می‌شد و میزبانِ خالی هم
+     * ذخیره می‌شد؛ کاربر «ذخیره شد» می‌دید ولی پروکسی هیچ‌وقت اعمال نمی‌شد. حالا یا همه‌چیز
+     * معتبر است یا پیامِ روشنِ خطا و هیچ ذخیره‌ای.
+     */
+    fun validateProxy(type: ProxyType, host: String, portText: String): ProxyValidation {
+        if (type == ProxyType.NONE) return ProxyValidation(isValid = true)
+        val port = portText.trim().toIntOrNull()
+            ?: return ProxyValidation(isValid = false, portInvalid = true)
+        return ProxyValidator.validate(type, host, port)
+    }
+
+    /** پیامِ خطای مناسب برای هر حالتِ نامعتبر (یا null اگر همه‌چیز درست است). */
+    fun proxyValidationMessage(validation: ProxyValidation): String? {
+        if (validation.isValid) return null
+        val strings = localizationManager.current()
+        return when {
+            validation.hostBlank || validation.hostInvalid -> strings.proxyHostInvalid
+            validation.portInvalid -> strings.proxyPortInvalid
+            else -> strings.proxyHostInvalid
+        }
+    }
+
+    /**
+     * ذخیرهٔ DNS/پروکسی؛ [Boolean] نشان می‌دهد ذخیره انجام شد یا نه.
+     */
+    fun saveNetwork(
+        dnsMode: DnsMode,
+        customDohUri: String,
+        proxyType: ProxyType,
+        proxyHost: String,
+        proxyPortText: String,
+    ): Boolean {
+        val validation = validateProxy(proxyType, proxyHost, proxyPortText)
+        proxyValidationMessage(validation)?.let { message ->
+            _snackbarMessage.value = message
+            return false
+        }
+        val port = proxyPortText.trim().toIntOrNull() ?: 1080
+        updateDnsAndProxy(
+            dnsMode = dnsMode,
+            customDohUri = customDohUri,
+            proxyType = proxyType,
+            proxyHost = ProxyValidator.normalizeHost(proxyHost),
+            proxyPort = port,
+        )
+        return true
+    }
+
+    /**
+     * آیا موتورِ Gecko قبلاً ساخته شده؟ پروکسی فقط در ساختِ موتور خوانده می‌شود، پس اگر
+     * موتور بالا آمده باشد کاربر باید اپ را ببند و دوباره باز کند.
+     */
+    fun isRuntimeCreated(): Boolean = sessionManager.isRuntimeCreated()
 
     fun updateDnsAndProxy(
         dnsMode: DnsMode,

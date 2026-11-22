@@ -242,6 +242,14 @@ fun VaultDashboardScreen(
                 )
             }
 
+            item(key = "global_sign_in") {
+                GlobalSignInCard(
+                    strings = strings,
+                    enabled = globalProtection,
+                    onCheckedChange = viewModel::setGlobalProtectionDefault,
+                )
+            }
+
             if (!globalProtection) {
                 item(key = "protection_off") {
                     InfoBanner(
@@ -589,6 +597,64 @@ private fun VaultTopBar(
 }
 
 @Composable
+private fun GlobalSignInCard(
+    strings: MarbleStrings,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .liquidGlass(
+                style = ChromeBarStyle.GLASS,
+                shape = RoundedCornerShape(22.dp),
+                fillAlphaOverride = 0.52f,
+                elevation = 5.dp,
+            )
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .clip(RoundedCornerShape(15.dp))
+                .background(colors.primary.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = if (enabled) Icons.Default.VerifiedUser else Icons.Default.LockOpen,
+                contentDescription = null,
+                tint = if (enabled) colors.primary else colors.onSurfaceVariant,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                text = strings.vaultSignedInTitle,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = strings.vaultSignedInBody,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Switch(
+            checked = enabled,
+            onCheckedChange = onCheckedChange,
+            modifier = Modifier.testTag("vault_global_sign_in_switch"),
+        )
+    }
+}
+
+@Composable
 private fun VaultHero(
     overview: VaultOverview,
     strings: MarbleStrings,
@@ -669,23 +735,34 @@ private fun VaultHero(
             trackColor = colors.primary.copy(alpha = 0.16f),
         )
 
+        // نقدِ نسخهٔ قبل: سه «قرصِ آمار» ارتفاعِ خودشان را داشتند؛ چون برچسب‌ها طولِ متفاوت
+        // دارند، پایینِ کارت‌ها با هم نمی‌خواند و ردیف کج دیده می‌شد. حالا ردیف با
+        // `IntrinsicSize.Min` یک ارتفاعِ مشترک می‌سازد و هر قرص همان ارتفاع را پر می‌کند.
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             StatPill(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
                 value = overview.totalSites.toString(),
                 label = strings.vaultStatSites,
             )
             StatPill(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
                 value = overview.protectedSites.toString(),
                 label = strings.vaultStatProtected,
                 accent = colors.primary,
             )
             StatPill(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
                 value = overview.totalSnapshots.toString(),
                 label = strings.vaultStatSnapshots,
                 accent = colors.tertiary,
@@ -738,10 +815,11 @@ private fun SmallActionPill(
     val colors = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
+            .heightIn(min = 34.dp)
             .clip(RoundedCornerShape(50))
             .background(colors.primary.copy(alpha = if (enabled) 0.16f else 0.08f))
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
@@ -753,7 +831,7 @@ private fun SmallActionPill(
         )
         Text(
             text = text,
-            style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.sp),
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.5.sp),
             color = if (enabled) colors.primary else colors.outline,
             maxLines = 1,
         )
@@ -772,8 +850,9 @@ private fun StatPill(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
             .background(colors.surface.copy(alpha = 0.55f))
-            .padding(vertical = 8.dp, horizontal = 6.dp),
+            .padding(vertical = 10.dp, horizontal = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
         Text(
             text = value,
@@ -783,7 +862,8 @@ private fun StatPill(
         )
         Text(
             text = label,
-            style = MaterialTheme.typography.labelLarge.copy(fontSize = 9.5.sp, lineHeight = 12.sp),
+            // ۹٫۵sp زیرِ آستانهٔ خوانایی بود؛ ۱۱sp با lineHeight کافی خوانا و هم‌اندازه است.
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.sp, lineHeight = 14.sp),
             color = colors.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
