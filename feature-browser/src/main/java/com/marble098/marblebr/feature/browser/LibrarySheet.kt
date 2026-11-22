@@ -537,7 +537,7 @@ private fun LibraryRow(
                     },
                     onClick = {
                         menuOpen = false
-                        onOpenInNewTab(url)
+                        onOpenInNewTab()
                     },
                 )
                 if (onEdit != null) {

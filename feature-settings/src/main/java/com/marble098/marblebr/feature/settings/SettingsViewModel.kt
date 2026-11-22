@@ -194,7 +194,7 @@ class SettingsViewModel @Inject constructor(
     /** پیامِ خطای مناسب برای هر حالتِ نامعتبر (یا null اگر همه‌چیز درست است). */
     fun proxyValidationMessage(validation: ProxyValidation): String? {
         if (validation.isValid) return null
-        val strings = localizationManager.current()
+        val strings = localizationManager.strings(preferences.value.language)
         return when {
             validation.hostBlank || validation.hostInvalid -> strings.proxyHostInvalid
             validation.portInvalid -> strings.proxyPortInvalid
