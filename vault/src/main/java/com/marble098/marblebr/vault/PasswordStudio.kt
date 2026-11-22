@@ -462,7 +462,7 @@ class PasswordStudio @Inject constructor(
     }
 
     /** کارتِ ذخیره را برمی‌دارد و گذرواژهٔ نگه‌داشته‌شده را از حافظه پاک می‌کند. */
-    private fun discardPendingPrompt(persist: (PasswordSavePrompt) -> Unit): Boolean {
+    private suspend fun discardPendingPrompt(persist: suspend (PasswordSavePrompt) -> Unit): Boolean {
         val prompt = _pendingPrompt.value ?: return false
         _pendingPrompt.value = null
         persist(prompt)
