@@ -623,7 +623,7 @@ class ContainerSessionManager @Inject constructor(
                         },
                     ),
                 )
-                result
+                return result
             }
         }
 
@@ -1425,6 +1425,7 @@ class ContainerSessionManager @Inject constructor(
 
     companion object {
         private const val EXTENSION_START_TIMEOUT_MILLIS = 10_000L
+        private const val NETWORK_CONFIG_WAIT_MILLIS = 1_500L
         private const val AUTO_SNAPSHOT_TIMEOUT_MILLIS = 4_000L
         private const val MANUAL_SNAPSHOT_TIMEOUT_MILLIS = 9_000L
         private const val MANUAL_SNAPSHOT_RETRY_DELAY_MILLIS = 500L
