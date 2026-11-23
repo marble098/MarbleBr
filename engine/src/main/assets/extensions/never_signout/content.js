@@ -271,7 +271,8 @@
           port.postMessage({ event: "RESTORE_RESULT", requestId: message.requestId, ...result });
         } else if (message.type === "EVAL_JS") {
           let result = "";
-          const matchesPage = !message.expectedUrl || (!pageHidden && location.href === message.expectedUrl);
+          const matchesPage = (!message.expectedUrl || (!pageHidden && location.href === message.expectedUrl)) &&
+            (!message.requireVisible || document.visibilityState === "visible");
           try { if (matchesPage) result = String(eval(message.script) ?? ""); } catch (_) {}
           port.postMessage({ event: "JS_RESULT", requestId: message.requestId, result });
         } else if (message.type === "CAPTURE_PAGE") {

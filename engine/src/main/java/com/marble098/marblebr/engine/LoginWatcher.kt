@@ -59,20 +59,21 @@ class LoginWatcher @Inject constructor(
         }
 
     /** کد را همین حالا از پیامک/اعلان پیدا و در کادر بنویس؛ برای دکمهٔ «کد را بگذار». */
-    suspend fun fillOneTimeCodeNow(page: LoginPage): Boolean =
+    suspend fun fillOneTimeCodeNow(page: LoginPage, isActive: () -> Boolean): Boolean =
         withContext(Dispatchers.Main.immediate) {
+            if (!isActive() || !isCurrent(page)) return@withContext false
             val fieldsRaw = sessionManager.evalInPageForLogin(page, OtpFieldProbe.DISCOVER_SCRIPT) ?: return@withContext false
-            if (!passwordStudio.hasCodeField(fieldsRaw, page.url)) return@withContext false
+            if (!isActive() || !isCurrent(page) || !passwordStudio.hasCodeField(fieldsRaw, page.url)) return@withContext false
             val directive = passwordStudio.requestOneTimeCode(
                 pageUrl = page.url,
                 observationRaw = null,
                 fieldsRaw = fieldsRaw,
             )
-            if (directive !is LoginOneTimeCodeDirective.Ready) return@withContext false
+            if (directive !is LoginOneTimeCodeDirective.Ready || !isActive() || !isCurrent(page)) return@withContext false
             val result = sessionManager.evalInPageForLogin(page, directive.script)
             val filled = result == "filled" || result == "already"
             if (filled) {
-                passwordStudio.consumeNotificationCode()
+                passwordStudio.confirmOneTimeCodeFilled(page.url, directive)
                 smsBridge.get().notifyCodeFilled(directive.digits, directive.fromSms)
             }
             filled

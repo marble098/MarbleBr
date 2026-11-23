@@ -182,7 +182,9 @@ class LoginIntelligenceTest {
         val first = machine.onOtpScreen(loginUrl, hit, plan)
         assertTrue(first is LoginAdvance.FillOneTimeCode)
         assertEquals("482913", (first as LoginAdvance.FillOneTimeCode).code)
-        // همان کد برای همان صفحه دوباره نوشته نمی‌شود.
+        // A failed or cancelled proposal can be retried. Only a completed fill is consumed.
+        assertTrue(machine.onOtpScreen(loginUrl, hit, plan) is LoginAdvance.FillOneTimeCode)
+        machine.markOneTimeCodeFilled(loginUrl, OneTimeCodeExtractor.fingerprint(hit.code))
         assertEquals(LoginAdvance.Nothing, machine.onOtpScreen(loginUrl, hit, plan))
     }
 

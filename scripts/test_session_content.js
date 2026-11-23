@@ -83,8 +83,9 @@ vm.runInNewContext(code, {
   await new Promise(resolve => setImmediate(resolve));
   assert.ok(sent.some(message => message.event === "STORAGE_SNAPSHOT" && !message.requestId));
 
-  const evaluate = expectedUrl => listeners.port({
-    type: "EVAL_JS", requestId: "fill", expectedUrl, script: "'filled'"
+  document.visibilityState = "visible";
+  const evaluate = (expectedUrl, requireVisible = false) => listeners.port({
+    type: "EVAL_JS", requestId: "fill", expectedUrl, requireVisible, script: "'filled'"
   });
   await evaluate(location.href);
   assert.equal(sent.at(-1).result, "filled");
@@ -92,6 +93,12 @@ vm.runInNewContext(code, {
   assert.equal(sent.at(-1).result, "");
   await evaluate("https://my.mci.ir:8443/panel");
   assert.equal(sent.at(-1).result, "");
+  document.visibilityState = "hidden";
+  await evaluate(location.href, true);
+  assert.equal(sent.at(-1).result, "", "login and OTP scripts must not run in a hidden tab");
+  document.visibilityState = "visible";
+  await evaluate(location.href, true);
+  assert.equal(sent.at(-1).result, "filled");
   listeners.pagehide();
   await evaluate(location.href);
   assert.equal(sent.at(-1).result, "", "same-URL reload must not fill the document being left");

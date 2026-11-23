@@ -328,7 +328,7 @@ class VaultDashboardViewModel @Inject constructor(
                 pattern.copy(
                     neverSignOutEnabled = container.neverSignOutEnabled,
                     cookieDaysConfigured = container.cookieExpirationDays,
-                    lastSuccessfulCheckAtEpochMillis = snapshots.value
+                    lastSnapshotAtEpochMillis = snapshots.value
                         .filter { it.containerId == container.id }
                         .maxOfOrNull { it.capturedAtEpochMillis },
                 )

@@ -7,6 +7,7 @@ import com.marble098.marblebr.core.model.AutofillCandidate
 import com.marble098.marblebr.core.model.CredentialCaptureHeuristics
 import com.marble098.marblebr.core.model.PasswordFingerprint
 import com.marble098.marblebr.core.model.PasswordQualityChecker
+import com.marble098.marblebr.core.model.SecureOrigin
 import com.marble098.marblebr.core.model.VaultBackupCredential
 import com.marble098.marblebr.core.database.CredentialEntity
 import kotlinx.coroutines.flow.Flow
@@ -35,6 +36,8 @@ data class CredentialFields(
     val lastOneTimeCodeAtEpochMillis: Long = 0L,
     /** آخرین استفاده برای پرکردنِ خودکار؛ فقط زمان، نه محتوا. */
     val lastAutofillAtEpochMillis: Long = 0L,
+    /** Null for legacy records whose original host/port may have been normalized away. */
+    val autofillOrigin: String? = null,
 ) {
     /** طولِ گذرواژه برای نمایشِ وضعیت؛ خودِ گذرواژه هرگز در فراداده نمی‌رود. */
     val passwordLength: Int get() = password.length
@@ -51,6 +54,12 @@ data class SavedCredential(
 
     /** گذرواژهٔ کوتاه و بی‌اثر است (کدِ یکبارمصرف یا گذرواژهٔ خالی). */
     val looksLikePlaceholder: Boolean get() = fields.password.length < 6 || fields.password.all(Char::isDigit)
+
+    /** Old records must be explicitly reviewed and saved before they can be filled. */
+    fun canAutofillOn(pageUrl: String): Boolean {
+        val confirmed = fields.autofillOrigin?.let { SecureOrigin.from(it) } ?: return false
+        return confirmed == SecureOrigin.from(fields.site, allowBareHost = true) && confirmed == SecureOrigin.from(pageUrl)
+    }
 }
 
 /**
@@ -89,7 +98,11 @@ class CredentialVault @Inject constructor(
         CredentialReadResult(readable, unreadableCount = entries.size - readable.size)
     }.catch { emit(CredentialReadResult(storageUnavailable = true)) }
 
-    suspend fun save(fields: CredentialFields, id: String? = null): SavedCredential {
+    /** Saving from the editor or a captured login explicitly confirms its exact site. */
+    suspend fun save(fields: CredentialFields, id: String? = null): SavedCredential =
+        saveInternal(fields, id, confirmOrigin = true)
+
+    private suspend fun saveInternal(fields: CredentialFields, id: String?, confirmOrigin: Boolean): SavedCredential {
         require(isValidSite(fields.site)) { "An HTTP(S) site URL is required" }
         require(fields.username.isNotBlank() || fields.password.isNotBlank()) { "Empty credentials" }
         val key = id ?: UUID.randomUUID().toString()
@@ -100,6 +113,11 @@ class CredentialVault @Inject constructor(
         val previous = old?.let { runCatching { decryptOrThrow(it) }.getOrNull() }?.fields
         val merged = fields.copy(
             site = fields.site.trim(),
+            autofillOrigin = if (confirmOrigin) {
+                SecureOrigin.from(fields.site, allowBareHost = true)?.toString()
+            } else {
+                fields.autofillOrigin
+            },
             lastOneTimeCodeAtEpochMillis = if (fields.lastOneTimeCodeAtEpochMillis > 0) {
                 fields.lastOneTimeCodeAtEpochMillis
             } else {
@@ -190,6 +208,7 @@ class CredentialVault @Inject constructor(
                     notes = saved.fields.notes,
                     createdAtEpochMillis = saved.createdAtEpochMillis,
                     updatedAtEpochMillis = saved.updatedAtEpochMillis,
+                    autofillOrigin = saved.fields.autofillOrigin,
                 )
             }.getOrNull()
         }
@@ -217,6 +236,8 @@ class CredentialVault @Inject constructor(
             username = record.username,
             password = record.password,
             notes = record.notes,
+            // Legacy backups have no origin provenance and remain blocked until reviewed.
+            autofillOrigin = record.autofillOrigin,
         )
         val encrypted = cipher.encrypt(
             plaintext = json.encodeToString(fields),
@@ -268,15 +289,15 @@ class CredentialVault @Inject constructor(
             lastAutofillAtEpochMillis = autofilledAtEpochMillis ?: saved.fields.lastAutofillAtEpochMillis,
             lastOneTimeCodeAtEpochMillis = oneTimeCodeAtEpochMillis ?: saved.fields.lastOneTimeCodeAtEpochMillis,
         )
-        save(updated, id)
+        saveInternal(updated, id, confirmOrigin = false)
         return true
     }
 
-    /** گذرواژه فقط پس از تأییدِ صریحِ کاربر و فقط برای همان لحظهٔ پرکردن خوانده می‌شود. */
-    suspend fun credentialsForAutofill(id: String): AutofillSecret? {
+    /** Recheck the exact confirmed HTTPS origin when the secret is read, not just when it is listed. */
+    suspend fun credentialsForAutofill(id: String, pageUrl: String): AutofillSecret? {
         val entity = dao.getById(id) ?: return null
         val saved = runCatching { decryptOrThrow(entity) }.getOrNull() ?: return null
-        if (saved.fields.password.isEmpty()) return null
+        if (saved.fields.password.isEmpty() || !saved.canAutofillOn(pageUrl)) return null
         return AutofillSecret(username = saved.fields.username, password = saved.fields.password)
     }
 
@@ -333,10 +354,10 @@ class CredentialVault @Inject constructor(
                     val scheme = uri.scheme.lowercase()
                     val path = uri.rawPath.orEmpty()
                     val query = uri.rawQuery?.let { "?$it" }.orEmpty()
-                    // `www.` حذف می‌شود تا ورودِ ذخیره‌شده با دامنهٔ سایت در پرکردنِ خودکار
-                    // یکی باشد (همان قاعده‌ای که CredentialCaptureHeuristics.domainOf دارد).
-                    val host = uri.host.lowercase().removePrefix("www.")
-                    "$scheme://$host$path$query"
+                    // Preserve the actual host and port: www, subdomains and non-default ports
+                    // are different web origins and must not share credentials implicitly.
+                    val authority = uri.rawAuthority.lowercase()
+                    "$scheme://$authority$path$query"
                 }
             }.getOrDefault(withScheme)
         }

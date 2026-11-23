@@ -606,6 +606,7 @@ class ContainerSessionManager @Inject constructor(
                     JSONObject()
                         .put("type", "EVAL_JS")
                         .put("expectedUrl", expectedPage?.url)
+                        .put("requireVisible", expectedPage != null)
                         .put("requestId", requestId)
                         .put("script", script),
                 )

@@ -88,17 +88,26 @@ object LoginObservationProbe {
     var passwords = [].slice.call(document.querySelectorAll('input[type=password]')).filter(visible);
     if (!passwords.length) return 'no-password';
     var passwordField = passwords[0];
-    var form = passwordField.closest('form') || document;
+    var ownerForm = passwordField.form || passwordField.closest('form');
+    function safeForm() {
+      if (!ownerForm) return true;
+      var action = new URL(ownerForm.action || location.href, document.baseURI || location.href);
+      if (action.protocol !== 'https:' || action.origin !== location.origin) return false;
+      var submitters = [].slice.call(ownerForm.querySelectorAll('button[formaction],input[type=submit][formaction],input[type=image][formaction]'));
+      for (var i = 0; i < submitters.length; i++) {
+        var target = new URL(submitters[i].formAction || submitters[i].getAttribute('formaction') || location.href, document.baseURI || location.href);
+        if (target.protocol !== 'https:' || target.origin !== location.origin) return false;
+      }
+      return true;
+    }
+    if (!safeForm()) return 'unsafe-form';
+    var form = ownerForm || document;
     var usernames = [].slice.call(form.querySelectorAll(
       'input[type=text],input[type=email],input[type=tel],input[autocomplete=username],input[name=username],input[name=email]'
-    )).filter(visible);
-    if (!usernames.length) {
-      usernames = [].slice.call(document.querySelectorAll(
-        'input[type=text],input[type=email],input[type=tel],input[autocomplete=username]'
-      )).filter(visible);
-    }
+    )).filter(function (el) { return visible(el) && (!ownerForm || !el.form || el.form === ownerForm); });
     if (!usernames.length) return 'no-form';
     setValue(usernames[0], marbleUser);
+    if (!safeForm()) return 'unsafe-form';
     setValue(passwordField, marblePassword);
     return 'filled';
   } catch (error) {
