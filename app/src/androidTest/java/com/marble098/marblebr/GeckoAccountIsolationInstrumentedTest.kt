@@ -95,6 +95,7 @@ class GeckoAccountIsolationInstrumentedTest {
                 assertAccount(site.observe("first-check"), "first")
                 navigate(manager, "second", "${site.origin}/observe-page?tag=second-check")
                 assertAccount(site.observe("second-check"), "second")
+                assertFalse("A capture for an old route must not read the current document", capture(manager, "second", "${site.origin}/panel"))
 
                 val popupRequests = LinkedBlockingQueue<PopupPermissionRequest>()
                 instrumentation.runOnMainSync {
@@ -132,7 +133,7 @@ class GeckoAccountIsolationInstrumentedTest {
                 assertAccount(site.observe("first-reopen"), "first")
 
                 // Save the current account state, then remove its browser data and test an explicit restore.
-                assertTrue(capture(manager, "second", "${site.origin}/observe-page"))
+                assertTrue(capture(manager, "second", "${site.origin}/observe-page?tag=second-check"))
                 val latestSnapshot = runBlocking { requireNotNull(db.snapshotDao().getLatestHealthySnapshot(second.id)) }
                 val staleOutcome = runBlocking { manager.restoreSnapshotOnOpenTab(secondSnapshot.toMeta()) }
                 assertTrue("An older snapshot must not replace newer state", staleOutcome.superseded)

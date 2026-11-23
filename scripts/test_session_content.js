@@ -11,6 +11,8 @@ let prepared = { nonce: null };
 let restoredCount = 0;
 let frameFails = false;
 let lastFrame = null;
+let captureGate = null;
+let prepareGate = null;
 const event = name => ({ addListener: fn => { listeners[name] = fn; } });
 const makeStorage = initial => {
   const items = new Map(Object.entries(initial));
@@ -28,8 +30,8 @@ const browser = { runtime: {
   connectNative: () => port,
   sendMessage: async msg => {
     runtimeMessages.push(msg);
-    if (msg.type === "GET_CAPTURED_COOKIES") return { cookies: [] };
-    if (msg.type === "PREPARE_RESTORE") return prepared;
+    if (msg.type === "GET_CAPTURED_COOKIES") return captureGate ? await captureGate : { cookies: [] };
+    if (msg.type === "PREPARE_RESTORE") return prepareGate ? await prepareGate : prepared;
     if (msg.type === "RESTORE_STATUS") return { count: restoredCount };
     return { ok: true };
   },
@@ -68,10 +70,33 @@ vm.runInNewContext(code, {
   assert.equal(persistCalls, 0, "unprotected pages must not request persistent storage");
   assert.equal(sent.length, 0, "unprotected pages must not send automatic snapshots");
 
+  document.cookie = "unknown_scope=private";
   await listeners.port({ type: "CAPTURE_PAGE", requestId: "manual" });
   assert.equal(sent[0].requestId, "manual", "explicit manual capture still works when protection is off");
+  assert.equal(sent[0].cookies.length, 0, "document.cookie lacks scope metadata and must not be guessed");
   assert.equal(sent[0].localStorage.user, "one");
   assert.equal(sent[0].sessionStorage.session, "two");
+
+  let releaseCapture;
+  captureGate = new Promise(resolve => { releaseCapture = resolve; });
+  const oldUrl = location.href;
+  const staleCapture = listeners.port({ type: "CAPTURE_PAGE", requestId: "stale", expectedUrl: oldUrl });
+  await new Promise(resolve => setImmediate(resolve));
+  location.href = "https://my.mci.ir/next-route";
+  releaseCapture({ cookies: [] });
+  await staleCapture;
+  captureGate = null;
+  assert.equal(sent.at(-1).event, "CAPTURE_FAILED", "route changes invalidate an in-flight capture");
+  location.href = oldUrl;
+  captureGate = new Promise(resolve => { releaseCapture = resolve; });
+  const currentCapture = listeners.port({ type: "CAPTURE_PAGE", requestId: "current", expectedUrl: oldUrl });
+  await new Promise(resolve => setImmediate(resolve));
+  localStorage.setItem("user", "after-logout");
+  releaseCapture({ cookies: [] });
+  await currentCapture;
+  captureGate = null;
+  assert.equal(sent.at(-1).localStorage.user, "after-logout", "slow sources must not freeze stale storage");
+  localStorage.setItem("user", "one");
 
   await listeners.port({ type: "SET_COOKIE_POLICY", enabled: true, days: 30, persistStorage: true });
   await Promise.resolve();
@@ -81,7 +106,9 @@ vm.runInNewContext(code, {
   document.visibilityState = "hidden";
   listeners.visibilitychange();
   await new Promise(resolve => setImmediate(resolve));
-  assert.ok(sent.some(message => message.event === "STORAGE_SNAPSHOT" && !message.requestId));
+  assert.ok(sent.some(message => message.event === "AUTO_CAPTURE_REQUEST" && message.url === location.href));
+  assert.equal(sent.some(message => message.event === "STORAGE_SNAPSHOT" && !message.requestId), false,
+    "automatic captures must be bound by the native caller");
 
   document.visibilityState = "visible";
   const evaluate = (expectedUrl, requireVisible = false) => listeners.port({
@@ -121,6 +148,27 @@ vm.runInNewContext(code, {
   assert.equal(sent.at(-1).storageKeyCount, 1);
 
   const cookiePayload = { origin: "https://my.mci.ir", cookies: [{ name: "session", value: "private" }] };
+  let releasePrepare;
+  prepareGate = new Promise(resolve => { releasePrepare = resolve; });
+  const staleRestore = listeners.port({ type: "APPLY_VAULT_SNAPSHOT", requestId: "stale-restore", expectedUrl: location.href, payload: cookiePayload });
+  await new Promise(resolve => setImmediate(resolve));
+  await listeners.port({ type: "CANCEL_VAULT_RESTORE", requestId: "stale-restore" });
+  let releaseCurrent;
+  prepareGate = new Promise(resolve => { releaseCurrent = resolve; });
+  const currentRestore = listeners.port({ type: "APPLY_VAULT_SNAPSHOT", requestId: "current-restore", expectedUrl: location.href, payload: cookiePayload });
+  await new Promise(resolve => setImmediate(resolve));
+  releasePrepare({ nonce: "stale" });
+  await staleRestore;
+  assert.equal(lastFrame, null, "a cancelled restore must not launch a frame even if the URL matches again");
+  assert.ok(runtimeMessages.some(message => message.type === "CANCEL_RESTORE" && message.restoreId === "stale-restore"));
+  await listeners.port({ type: "CANCEL_VAULT_RESTORE", requestId: "stale-restore" });
+  assert.equal(runtimeMessages.some(message => message.type === "CANCEL_RESTORE" && message.restoreId === "current-restore"), false,
+    "a late native cancellation must not cancel a newer restore");
+  releaseCurrent({ nonce: "current" });
+  await currentRestore;
+  assert.equal(lastFrame.src, "https://my.mci.ir/?__marble_vault_restore=current");
+  prepareGate = null;
+
   await listeners.port({ type: "APPLY_VAULT_SNAPSHOT", requestId: "no-eligible", payload: cookiePayload });
   assert.equal(sent.at(-1).cookieStatus, "NO_ELIGIBLE_COOKIES");
   prepared = { nonce: "nonce" };

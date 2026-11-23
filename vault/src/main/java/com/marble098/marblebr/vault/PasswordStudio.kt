@@ -581,8 +581,8 @@ class PasswordStudio @Inject constructor(
         lastUsedAtEpochMillis = fields.lastAutofillAtEpochMillis.takeIf { it > 0 },
     )
 
-    private suspend fun knownAccountsFor(pageUrl: String): List<KnownAccount> {
-        return credentialVault.loginAccountIndex()
+    private suspend fun knownAccountsFor(pageUrl: String): List<KnownAccount> =
+        credentialVault.loginAccountIndex()
             .filter { it.canAutofillOn(pageUrl) }
             .map { saved ->
                 KnownAccount(
@@ -595,7 +595,6 @@ class PasswordStudio @Inject constructor(
                     }.getOrDefault(""),
                 )
             }
-    }
 
     private suspend fun saveCaptured(url: String, username: String, password: String, id: String? = null) =
         credentialVault.saveCaptured(

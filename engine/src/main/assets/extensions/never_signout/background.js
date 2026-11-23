@@ -114,7 +114,8 @@
       const jar = jars.get(tabId)?.get(origin);
       return Promise.resolve({ cookies: jar ? Array.from(jar.values()) : [] });
     }
-    if (message.type === "PREPARE_RESTORE" && Array.isArray(message.cookies)) {
+    if (message.type === "PREPARE_RESTORE" && typeof message.restoreId === "string" && message.restoreId.length > 0 &&
+        message.restoreId.length <= 128 && Array.isArray(message.cookies)) {
       const target = new URL(origin);
       const currentCookies = jars.get(tabId)?.get(origin)?.values() || [];
       const liveNames = new Set(Array.from(currentCookies)
@@ -129,10 +130,15 @@
       crypto.getRandomValues(bytes);
       const nonce = Array.from(bytes, n => n.toString(16).padStart(2, "0")).join("");
       restores.set(tabId, {
-        nonce, origin, headers, applied: 0, requestTab: "NOT_SEEN", expires: Date.now() + 10000,
+        nonce, origin, restoreId: message.restoreId, headers, applied: 0, requestTab: "NOT_SEEN", expires: Date.now() + 10000,
         requestId: null, checkedHeaders: false, completed: false
       });
       return Promise.resolve({ nonce });
+    }
+    if (message.type === "CANCEL_RESTORE") {
+      const pending = restores.get(tabId);
+      if (pending && pending.origin === origin && pending.restoreId === message.restoreId) restores.delete(tabId);
+      return Promise.resolve({ ok: true });
     }
     if (message.type === "RESTORE_STATUS") {
       const pending = restores.get(tabId);

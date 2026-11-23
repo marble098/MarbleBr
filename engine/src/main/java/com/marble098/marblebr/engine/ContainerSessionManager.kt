@@ -829,9 +829,9 @@ class ContainerSessionManager @Inject constructor(
         loginNavigationIds.remove(session)
         loadingSessions.remove(session)
         lastKnownUrls.remove(session)
+        cancelPendingRestore(session)
         capturePorts.remove(session)?.disconnect()
         snapshotRequests.remove(session)?.response?.complete(false)
-        restoreRequests.remove(session)?.response?.complete(VaultRestoreOutcome())
         // GeckoSession فقط روی تردِ Main معتبر است؛ اگر تماس از ترد دیگری آمد، بستن روی Main انجام می‌شود.
         if (Looper.myLooper() == Looper.getMainLooper()) {
             if (session.isOpen) session.close()
@@ -855,7 +855,8 @@ class ContainerSessionManager @Inject constructor(
             }
         } ?: return false
         val tabId = activeSessions.entries.firstOrNull { it.value === match.key }?.key ?: return false
-        return capturePageSnapshot(tabId, match.value.sender.url, manual = true)
+        val url = lastKnownUrls[match.key] ?: return false
+        return capturePageSnapshot(tabId, url, manual = true)
     }
 
     internal suspend fun captureScheduledCheckpoint(container: WebAppContainer) {
@@ -890,8 +891,12 @@ class ContainerSessionManager @Inject constructor(
             candidate.isOpen && candidate !in loadingSessions && sessionContainers[candidate] == payload.containerId &&
                 sameOrigin(candidatePort.sender.url, payload.origin)
         } ?: return VaultRestoreOutcome(openTabMissing = true)
+        val navigationId = loginNavigationIds[session] ?: return VaultRestoreOutcome(openTabMissing = true)
+        val url = lastKnownUrls[session] ?: return VaultRestoreOutcome(openTabMissing = true)
         val applied = applyPayloadToSession(session, payload)
-        if (capturePorts[session] === port && (applied.cookiesRestored > 0 || applied.storageKeysRestored > 0)) {
+        if (capturePorts[session] === port && loginNavigationIds[session] == navigationId && lastKnownUrls[session] == url &&
+            (applied.cookiesRestored > 0 || applied.storageKeysRestored > 0)
+        ) {
             session.reload()
         }
         return applied
@@ -901,6 +906,7 @@ class ContainerSessionManager @Inject constructor(
         if (session == null || sessionContainers[session] != payload.containerId) return VaultRestoreOutcome(openTabMissing = true)
         val port = capturePorts[session] ?: return VaultRestoreOutcome(openTabMissing = true)
         val expectedUrl = lastKnownUrls[session] ?: return VaultRestoreOutcome(openTabMissing = true)
+        val navigationId = loginNavigationIds[session] ?: return VaultRestoreOutcome(openTabMissing = true)
         if (!sameOrigin(port.sender.url, payload.origin) || !sameOrigin(expectedUrl, payload.origin) || restoreRequests.containsKey(session)) {
             return VaultRestoreOutcome(openTabMissing = true)
         }
@@ -925,7 +931,7 @@ class ContainerSessionManager @Inject constructor(
             put("localStorage", mapToJson(payload.localStorage))
             put("sessionStorage", mapToJson(payload.sessionStorage))
         }
-        val request = RestoreRequest(UUID.randomUUID().toString(), CompletableDeferred())
+        val request = RestoreRequest(UUID.randomUUID().toString(), expectedUrl, navigationId, CompletableDeferred())
         restoreRequests[session] = request
         return try {
             port.postMessage(
@@ -938,8 +944,16 @@ class ContainerSessionManager @Inject constructor(
         } catch (_: Exception) {
             VaultRestoreOutcome()
         } finally {
-            restoreRequests.remove(session, request)
+            cancelPendingRestore(session, request)
         }
+    }
+
+    private fun cancelPendingRestore(session: GeckoSession, expected: RestoreRequest? = null) {
+        val request = restoreRequests[session] ?: return
+        if (expected != null && request !== expected) return
+        if (!restoreRequests.remove(session, request)) return
+        request.response.complete(VaultRestoreOutcome())
+        runCatching { capturePorts[session]?.postMessage(JSONObject().put("type", "CANCEL_VAULT_RESTORE").put("requestId", request.id)) }
     }
 
     private fun mapToJson(map: Map<String, String>): JSONObject {
@@ -952,23 +966,39 @@ class ContainerSessionManager @Inject constructor(
     suspend fun neverSignOutGlobalEnabled(): Boolean =
         preferencesRepository.preferencesFlow.first().globalNeverSignOutEnabled
 
-    suspend fun capturePageSnapshot(tabId: String, pageUrl: String, manual: Boolean = false): Boolean {
+    suspend fun capturePageSnapshot(tabId: String, pageUrl: String, manual: Boolean = false): Boolean =
+        withContext(Dispatchers.Main.immediate) { capturePageSnapshotOnMain(tabId, pageUrl, manual) }
+
+    private suspend fun capturePageSnapshotOnMain(tabId: String, pageUrl: String, manual: Boolean): Boolean {
         val maxAttempts = if (manual) 2 else 1
         for (attempt in 1..maxAttempts) {
             val session = activeSessions[tabId] ?: return false
             val port = capturePorts[session] ?: return false
-            if (!sameOrigin(port.sender.url, pageUrl) || snapshotRequests.containsKey(session)) return false
-            val request = SnapshotRequest(UUID.randomUUID().toString(), manual, CompletableDeferred())
+            val navigationId = loginNavigationIds[session] ?: return false
+            if (session in loadingSessions || lastKnownUrls[session] != pageUrl || !sameOrigin(port.sender.url, pageUrl)) return false
+            val inFlight = snapshotRequests[session]
+            if (inFlight != null) {
+                if (!manual) return false
+                val existing = withTimeoutOrNull(if (inFlight.manual) MANUAL_SNAPSHOT_TIMEOUT_MILLIS else AUTO_SNAPSHOT_TIMEOUT_MILLIS) {
+                    inFlight.response.await()
+                }
+                if (inFlight.manual && existing != null) return existing
+                snapshotRequests.remove(session, inFlight)
+                continue
+            }
+            val request = SnapshotRequest(UUID.randomUUID().toString(), manual, pageUrl, navigationId, CompletableDeferred())
             snapshotRequests[session] = request
             try {
-                port.postMessage(JSONObject().put("type", "CAPTURE_PAGE").put("requestId", request.id))
+                port.postMessage(
+                    JSONObject().put("type", "CAPTURE_PAGE").put("requestId", request.id).put("expectedUrl", pageUrl),
+                )
                 val result = withTimeoutOrNull(if (manual) MANUAL_SNAPSHOT_TIMEOUT_MILLIS else AUTO_SNAPSHOT_TIMEOUT_MILLIS) {
                     request.response.await()
                 }
                 if (result != null) return result
                 if (attempt < maxAttempts) delay(MANUAL_SNAPSHOT_RETRY_DELAY_MILLIS)
             } finally {
-                snapshotRequests.remove(session)
+                snapshotRequests.remove(session, request)
             }
         }
         return false
@@ -982,8 +1012,19 @@ class ContainerSessionManager @Inject constructor(
 
     private fun effectivePort(uri: URI): Int = uri.port.takeIf { it >= 0 } ?: if (uri.scheme.equals("https", true)) 443 else 80
 
-    private data class SnapshotRequest(val id: String, val manual: Boolean, val response: CompletableDeferred<Boolean>)
-    private data class RestoreRequest(val id: String, val response: CompletableDeferred<VaultRestoreOutcome>)
+    private data class SnapshotRequest(
+        val id: String,
+        val manual: Boolean,
+        val expectedUrl: String,
+        val navigationId: String,
+        val response: CompletableDeferred<Boolean>,
+    )
+    private data class RestoreRequest(
+        val id: String,
+        val expectedUrl: String,
+        val navigationId: String,
+        val response: CompletableDeferred<VaultRestoreOutcome>,
+    )
 
     /** Apply changed settings to already-open tabs as well as future ones. */
     suspend fun refreshCookiePolicies() {
@@ -1029,7 +1070,7 @@ class ContainerSessionManager @Inject constructor(
                     loginNavigationIds[session] = UUID.randomUUID().toString()
                     engineScope.launch {
                         val fresh = containerDao.getById(container.id)?.toDomain() ?: container
-                        sendCookiePolicy(port, fresh)
+                        if (capturePorts[session] === port) sendCookiePolicy(port, fresh)
                     }
                     port.setDelegate(object : WebExtension.PortDelegate {
                         override fun onPortMessage(message: Any, port: WebExtension.Port) {
@@ -1041,7 +1082,9 @@ class ContainerSessionManager @Inject constructor(
 
                                 "RESTORE_RESULT" -> {
                                     val request = restoreRequests[session] ?: return
-                                    if (request.id == json.optString("requestId")) {
+                                    if (request.id == json.optString("requestId") && loginNavigationIds[session] == request.navigationId &&
+                                        lastKnownUrls[session] == request.expectedUrl && session !in loadingSessions
+                                    ) {
                                         request.response.complete(
                                             VaultRestoreOutcome(
                                                 cookiesRestored = json.optInt("cookieCount").coerceAtLeast(0),
@@ -1054,23 +1097,35 @@ class ContainerSessionManager @Inject constructor(
                                     }
                                 }
 
+                                "AUTO_CAPTURE_REQUEST" -> {
+                                    val url = json.optString("url")
+                                    val tabId = activeSessions.entries.firstOrNull { it.value === session }?.key ?: return
+                                    if (lastKnownUrls[session] != url || !sameOrigin(port.sender.url, url)) return
+                                    engineScope.launch { capturePageSnapshot(tabId, url) }
+                                }
+
+                                "CAPTURE_FAILED" -> {
+                                    val request = snapshotRequests[session] ?: return
+                                    if (request.id == json.optString("requestId")) request.response.complete(false)
+                                }
+
                                 "STORAGE_SNAPSHOT" -> {
                                     if (!sameOrigin(port.sender.url, json.optString("origin"))) return
-                                    val request = snapshotRequests[session]
-                                    val matchedRequest = request?.takeIf { it.id == json.optString("requestId") }
-                                    if (json.has("requestId") && matchedRequest == null) return
+                                    val request = snapshotRequests[session]?.takeIf { it.id == json.optString("requestId") } ?: return
                                     val capturedAt = System.currentTimeMillis()
                                     engineScope.launch {
                                         val saved = sessionDataMutex.withLock {
-                                            if (capturePorts[session] !== port || sessionContainers[session] != container.id) {
-                                                return@withLock false
-                                            }
+                                            fun isCurrentSnapshot() = snapshotRequests[session] === request && !request.response.isCompleted &&
+                                                capturePorts[session] === port && sessionContainers[session] == container.id &&
+                                                session !in loadingSessions && loginNavigationIds[session] == request.navigationId &&
+                                                lastKnownUrls[session] == request.expectedUrl && json.optString("href") == request.expectedUrl
+
+                                            if (!isCurrentSnapshot()) return@withLock false
                                             val fresh = containerDao.getById(container.id)?.toDomain() ?: return@withLock false
-                                            val manual = matchedRequest?.manual == true
-                                            if (!manual && !fresh.neverSignOutEnabled) return@withLock false
-                                            runCatching { savePageSnapshot(json, fresh, manual, capturedAt) }.getOrDefault(false)
+                                            if (!isCurrentSnapshot() || (!request.manual && !fresh.neverSignOutEnabled)) return@withLock false
+                                            runCatching { savePageSnapshot(json, fresh, request.manual, capturedAt) }.getOrDefault(false)
                                         }
-                                        matchedRequest?.response?.complete(saved)
+                                        request.response.complete(saved)
                                     }
                                 }
 
@@ -1123,9 +1178,9 @@ class ContainerSessionManager @Inject constructor(
 
                         override fun onDisconnect(port: WebExtension.Port) {
                             if (capturePorts[session] === port) {
+                                cancelPendingRestore(session)
                                 capturePorts.remove(session)
                                 snapshotRequests[session]?.response?.complete(false)
-                                restoreRequests[session]?.response?.complete(VaultRestoreOutcome())
                             }
                         }
                     })
@@ -1270,7 +1325,11 @@ class ContainerSessionManager @Inject constructor(
             ) {
                 val safeUrl = url.orEmpty()
                 if (safeUrl.isNotBlank()) {
-                    if (previousUrl != safeUrl) loginNavigationIds[session] = UUID.randomUUID().toString()
+                    if (previousUrl != safeUrl) {
+                        loginNavigationIds[session] = UUID.randomUUID().toString()
+                        snapshotRequests.remove(session)?.response?.complete(false)
+                        cancelPendingRestore(session)
+                    }
                     previousUrl = safeUrl
                     lastKnownUrls[session] = safeUrl
                     onLocationChanged(safeUrl, safeUrl.startsWith("https://"))
@@ -1293,6 +1352,8 @@ class ContainerSessionManager @Inject constructor(
             override fun onPageStart(session: GeckoSession, url: String) {
                 loadingSessions.add(session)
                 loginNavigationIds[session] = UUID.randomUUID().toString()
+                snapshotRequests.remove(session)?.response?.complete(false)
+                cancelPendingRestore(session)
                 capturePorts.remove(session)
                 onProgressChanged(0, true)
             }
@@ -1353,16 +1414,13 @@ class ContainerSessionManager @Inject constructor(
     }
 
     private fun mergeSnapshotCookies(json: JSONObject, origin: String): List<CookieRecord> {
-        val host = runCatching { URI(origin).host }.getOrNull() ?: return emptyList()
+        val host = runCatching { URI(origin).host?.lowercase() }.getOrNull() ?: return emptyList()
         val array = json.optJSONArray("cookies") ?: JSONArray()
         val observed = (0 until array.length()).mapNotNull { index ->
             val item = array.optJSONObject(index) ?: return@mapNotNull null
-            // A blank domain means the cookie came from the page's own document.cookie (the
-            // document.cookie fallback in the extension): default it to the page host instead
-            // of guessing. (For jar cookies the background always fills in a domain.)
-            val rawDomain = item.optString("domain").removePrefix(".").lowercase()
-            val hostOnly = if (rawDomain.isBlank()) true else item.optBoolean("isHostOnly", true)
-            val domain = rawDomain.ifBlank { host }
+            // Without observed scope metadata we cannot safely back up or replay a cookie.
+            val domain = item.optString("domain").removePrefix(".").lowercase()
+            val hostOnly = item.optBoolean("isHostOnly", true)
             if (domain.isBlank() || (hostOnly && domain != host) ||
                 (!hostOnly && domain != host && !host.endsWith(".$domain"))
             ) {

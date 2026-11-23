@@ -13,7 +13,9 @@ const browser = {
 const code = fs.readFileSync("engine/src/main/assets/extensions/never_signout/background.js", "utf8");
 vm.runInNewContext(code, { browser, URL, crypto: webcrypto, Uint8Array, Date, Map, Promise, Number, String, Array });
 const sender = id => ({ tab: { id }, frameId: 0, url: "https://my.mci.ir/panel" });
-const send = (id, msg) => listeners.message(msg, sender(id));
+let restoreSequence = 0;
+const send = (id, msg) => listeners.message(msg.type === "PREPARE_RESTORE" && !msg.restoreId ?
+  { ...msg, restoreId: `restore-${++restoreSequence}` } : msg, sender(id));
 const headers = (id, values, url = "https://my.mci.ir/login", options = {}) => listeners.headers({
   tabId: id, url, type: "xmlhttprequest", statusCode: 200,
   responseHeaders: values.map(value => ({ name: "Set-Cookie", value })), ...options
@@ -110,6 +112,19 @@ const restoreHeaders = (id, url, requestId, values = [], options = {}) =>
   beginRestore(1, navigatingUrl, "navigating");
   listeners.before({ tabId: 1, type: "main_frame", url: "https://my.mci.ir/other" });
   assert.equal(restoreHeaders(1, navigatingUrl, "navigating").responseHeaders.length, 0, "same-origin navigation cancels restore");
+
+  const spa = await send(1, { type: "PREPARE_RESTORE", restoreId: "old", cookies: one });
+  const spaUrl = `https://my.mci.ir/?__marble_vault_restore=${spa.nonce}`;
+  beginRestore(1, spaUrl, "spa");
+  await send(1, { type: "CANCEL_RESTORE", restoreId: "old" });
+  assert.equal(restoreHeaders(1, spaUrl, "spa").responseHeaders.length, 0, "native cancellation covers SPA navigation");
+
+  const current = await send(1, { type: "PREPARE_RESTORE", restoreId: "current", cookies: one });
+  const currentUrl = `https://my.mci.ir/?__marble_vault_restore=${current.nonce}`;
+  await send(1, { type: "CANCEL_RESTORE", restoreId: "old" });
+  beginRestore(1, currentUrl, "current");
+  assert.equal(restoreHeaders(1, currentUrl, "current").responseHeaders.length, 1,
+    "late cancellation must not remove a newer restore");
   listeners.removed(2);
   assert.equal((await send(2, { type: "GET_CAPTURED_COOKIES" })).cookies.length, 0);
   console.log("Session extension isolation, expiry and restore tests passed.");
