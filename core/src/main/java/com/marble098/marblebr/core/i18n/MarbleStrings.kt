@@ -1063,7 +1063,9 @@ private object PersianStrings : MarbleStrings() {
     override val vaultRestoreNeedsOpenTab = "برای بازیابی، صفحهٔ همان سایت را در حساب مربوط باز نگه دار."
     override val vaultRestoreSuperseded = "نسخهٔ جدیدتری برای این حساب ثبت شده است. از تازه‌ترین نسخه استفاده کن یا دوباره وارد سایت شو."
     override val vaultRestoreConfirmTitle = "اعمال نسخهٔ محلی؟"
-    override val vaultRestoreConfirmBody = "حتی تازه‌ترین نسخه ممکن است شامل توکن قدیمی باشد و باعث خروج یا ابطال نشست شود. اعتبار ورود بررسی نمی‌شود؛ ورود مجدد از خود سایت امن‌تر است. با آگاهی از این خطر ادامه می‌دهی؟"
+    override val vaultRestoreConfirmBody =
+        "حتی تازه‌ترین نسخه ممکن است شامل توکن قدیمی باشد و باعث خروج یا ابطال نشست شود. " +
+            "اعتبار ورود بررسی نمی‌شود؛ ورود مجدد از خود سایت امن‌تر است. با آگاهی از این خطر ادامه می‌دهی؟"
     override val vaultQuickActionsTitle = "کارهای سریع"
     override val vaultJumpToSite = "رفتن به سایت"
     override val feedbackRestoreEmpty = "بازیابی انجام نشد؛ صفحه و دسترسی شبکه را بررسی کن."
@@ -1771,7 +1773,9 @@ private object EnglishStrings : MarbleStrings() {
     override val vaultRestoreNeedsOpenTab = "Keep the site open in the matching account to restore its data."
     override val vaultRestoreSuperseded = "A newer snapshot exists for this account. Use the latest snapshot or sign in again."
     override val vaultRestoreConfirmTitle = "Apply this local copy?"
-    override val vaultRestoreConfirmBody = "Even the latest copy may contain old tokens and cause a sign-out or session revocation. Sign-in is not verified; signing in through the site is safer. Continue knowing this risk?"
+    override val vaultRestoreConfirmBody =
+        "Even the latest copy may contain old tokens and cause a sign-out or session revocation. " +
+            "Sign-in is not verified; signing in through the site is safer. Continue knowing this risk?"
     override val vaultQuickActionsTitle = "Quick actions"
     override val vaultJumpToSite = "Jump to site"
     override val feedbackRestoreEmpty = "Nothing could be restored; check the open page and network connection."

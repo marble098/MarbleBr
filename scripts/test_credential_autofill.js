@@ -7,28 +7,33 @@ const match = source.match(/fun autofillScript\([\s\S]*?return """([\s\S]*?)"""\
 assert.ok(match, "autofill script was not found");
 const script = match[1].replace("$userLiteral", JSON.stringify("alice")).replace("$passLiteral", JSON.stringify("secret"));
 
-function run({ action = "https://example.test/login", submitter = null, onUsernameInput = () => {}, withForm = true } = {}) {
+function run({ action = "https://example.test/login", submitter = null, externalSubmitter = null, onUsernameInput = () => {}, withForm = true } = {}) {
   class Input {
     constructor() { this._value = ""; }
     get value() { return this._value; }
     set value(value) { this._value = value; }
     getClientRects() { return [1]; }
     closest() { return this.form; }
-    dispatchEvent(event) { if (this === username && event.type === "input") onUsernameInput(form); }
+    dispatchEvent(event) { if (this === username && event.type === "input") onUsernameInput(form, password); }
   }
   const username = new Input();
   const password = new Input();
   const form = {
     action,
     querySelectorAll(selector) {
-      if (selector.startsWith("button")) return submitter ? [{ formAction: submitter, getAttribute: () => submitter }] : [];
-      return [username];
+      return selector.startsWith("button") ? submitters.filter(button => !button.external) : [username];
     }
   };
+  const submitters = [[submitter, false], [externalSubmitter, true]].filter(([target]) => target)
+    .map(([target, external]) => ({ form, external, formAction: target, getAttribute: () => target }));
   username.form = password.form = withForm ? form : null;
   const document = {
     baseURI: "https://example.test/login",
-    querySelectorAll(selector) { return selector === "input[type=password]" ? [password] : [username]; }
+    querySelectorAll(selector) {
+      if (selector === "input[type=password]") return [password];
+      if (selector.startsWith("button")) return submitters;
+      return [username];
+    }
   };
   const result = vm.runInNewContext(script, {
     document,
@@ -48,5 +53,11 @@ for (const action of ["https://evil.test/steal", "http://example.test/login", "h
   assert.deepEqual(run({ action }), { result: "unsafe-form", user: "", password: "" });
 }
 assert.equal(run({ submitter: "https://evil.test/steal" }).password, "");
+assert.equal(run({ externalSubmitter: "https://evil.test/steal" }).password, "",
+  "submitters associated with form= outside the form must also be checked");
 assert.equal(run({ onUsernameInput: form => { form.action = "https://evil.test/steal"; } }).password, "");
+assert.equal(run({ onUsernameInput: (form, password) => { password.form = { action: "https://evil.test/steal" }; } }).password, "",
+  "the password field must not change form after username events");
+assert.equal(run({ withForm: false, onUsernameInput: (form, password) => { password.form = form; } }).password, "",
+  "an unassociated password field must not move into a form while filling");
 console.log("Credential autofill form-origin tests passed.");

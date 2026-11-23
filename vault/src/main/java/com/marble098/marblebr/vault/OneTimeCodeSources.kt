@@ -198,7 +198,7 @@ class NotificationCodeBridge @Inject constructor(@ApplicationContext private val
 
     private val _lastCode = kotlinx.coroutines.flow.MutableStateFlow<OneTimeCodeHit?>(null)
 
-    /** آخرین کدِ استخراج‌شده از اعلان؛ مصرف‌کننده با [consume] پاکش می‌کند. */
+    /** آخرین کدِ استخراج‌شده از اعلان؛ فقط همان کدِ استفاده‌شده مصرف می‌شود. */
     val lastCode: kotlinx.coroutines.flow.StateFlow<OneTimeCodeHit?> = _lastCode
 
     /**
@@ -233,9 +233,7 @@ class NotificationCodeBridge @Inject constructor(@ApplicationContext private val
         _lastCode.value = hit
     }
 
-    fun consume() {
-        _lastCode.value = null
-    }
+    internal fun consumeMatching(identity: CodeIdentity): Boolean = _lastCode.consumeMatching(identity)
 
     companion object {
         const val ENABLED_NOTIFICATION_LISTENERS = "enabled_notification_listeners"

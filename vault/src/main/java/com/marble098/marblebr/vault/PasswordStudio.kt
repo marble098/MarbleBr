@@ -226,6 +226,7 @@ class PasswordStudio @Inject constructor(
             digits = hit.code.filter(Char::isDigit).length,
             fromSms = hit.source == OneTimeCodeSource.SMS,
             fingerprint = OneTimeCodeExtractor.fingerprint(hit.code),
+            receivedAtEpochMillis = hit.receivedAtEpochMillis,
         )
     }
 
@@ -251,34 +252,16 @@ class PasswordStudio @Inject constructor(
         // `recentMessages()` را می‌گشت و در گوشی‌هایی که خواندنِ صندوقِ پیامک ممکن نبود،
         // کدِ تازهٔ رسیده هیچ‌وقت در صفحه نوشته نمی‌شد. حالا آخرین کدِ رسیده همین‌جا
         // نگه داشته می‌شود و در اولویتِ خواندن قرار می‌گیرد.
-        latestCode?.let { previous ->
-            if (previous.code == hit.code && previous.receivedAtEpochMillis == hit.receivedAtEpochMillis) {
-                return
-            }
-        }
-        latestCode = hit
+        if (!latestCode.offer(hit)) return
         _lastActivity.value = LoginActivity.OneTimeCodeAvailable(hit.length)
     }
 
-    /** آخرین کدِ رسیده از اعلان را مصرف می‌کند (تا دوباره استفاده نشود). */
-    fun consumeNotificationCode() {
-        notificationBridge.consume()
-        // OTPs are single-use: clear the in-memory live-SMS cache after a successful fill too.
-        clearLatestCode()
-    }
-
-    /**
-     * آخرین کدِ رسیده از مسیرِ پیامکِ زنده (broadcast).
-     *
-     * چرا `@Volatile`؟ چون `SmsCodeListener` از threadِ فرعیِ broadcast صدا زده می‌شود و
-     * `findOneTimeCode` از coroutine دیگری می‌خواند.
-     */
-    @Volatile
-    private var latestCode: OneTimeCodeHit? = null
+    /** Live SMS and notification callbacks can arrive while a previous fill is still pending. */
+    private val latestCode = PendingOneTimeCode()
 
     /** پاک‌کردنِ کدِ نگه‌داشته‌شده (مثلاً وقتی کاربر از صفحهٔ کد خارج شد). */
     fun clearLatestCode() {
-        latestCode = null
+        latestCode.clear()
     }
 
     /* ---------------------------------------- پیشنهادِ ذخیره ---------------------------------------- */
@@ -553,7 +536,7 @@ class PasswordStudio @Inject constructor(
     suspend fun findOneTimeCode(pageUrl: String, lookBackMillis: Long = SmsOneTimeCodeReader.DEFAULT_LOOKBACK_MILLIS): OneTimeCodeHit? {
         val now = System.currentTimeMillis()
         // ۱) کدِ زندهٔ پیامک (broadcast) — تازه‌ترین منبع و دقیقاً همان پیامکی که کاربر می‌بیند.
-        latestCode?.takeIf { hit -> now - hit.receivedAtEpochMillis <= lookBackMillis }?.let { return it }
+        latestCode.peek()?.takeIf { hit -> now - hit.receivedAtEpochMillis <= lookBackMillis }?.let { return it }
         // ۲) اعلان‌ها (اپ‌های پیام‌رسان معمولاً اعلان را زودتر نشان می‌دهند).
         val fromNotification = notificationBridge.lastCode.value?.takeIf { hit ->
             now - hit.receivedAtEpochMillis <= lookBackMillis
@@ -563,10 +546,15 @@ class PasswordStudio @Inject constructor(
         return smsReader.findRecentCode(now, lookBackMillis)
     }
 
-    suspend fun confirmOneTimeCodeFilled(pageUrl: String, directive: LoginOneTimeCodeDirective.Ready) = mutex.withLock {
-        intelligence.markOneTimeCodeFilled(pageUrl, directive.fingerprint)
-        _lastActivity.value = LoginActivity.OneTimeCodeFilled(directive.digits, directive.fromSms)
-        consumeNotificationCode()
+    suspend fun confirmOneTimeCodeFilled(pageUrl: String, directive: LoginOneTimeCodeDirective.Ready) {
+        mutex.withLock {
+            intelligence.markOneTimeCodeFilled(pageUrl, directive.fingerprint)
+            _lastActivity.value = LoginActivity.OneTimeCodeFilled(directive.digits, directive.fromSms)
+            val source = if (directive.fromSms) OneTimeCodeSource.SMS else OneTimeCodeSource.NOTIFICATION
+            val identity = CodeIdentity(directive.fingerprint, directive.receivedAtEpochMillis, source)
+            latestCode.consumeMatching(identity)
+            notificationBridge.consumeMatching(identity)
+        }
     }
 
     /* ----------------------------------------- دادهٔ مخزن ----------------------------------------- */
@@ -698,7 +686,13 @@ sealed interface LoginPageDirective {
 
 /** خروجیِ درخواستِ کدِ یکبارمصرف. */
 sealed interface LoginOneTimeCodeDirective {
-    data class Ready(val script: String, val digits: Int, val fromSms: Boolean, val fingerprint: String) : LoginOneTimeCodeDirective
+    data class Ready(
+        val script: String,
+        val digits: Int,
+        val fromSms: Boolean,
+        val fingerprint: String,
+        val receivedAtEpochMillis: Long,
+    ) : LoginOneTimeCodeDirective
 
     data class Unavailable(val reason: String) : LoginOneTimeCodeDirective
 }

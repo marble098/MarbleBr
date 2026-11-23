@@ -30,7 +30,8 @@ class VaultBackupTest {
         val credential = VaultBackupCredential("id", "https://www.example.com:8443", "user", "password", autofillOrigin = "https://www.example.com:8443")
         val payload = VaultBackupPayload(1L, "test", credentials = listOf(credential))
         assertEquals(payload, Json.decodeFromString<VaultBackupPayload>(Json.encodeToString(payload)))
-        val legacy = """{"createdAtEpochMillis":1,"appVersionName":"old","credentials":[{"id":"id","site":"https://example.com","username":"u","password":"p"}]}"""
+        val legacy = """{"createdAtEpochMillis":1,"appVersionName":"old","credentials":[""" +
+            """{"id":"id","site":"https://example.com","username":"u","password":"p"}]}"""
         assertNull(Json.decodeFromString<VaultBackupPayload>(legacy).credentials.single().autofillOrigin)
     }
 
