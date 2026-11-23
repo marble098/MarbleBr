@@ -638,22 +638,8 @@ class VaultDashboardViewModel @Inject constructor(
         _feedback.value = null
     }
 
-    /**
-     * پس از هر تغییرِ سیاستِ زنده‌سازی، کارِ پس‌زمینه با بازهٔ **واقعیِ** سایت‌ها دوباره
-     * زمان‌بندی می‌شود؛ قبلاً فقط بازهٔ ثابتِ ۳۰ دقیقه در `Application.onCreate` ثبت می‌شد و
-     * تغییراتِ کاربر هیچ اثری نداشتند.
-     */
     private fun refreshKeepAliveSchedule() {
-        viewModelScope.launch {
-            runCatching {
-                val eligible = containers.value.filter { it.neverSignOutEnabled && it.keepAliveEnabled }
-                if (eligible.isEmpty()) {
-                    keepAliveScheduler.cancelKeepAlive()
-                } else {
-                    keepAliveScheduler.schedulePeriodicKeepAlive(eligible.minOf { it.keepAliveIntervalMinutes }.toLong())
-                }
-            }
-        }
+        viewModelScope.launch { keepAliveScheduler.refreshSchedule() }
     }
 
     private inline fun runBusy(key: String, crossinline block: suspend () -> Unit) {

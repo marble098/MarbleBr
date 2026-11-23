@@ -45,9 +45,17 @@ class SmartKeepAliveWorker @AssistedInject constructor(
 @Singleton
 class KeepAliveScheduler @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val containerDao: ContainerDao,
+    private val preferencesRepository: BrowserPreferencesRepository,
 ) {
-    fun schedulePeriodicKeepAlive(intervalMinutes: Long = 30L) {
-        val safeInterval = intervalMinutes.coerceAtLeast(15L)
+    suspend fun refreshSchedule() {
+        if (!preferencesRepository.preferencesFlow.first().smartKeepAliveEnabled) {
+            WorkManager.getInstance(context).cancelUniqueWork(SmartKeepAliveWorker.WORK_NAME)
+            return
+        }
+
+        val minimum = containerDao.getKeepAliveEligibleContainers().minOfOrNull { it.keepAliveIntervalMinutes }
+        val safeInterval = (minimum ?: 30).coerceAtLeast(15).toLong()
         val constraints = Constraints.Builder()
             .setRequiresBatteryNotLow(true)
             .build()
@@ -65,9 +73,5 @@ class KeepAliveScheduler @Inject constructor(
             ExistingPeriodicWorkPolicy.UPDATE,
             request,
         )
-    }
-
-    fun cancelKeepAlive() {
-        WorkManager.getInstance(context).cancelUniqueWork(SmartKeepAliveWorker.WORK_NAME)
     }
 }

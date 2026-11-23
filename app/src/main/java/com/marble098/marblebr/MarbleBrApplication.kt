@@ -7,6 +7,10 @@ import com.marble098.marblebr.engine.KeepAliveScheduler
 import com.marble098.marblebr.vault.NotificationBridgeProvider
 import com.marble098.marblebr.vault.NotificationCodeBridge
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -37,10 +41,10 @@ class MarbleBrApplication : Application(), Configuration.Provider, NotificationB
             .setWorkerFactory(workerFactory)
             .build()
 
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     override fun onCreate() {
         super.onCreate()
-        runCatching {
-            keepAliveScheduler.schedulePeriodicKeepAlive()
-        }
+        applicationScope.launch { keepAliveScheduler.refreshSchedule() }
     }
 }

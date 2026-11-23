@@ -506,13 +506,14 @@ class BrowserViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 activeTabId = tab?.id.orEmpty(),
-                fallbackPromptDomain = it.fallbackPromptDomain.takeIf { _ -> it.activeTabId == tab?.id },
+                fallbackPromptDomain = if (it.activeTabId == tab?.id) it.fallbackPromptDomain else null,
                 activeContainer = tab?.id?.let(containers::get),
                 showHome = tab?.url.isNullOrBlank() && tab?.isLoading != true,
                 contextTarget = null,
                 activePermissionProfile = tab?.id?.let(sessionManager::permissionProfileOf),
             )
         }
+        tab?.let { onPageSettled(it.id, it.url) }
     }
 
     fun closeTab(tabId: String) {
@@ -1145,7 +1146,7 @@ class BrowserViewModel @Inject constructor(
 
     private fun onReauthenticationRequired(tabId: String, domain: String) {
         updateTab(tabId) { it.copy(healthStatus = SessionHealthStatus.REAUTH_REQUIRED) }
-        if (_uiState.value.activeWebTab()?.id == tabId) {
+        if (preferences.value.credentialFallbackEnabled && _uiState.value.activeWebTab()?.id == tabId) {
             _uiState.update { it.copy(fallbackPromptDomain = domain) }
         }
     }
