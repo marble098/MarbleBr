@@ -1,5 +1,8 @@
 package com.marble098.marblebr.feature.browser
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -44,9 +47,9 @@ class BrowserMenuSearchTest {
             entries = listOf(
                 MenuEntry(
                     tag = "menu_find_in_page",
-                    icon = androidx.compose.material.icons.Icons.Default.Search,
+                    icon = Icons.Default.Search,
                     title = "Find on this page",
-                    accent = androidx.compose.ui.graphics.Color.Unspecified,
+                    accent = Color.Unspecified,
                     onClick = {},
                 ),
             ),
@@ -56,10 +59,10 @@ class BrowserMenuSearchTest {
             entries = listOf(
                 MenuEntry(
                     tag = "menu_login_compatibility",
-                    icon = androidx.compose.material.icons.Icons.Default.Search,
+                    icon = Icons.Default.Search,
                     title = "Login compatibility",
                     subtitle = "Turn this on if the sign-in button does nothing",
-                    accent = androidx.compose.ui.graphics.Color.Unspecified,
+                    accent = Color.Unspecified,
                     onClick = {},
                 ),
             ),
