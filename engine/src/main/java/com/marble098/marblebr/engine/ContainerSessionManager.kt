@@ -9,6 +9,8 @@ import com.marble098.marblebr.core.database.ContainerEntity
 import com.marble098.marblebr.core.i18n.LocalizationManager
 import com.marble098.marblebr.core.model.CookieRecord
 import com.marble098.marblebr.core.model.HealthGuardAction
+import com.marble098.marblebr.core.model.LoginCompatibilityPlan
+import com.marble098.marblebr.core.model.LoginCompatibilityReason
 import com.marble098.marblebr.core.model.ProxyDnsConfig
 import com.marble098.marblebr.core.model.PermissionState
 import com.marble098.marblebr.core.model.ProxyType
@@ -18,6 +20,7 @@ import com.marble098.marblebr.core.model.SitePermissionProfile
 import com.marble098.marblebr.core.model.SessionHealthSignal
 import com.marble098.marblebr.core.model.SessionSnapshotMeta
 import com.marble098.marblebr.core.model.SessionSnapshotPayload
+import com.marble098.marblebr.core.model.SiteLoginCompatibility
 import com.marble098.marblebr.core.model.WebAppContainer
 import com.marble098.marblebr.vault.SessionVaultManager
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -148,6 +151,95 @@ class ContainerSessionManager @Inject constructor(
 
     /** تب‌هایی که خصوصی‌اند؛ هیچ ورودی از آن‌ها ذخیره یا پر نمی‌شود. */
     private val privateSessions = java.util.Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
+
+    /**
+     * تب‌هایی که «حالت سازگاری ورود» برایشان روشن است.
+     *
+     * چرا؟ چون در سایت‌های بانکی، بلاک‌شدنِ یک اسکریپتِ دامنهٔ سوم (ضدتقلب/کپچا) یا یک پنجرهٔ
+     * تازه (مرحلهٔ رمزِ دوم) باعث می‌شود کاربر هرگز نتواند وارد شود. در این حالت فقط برای همان
+     * تب، محافظتِ ردیابی و بلاکرِ سبک کنار می‌روند و پنجرهٔ تازه آزاد می‌شود؛ کوکی‌ها و
+     * گاوصندوقِ نشست دست‌نخورده می‌مانند.
+     */
+    private val loginCompatibilityTabs = java.util.Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
+
+    /**
+     * تب‌هایی که کاربر خودش حالتِ سازگاری را برایشان **خاموش** کرده است.
+     *
+     * این مجموعه بر تشخیصِ خودکارِ دامنهٔ بانکی اولویت دارد؛ وگرنه خاموش‌کردن روی یک دامنهٔ
+     * حساس بی‌اثر می‌شد و دکمهٔ منو دقیقاً برعکسِ وضعیتِ واقعی نمایش می‌داد.
+     */
+    private val loginCompatibilityOptOutTabs = java.util.Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
+
+    /** مقدارِ بلاکرِ تبلیغ برای هر تب؛ برای تغییرِ زندهٔ محافظتِ ردیابی لازم است. */
+    private val adBlockByTab = ConcurrentHashMap<String, Boolean>()
+
+    /**
+     * حافظهٔ کوچکِ تشخیصِ دامنه.
+     *
+     * این تابع در مسیرِ هر درخواستِ شبکه هم خوانده می‌شود؛ تجزیهٔ مکررِ آدرس با `URI` در هر
+     * درخواست، هزینهٔ بی‌مورد است. اندازهٔ حافظه سقف دارد و در صورتِ پر شدن، ساده خالی می‌شود.
+     */
+    private val compatibilityCache = ConcurrentHashMap<String, Boolean>()
+
+    /** آیا این آدرس باید در «حالت سازگاری ورود» باز شود؟ (خودکار یا با درخواستِ کاربر) */
+    fun loginCompatibilityPlanFor(tabId: String, url: String): LoginCompatibilityPlan {
+        if (loginCompatibilityTabs.contains(tabId)) {
+            return LoginCompatibilityPlan(
+                relaxedContentBlocking = true,
+                allowPopups = true,
+                reason = LoginCompatibilityReason.MANUAL,
+            )
+        }
+        if (loginCompatibilityOptOutTabs.contains(tabId)) return LoginCompatibilityPlan()
+        if (url.isBlank()) return LoginCompatibilityPlan()
+        if (compatibilityCache.size > COMPATIBILITY_CACHE_LIMIT) compatibilityCache.clear()
+        val sensitive = compatibilityCache.getOrPut(url) { SiteLoginCompatibility.isSensitiveUrl(url) }
+        return if (sensitive) {
+            LoginCompatibilityPlan(
+                relaxedContentBlocking = true,
+                allowPopups = true,
+                reason = LoginCompatibilityReason.KNOWN_FINANCIAL_HOST,
+            )
+        } else {
+            LoginCompatibilityPlan()
+        }
+    }
+
+    /** آیا تبِ جاری در حالت سازگاری است؟ (برای نمایش در منو) */
+    fun isLoginCompatibilityEnabled(tabId: String): Boolean = loginCompatibilityTabs.contains(tabId)
+
+    /**
+     * روشن/خاموش کردنِ «حالت سازگاری ورود» برای یک تب.
+     *
+     * محافظتِ ردیابی همان لحظه روی نشستِ باز اعمال می‌شود تا کاربر بدونِ بستنِ تب نتیجه را ببیند.
+     */
+    fun setLoginCompatibility(tabId: String, enabled: Boolean) {
+        if (enabled) {
+            loginCompatibilityTabs.add(tabId)
+            loginCompatibilityOptOutTabs.remove(tabId)
+        } else {
+            loginCompatibilityTabs.remove(tabId)
+            loginCompatibilityOptOutTabs.add(tabId)
+        }
+        val session = activeSessions[tabId] ?: return
+        val applyTrackingProtection: () -> Unit = {
+            val url = lastKnownUrls[session].orEmpty()
+            val relaxed = loginCompatibilityPlanFor(tabId, url).isRelaxed
+            runCatching {
+                session.settings.useTrackingProtection = (adBlockByTab[tabId] ?: true) && !relaxed
+            }
+            Unit
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            applyTrackingProtection()
+        } else {
+            Handler(Looper.getMainLooper()).post(applyTrackingProtection)
+        }
+    }
+
+    /** آیا بلاکر/محافظتِ ردیابی برای این تب و این آدرس باید فعال باشد؟ */
+    private fun trackingProtectionActive(tabId: String, url: String, adBlockEnabled: Boolean): Boolean =
+        adBlockEnabled && !loginCompatibilityPlanFor(tabId, url).isRelaxed
 
     // پورت‌ها از تردِ Gecko هم لمس می‌شوند؛ نگه‌داشتن آن‌ها در ConcurrentHashMap از
     // ConcurrentModificationException و نشتِ پورتِ بسته‌شده جلوگیری می‌کند.
@@ -322,10 +414,15 @@ class ContainerSessionManager @Inject constructor(
     ): GeckoSession {
         activeSessions[tabId]?.let { return it }
 
+        adBlockByTab[tabId] = adBlockEnabled
+        // بانک/درگاهِ پرداخت به‌طور خودکار در حالت سازگاری باز می‌شود؛ برای بقیهٔ سایت‌ها
+        // فقط اگر کاربر از منو روشنش کرده باشد.
+        val compatibility = loginCompatibilityPlanFor(tabId, initialUrl)
+
         val sessionSettings = GeckoSessionSettings.Builder()
             .usePrivateMode(isPrivate)
             .contextId(if (isPrivate) null else container.contextId)
-            .useTrackingProtection(adBlockEnabled)
+            .useTrackingProtection(adBlockEnabled && !compatibility.isRelaxed)
             .allowJavascript(permissionProfileOf(tabId).javascriptAllowed())
             .userAgentMode(
                 if (isDesktopMode) {
@@ -823,6 +920,9 @@ class ContainerSessionManager @Inject constructor(
         pendingInitialLoads.remove(tabId)
         permissionProfiles.remove(tabId)
         privateSessions.remove(tabId)
+        loginCompatibilityTabs.remove(tabId)
+        loginCompatibilityOptOutTabs.remove(tabId)
+        adBlockByTab.remove(tabId)
         runCatching { loginWatcher.get().forget(tabId) }
         val session = activeSessions.remove(tabId) ?: return
         sessionContainers.remove(session)
@@ -1235,9 +1335,16 @@ class ContainerSessionManager @Inject constructor(
     }
 
     private fun popupPolicy(tabId: String, session: GeckoSession): PermissionState {
-        val domain = lastKnownUrls[session]?.let(::extractDomain)
-        return permissionProfiles[tabId]?.takeIf { it.domain == domain }?.stateOf(SitePermission.POPUPS)
-            ?: PermissionState.ASK
+        val url = lastKnownUrls[session].orEmpty()
+        val domain = url.let(::extractDomain)
+        val profile = permissionProfiles[tabId]?.takeIf { it.domain == domain }
+        // تصمیمِ صریحِ کاربر همیشه اول است: اگر خودش پنجره را «بلاک» کرده، سازگاری هم بازش نمی‌کند.
+        val explicit = profile?.states?.get(SitePermission.POPUPS)
+        if (explicit == PermissionState.BLOCK) return PermissionState.BLOCK
+        // بانک/درگاه (یا درخواستِ کاربر): مرحلهٔ رمزِ دوم و پرداخت در پنجرهٔ تازه باز می‌شود و
+        // اگر پرسیده یا بلاک شود، ورود نیمه‌کاره می‌ماند.
+        if (loginCompatibilityPlanFor(tabId, url).allowPopups) return PermissionState.ALLOW
+        return profile?.stateOf(SitePermission.POPUPS) ?: PermissionState.ASK
     }
 
     private fun attachSessionDelegates(
@@ -1283,7 +1390,10 @@ class ContainerSessionManager @Inject constructor(
                 session: GeckoSession,
                 request: GeckoSession.NavigationDelegate.LoadRequest,
             ): GeckoResult<AllowOrDeny>? {
-                if (!request.isDirectNavigation && !request.hasUserGesture && adBlocker.shouldBlockRequest(request.uri, previousUrl, adBlockEnabled)) {
+                // تصمیم بر اساسِ دامنهٔ «همین صفحه» گرفته می‌شود، نه دامنهٔ درخواستِ سوم؛
+                // وگرنه در صفحهٔ بانک، درخواستِ اسکریپتِ دامنهٔ سوم دوباره بلاک می‌شد.
+                val blockingEnabled = trackingProtectionActive(tabId, previousUrl.ifBlank { request.uri }, adBlockEnabled)
+                if (!request.isDirectNavigation && !request.hasUserGesture && adBlocker.shouldBlockRequest(request.uri, previousUrl, blockingEnabled)) {
                     onProgressChanged(0, false)
                     return GeckoResult.fromValue(AllowOrDeny.DENY)
                 }
@@ -1311,7 +1421,8 @@ class ContainerSessionManager @Inject constructor(
                 session: GeckoSession,
                 request: GeckoSession.NavigationDelegate.LoadRequest,
             ): GeckoResult<AllowOrDeny>? {
-                if (adBlocker.shouldBlockRequest(request.uri, previousUrl, adBlockEnabled)) {
+                val blockingEnabled = trackingProtectionActive(tabId, previousUrl.ifBlank { request.uri }, adBlockEnabled)
+                if (adBlocker.shouldBlockRequest(request.uri, previousUrl, blockingEnabled)) {
                     return GeckoResult.fromValue(AllowOrDeny.DENY)
                 }
                 return GeckoResult.fromValue(AllowOrDeny.ALLOW)
@@ -1332,6 +1443,12 @@ class ContainerSessionManager @Inject constructor(
                     }
                     previousUrl = safeUrl
                     lastKnownUrls[session] = safeUrl
+                    // ورود به یک دامنهٔ بانکی (یا خروج از آن) همان لحظه محافظتِ ردیابیِ همین
+                    // نشست را عوض می‌کند تا کاربر مجبور نباشد تب را ببندد و باز کند.
+                    runCatching {
+                        session.settings.useTrackingProtection =
+                            trackingProtectionActive(tabId, safeUrl, adBlockByTab[tabId] ?: adBlockEnabled)
+                    }
                     onLocationChanged(safeUrl, safeUrl.startsWith("https://"))
                     if (session !in loadingSessions) onLoginPageChanged(safeUrl)
                 }
@@ -1502,6 +1619,10 @@ class ContainerSessionManager @Inject constructor(
         private const val AUTO_SNAPSHOT_TIMEOUT_MILLIS = 4_000L
         private const val MANUAL_SNAPSHOT_TIMEOUT_MILLIS = 9_000L
         private const val MANUAL_SNAPSHOT_RETRY_DELAY_MILLIS = 500L
+
+        /** سقفِ حافظهٔ تشخیصِ «دامنهٔ بانکی»؛ از رشدِ بی‌پایان در مرورِ طولانی جلوگیری می‌کند. */
+        private const val COMPATIBILITY_CACHE_LIMIT = 512
+
         const val EXTENSION_ASSET_URI = "resource://android/assets/extensions/never_signout/"
         const val EXTENSION_ID = "never_signout@marblebr.marble098.com"
         const val NATIVE_BRIDGE_APP_ID = "marble_never_signout"

@@ -440,3 +440,81 @@ fun <T> MarbleSegmentedRow(
         }
     }
 }
+
+/**
+ * چیپِ انتخابِ شیشه‌ای — جایگزینِ `FilterChip` پیش‌فرض.
+ *
+ * ### مشکلی که حل می‌کند
+ * `FilterChip` متریال، در حالتِ انتخاب‌نشده پس‌زمینهٔ `colorScheme.surface` می‌گیرد؛ در پالت
+ * روشنِ MarbleBr این رنگ تقریباً سفیدِ کامل است. چون کارت‌های تنظیمات **شیشه‌ای و نیمه‌شفاف**
+ * هستند، نتیجه یک «کادرِ سفیدِ زشت» وسطِ هر باکس بود: دقیقاً همان چیزی که کاربر دید.
+ *
+ * این چیپ به‌جای رنگِ توپُر، یک لایهٔ نیمه‌شفافِ هم‌خانواده با سطحِ کارت و یک رینگِ نازک دارد؛
+ * گزینهٔ فعال هم با گرادیانِ اصلی/مکمل و متنِ `onPrimary` برجسته می‌شود. هیچ لبه یا سطحِ
+ * سفیدِ خالصی در آن نیست.
+ */
+@Composable
+fun MarbleChoiceChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    enabled: Boolean = true,
+    testTag: String? = null,
+) {
+    val colors = MaterialTheme.colorScheme
+    val dark = colors.background.luminance() < 0.5f
+    val shape = RoundedCornerShape(50)
+    val interactionSource = remember { MutableInteractionSource() }
+
+    Row(
+        modifier = modifier
+            .clip(shape)
+            .then(
+                if (selected) {
+                    Modifier.background(
+                        Brush.horizontalGradient(
+                            listOf(colors.primary.copy(alpha = 0.95f), colors.tertiary.copy(alpha = 0.88f)),
+                        ),
+                    )
+                } else {
+                    Modifier
+                        // سطحِ نیمه‌شفافِ هم‌خانواده با کارت + رینگِ نازک، به‌جای سطحِ سفیدِ توپُر.
+                        .background(colors.surfaceContainerHighest.copy(alpha = if (dark) 0.34f else 0.42f))
+                        .border(
+                            width = 0.8.dp,
+                            color = colors.outlineVariant.copy(alpha = if (dark) 0.42f else 0.55f),
+                            shape = shape,
+                        )
+                },
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                enabled = enabled,
+                role = Role.RadioButton,
+                onClick = onClick,
+            )
+            .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
+            .padding(horizontal = 13.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (selected) colors.onPrimary else colors.onSurfaceVariant,
+                modifier = Modifier.size(15.dp),
+            )
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            color = if (selected) colors.onPrimary else colors.onSurface,
+            maxLines = 1,
+        )
+    }
+}
