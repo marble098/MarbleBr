@@ -30,9 +30,9 @@ class SiteLoginCompatibilityTest {
 
     @Test
     fun `host is parsed from every url shape`() {
-        assertEquals("enbank.ir", SiteLoginCompatibility.hostOf("https://neon.enbank.ir/login?x=1"))
+        assertEquals("neon.enbank.ir", SiteLoginCompatibility.hostOf("https://neon.enbank.ir/login?x=1"))
         assertEquals("enbank.ir", SiteLoginCompatibility.hostOf("https://www.enbank.ir"))
-        assertEquals("enbank.ir", SiteLoginCompatibility.hostOf("neon.enbank.ir/login"))
+        assertEquals("neon.enbank.ir", SiteLoginCompatibility.hostOf("neon.enbank.ir/login"))
         assertEquals("", SiteLoginCompatibility.hostOf("   "))
     }
 
