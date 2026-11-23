@@ -130,7 +130,9 @@
     for (const [storage, values] of [[window.localStorage, payload.localStorage], [window.sessionStorage, payload.sessionStorage]]) {
       if (!values || typeof values !== "object") continue;
       for (const [key, value] of Object.entries(values)) {
-        try { storage.setItem(key, String(value)); storageKeyCount++; } catch (_) {}
+        try {
+          if (storage.getItem(key) === null) { storage.setItem(key, String(value)); storageKeyCount++; }
+        } catch (_) {}
       }
     }
     let cookieCount = 0;
@@ -139,7 +141,9 @@
       cookieStatus = "INVALID_COOKIES";
     } else if (payload.cookies.length) {
       try {
-        const prepared = await browser.runtime.sendMessage({ type: "PREPARE_RESTORE", cookies: payload.cookies });
+        const liveNames = new Set(parseDocumentCookies().map(cookie => cookie.name));
+        const cookies = payload.cookies.filter(cookie => !liveNames.has(cookie.name));
+        const prepared = await browser.runtime.sendMessage({ type: "PREPARE_RESTORE", cookies });
         cookieStatus = "NO_ELIGIBLE_COOKIES";
         if (prepared?.nonce) {
           const restoreUrl = new URL("/", location.origin);
@@ -258,11 +262,12 @@
         if (autoCaptureEnabled && message.persistStorage === true) ensurePersistentStorage();
       } else if (message.type === "APPLY_VAULT_SNAPSHOT") {
         let result = { cookieCount: 0, storageKeyCount: 0, cookieStatus: "BRIDGE_FAILED" };
-        try { result = await restoreSnapshot(message.payload); } catch (_) {}
+        try { if (!pageHidden) result = await restoreSnapshot(message.payload); } catch (_) {}
         port.postMessage({ event: "RESTORE_RESULT", requestId: message.requestId, ...result });
       } else if (message.type === "EVAL_JS") {
         let result = "";
-        try { result = String(eval(message.script) ?? ""); } catch (_) {}
+        const matchesPage = !message.expectedUrl || (!pageHidden && location.href === message.expectedUrl);
+        try { if (matchesPage) result = String(eval(message.script) ?? ""); } catch (_) {}
         port.postMessage({ event: "JS_RESULT", requestId: message.requestId, result });
       } else if (message.type === "CAPTURE_PAGE") {
         // The caller waits on this response, so always answer: even a failed collection is
@@ -291,71 +296,47 @@
     } catch (_) {}
   }, true);
 
-  // ---------------------------------------------------------------------------
-  // «رمزِ یکبارمصرف»: به‌محضِ دیده‌شدنِ کادرِ کد، به اپ خبر می‌دهیم تا کد را از پیامک/اعلان
-  // پیدا کند و بنویسد. هیچ کدی این‌جا خوانده یا منتقل نمی‌شود؛ فقط یک اعلانِ «کادر آماده است».
-  // ---------------------------------------------------------------------------
-  let lastOtpNoticeAt = 0;
-  const OTP_NOTICE_DEDUPE_MS = 2000;
-
-  function looksLikeCodeScreen() {
-    try {
-      if (typeof document.querySelectorAll !== "function") return false;
-      if (location.pathname && /verify|verification|otp|2fa|mfa|code|confirm|تایید|تأیید/.test(location.href) === false) {
-        // ادامه می‌دهیم؛ خودِ کادرها معیارِ اصلی‌اند.
-      }
-      const inputs = [].slice.call(document.querySelectorAll("input")).filter(el => {
-        if (!el.getClientRects || !(el.getClientRects().length || el.offsetParent)) return false;
-        const type = (el.getAttribute("type") || "text").toLowerCase();
-        return type !== "password" && type !== "hidden" && type !== "email" && type !== "file";
-      });
-      if (!inputs.length) return false;
-      const passwordVisible = [].slice.call(document.querySelectorAll("input[type=password]"))
-        .some(el => !!(el.getClientRects && el.getClientRects().length) || !!el.offsetParent);
-      if (passwordVisible) return false;
-      return inputs.some(el => {
-        const max = parseInt(el.getAttribute("maxlength") || "0", 10) || 0;
-        const ac = (el.getAttribute("autocomplete") || "").toLowerCase();
-        const hay = ((el.getAttribute("name") || "") + " " + (el.getAttribute("id") || "") + " " +
-          (el.getAttribute("placeholder") || "") + " " + ac + " " + (el.getAttribute("inputmode") || "")).toLowerCase();
-        return ac === "one-time-code" || max === 1 || max === 2 ||
-          /otp|one[-_ ]?time|verif|sms|token|passcode|auth|pin|2fa|mfa|code|کد|رمز|تایید|تأیید|پویا|پیامک/.test(hay);
-      });
-    } catch (_) { return false; }
+  // Notify the app only when the visible credential/OTP form changes, including in SPAs.
+  let lastFormState = "";
+  function announceLoginForm() {
+    if (!port || typeof document.querySelectorAll !== "function") return;
+    const fields = Array.from(document.querySelectorAll(
+      "input[type=password],input[autocomplete=one-time-code],input[inputmode=numeric],input[name*=otp i],input[name*=code i]"
+    ));
+    const visible = fields.filter(el => el.getClientRects().length || el.offsetParent)
+      .map(el => [el.type, el.name, el.id, el.autocomplete]);
+    const state = JSON.stringify([location.href, visible]);
+    if (state === lastFormState) return;
+    lastFormState = state;
+    sendSnapshot();
+    try { port.postMessage({ event: "LOGIN_FORM_CHANGED", url: location.href }); } catch (_) {}
   }
 
-  function announceCodeScreen() {
-    if (!port) return;
-    const now = Date.now();
-    if (now - lastOtpNoticeAt < OTP_NOTICE_DEDUPE_MS) return;
-    if (!looksLikeCodeScreen()) return;
-    lastOtpNoticeAt = now;
-    try { port.postMessage({ event: "OTP_SCREEN_READY", url: location.href }); } catch (_) {}
-  }
-
-  window.addEventListener("DOMContentLoaded", () => setTimeout(sendSnapshot, 1200));
-  window.addEventListener("DOMContentLoaded", () => setTimeout(announceCodeScreen, 1500));
-  window.addEventListener("load", () => setTimeout(announceCodeScreen, 800));
-  // صفحه‌های SPA کادرِ کد را بعد از کلیک می‌سازند؛ تغییراتِ DOM را سبک دنبال می‌کنیم.
+  window.addEventListener("DOMContentLoaded", () => {
+    setTimeout(sendSnapshot, 1200);
+    announceLoginForm();
+  });
+  window.addEventListener("load", announceLoginForm);
+  let pageHidden = false;
+  window.addEventListener("pagehide", () => { pageHidden = true; });
+  window.addEventListener("pageshow", () => { pageHidden = false; announceLoginForm(); });
   try {
     let pending = null;
     const observer = new MutationObserver(() => {
-      if (pending) return;
-      pending = setTimeout(() => { pending = null; announceCodeScreen(); }, 1200);
+      if (pending !== null) return;
+      pending = setTimeout(() => { pending = null; announceLoginForm(); }, 600);
     });
     if (document.documentElement) {
-      observer.observe(document.documentElement, { childList: true, subtree: true });
+      observer.observe(document.documentElement, {
+        childList: true, subtree: true, attributes: true,
+        attributeFilter: ["type", "autocomplete", "name", "id", "hidden", "class", "style"]
+      });
     }
   } catch (_) {}
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") sendSnapshot(); });
-  // SPA sign-ins can happen well after DOMContentLoaded.
-  setInterval(() => { if (document.visibilityState === "visible") sendSnapshot(); }, 60000);
   browser.runtime.onMessage.addListener(message => {
-    if (message?.type === "HTTP_UNAUTHORIZED" && originOf(message.url) === location.origin && port) {
+    if (message?.type === "HTTP_UNAUTHORIZED" && message.url === location.href && !pageHidden && port) {
       port.postMessage({ event: "HTTP_UNAUTHORIZED", url: message.url, statusCode: message.statusCode });
     }
   });
-  function originOf(url) {
-    try { return new URL(url).origin; } catch (_) { return null; }
-  }
 })();

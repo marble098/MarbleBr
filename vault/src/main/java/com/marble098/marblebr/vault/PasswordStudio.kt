@@ -83,8 +83,6 @@ class PasswordStudio @Inject constructor(
     val activity: StateFlow<LoginActivity?> = _lastActivity.asStateFlow()
 
     /** حسابی که صفحهٔ فعلی به آن رسیده؛ مقصدِ کدِ یکبارمصرف. */
-    private var activeAccountId: String? = null
-    private var activeTabUrl: String = ""
 
     init {
         // «الآن نه»های ماندگار را یک‌بار در شروع کار بازیابی می‌کنیم.
@@ -120,8 +118,8 @@ class PasswordStudio @Inject constructor(
         pageUrl: String,
         observationRaw: String?,
         isPrivateTab: Boolean = false,
+        allowAutofill: Boolean = true,
     ): LoginPageDirective = mutex.withLock {
-        activeTabUrl = pageUrl
         val observation = LoginObservationProbe.parse(observationRaw)
         val accounts = loginAccounts()
         val knownDomains = (accounts.map { it.domain } + CredentialCaptureHeuristics.domainOf(pageUrl)).toSet()
@@ -144,7 +142,10 @@ class PasswordStudio @Inject constructor(
             }
 
             is LoginAdvance.FillCredentials -> {
-                activeAccountId = advance.account.id
+                val exactAccounts = accounts.filter { it.domain.equals(CredentialCaptureHeuristics.domainOf(pageUrl), true) }
+                if (!allowAutofill || exactAccounts.singleOrNull()?.id != advance.account.id) {
+                    return@withLock LoginPageDirective.None
+                }
                 val script = buildFillScript(advance.account.id)
                 if (script == null) {
                     LoginPageDirective.None
@@ -162,7 +163,6 @@ class PasswordStudio @Inject constructor(
             }
 
             else -> {
-                activeAccountId = null
                 // شاید این صفحه یک صفحهٔ کدِ تأیید است (مثلاً بعد از ورودِ قبلی): کد آماده است؟
                 offerOneTimeCodeIfPossible(pageUrl, isPrivateTab)
                 LoginPageDirective.None
@@ -218,9 +218,6 @@ class PasswordStudio @Inject constructor(
                     else -> "ALREADY_USED"
                 },
             )
-        }
-        activeAccountId?.let { id ->
-            runCatching { credentialVault.touchCredential(id, oneTimeCodeAtEpochMillis = System.currentTimeMillis()) }
         }
         scoreForCode(hit)
         LoginOneTimeCodeDirective.Ready(
@@ -291,14 +288,15 @@ class PasswordStudio @Inject constructor(
      * چرا؟ چون گذرواژهٔ اشتباه هم فرم را ارسال می‌کند؛ ذخیرهٔ فوریِ آن، یک رکوردِ خراب می‌سازد.
      */
     suspend fun onLoginSubmit(
+        tabId: String,
         pageUrl: String,
         username: String,
         password: String,
         otpFieldCount: Int = 0,
         isPrivateTab: Boolean = false,
-    ) {
-        if (isPrivateTab || password.isBlank()) return
-        pendingSubmission = PendingSubmission(
+    ) = mutex.withLock {
+        if (isPrivateTab || password.isBlank()) return@withLock
+        val pending = PendingSubmission(
             url = pageUrl,
             username = username,
             password = password,
@@ -306,32 +304,20 @@ class PasswordStudio @Inject constructor(
             passwordFieldCount = 1,
             submittedAtEpochMillis = System.currentTimeMillis(),
         )
+        pendingSubmissions[tabId] = pending
         _lastActivity.value = LoginActivity.Submitted
         scope.launch {
-            val pending = pendingSubmission ?: return@launch
-            // دو نوبتِ داوری: بارِ اول فقط «شاید حالا تأیید شود»، بارِ دوم حقِ رد کردن دارد.
-            //
-            // چرا دو نوبت؟ سایت‌های کند گاهی چند ثانیه بعد از ارسال فرم را عوض می‌کنند و ردکردنِ
-            // زودهنگام یک ورودِ درست را از دست می‌داد. برعکسش هم بد بود: نسخهٔ قبلی تصمیمِ رد را
-            // فقط در «دقیقاً ۶ ثانیه» می‌گرفت و عملاً هیچ‌وقت اتفاق نمی‌افتاد.
-            repeat(2) { round ->
-                delay(LoginSubmissionVerifier.SETTLE_TIMEOUT_MILLIS)
-                if (pendingSubmission?.submittedAtEpochMillis != pending.submittedAtEpochMillis) return@launch
-                settlePendingSubmission(
-                    movedToNewUrl = false,
-                    passwordFieldsAfter = null,
-                    allowRejection = round == 1,
-                )
-            }
+            delay(LoginSubmissionVerifier.SETTLE_TIMEOUT_MILLIS * 2)
+            mutex.withLock { pendingSubmissions.remove(tabId, pending) }
         }
+        Unit
     }
 
-    private var pendingSubmission: PendingSubmission? = null
+    private val pendingSubmissions = mutableMapOf<String, PendingSubmission>()
 
     /**
      * تأیید/ردِ ارسالِ قبلی.
      *
-     * @param movedToNewUrl آیا پیمایش به آدرسِ تازه رخ داد
      * @param passwordFieldsAfter تعدادِ گذرواژه‌فیلدِ صفحهٔ تازه؛ `null` یعنی نمی‌دانیم
      * @param errorVisible آیا پیامِ خطا دیده شد
      * @param otpFieldsAfter آیا صفحهٔ تازه کادرِ کدِ یکبارمصرف دارد
@@ -340,13 +326,19 @@ class PasswordStudio @Inject constructor(
      *   ناموفق هرگز «در انتظار» نماند.
      */
     suspend fun settlePendingSubmission(
-        movedToNewUrl: Boolean,
+        tabId: String,
+        currentUrl: String,
         passwordFieldsAfter: Int?,
         errorVisible: Boolean = false,
         otpFieldsAfter: Int = 0,
         allowRejection: Boolean = true,
     ): LoginAdvance? = mutex.withLock {
-        val pending = pendingSubmission ?: return@withLock null
+        val pending = pendingSubmissions[tabId] ?: return@withLock null
+        val movedToNewUrl = pending.url != currentUrl
+        if (!sameLoginOrigin(pending.url, currentUrl)) {
+            pendingSubmissions.remove(tabId)
+            return@withLock null
+        }
         val elapsed = System.currentTimeMillis() - pending.submittedAtEpochMillis
         val verdict = LoginSubmissionVerifier.verify(
             passwordFieldsAfter = passwordFieldsAfter
@@ -356,14 +348,14 @@ class PasswordStudio @Inject constructor(
             elapsedMillis = elapsed,
             navigatedToNewUrl = movedToNewUrl,
             originalUrl = pending.url,
-            currentUrl = activeTabUrl,
+            currentUrl = currentUrl,
         )
         when (verdict) {
             SubmissionVerdict.ACCEPTED_FORM_GONE,
             SubmissionVerdict.ACCEPTED_NAVIGATION,
             SubmissionVerdict.ACCEPTED_OTP_SCREEN,
             -> {
-                pendingSubmission = null
+                pendingSubmissions.remove(tabId)
                 handleAcceptedSubmission(pending)
             }
 
@@ -374,7 +366,7 @@ class PasswordStudio @Inject constructor(
                     // هنوز رد نمی‌کنیم؛ ارسال دست‌نخورده می‌ماند تا نوبتِ بعدی یا یک شاهدِ تازه.
                     null
                 } else {
-                    pendingSubmission = null
+                    pendingSubmissions.remove(tabId)
                     _notice.value = PasswordNotice.LoginRejected
                     null
                 }
@@ -463,7 +455,6 @@ class PasswordStudio @Inject constructor(
         if (result.isSuccess) {
             intelligence.markSaved(prompt.url)
             settings.clearDismissal(prompt.site)
-            activeAccountId = result.getOrNull()?.id
             _notice.value = PasswordNotice.SavedAndFilled(filled = false)
             PasswordSaveResult.Saved(result.getOrNull()?.id.orEmpty())
         } else {
@@ -535,9 +526,11 @@ class PasswordStudio @Inject constructor(
             _notice.value = PasswordNotice.PhishingWarning(verdict.host, verdict.impersonated)
             return null
         }
+        val account = credentialVault.loginAccountIndex().firstOrNull { it.id == credentialId } ?: return null
+        val pageHost = runCatching { java.net.URI(pageUrl).host }.getOrNull() ?: return null
+        if (!pageHost.removePrefix("www.").equals(account.domain, ignoreCase = true)) return null
         return buildFillScript(credentialId).also {
             if (it != null) {
-                activeAccountId = credentialId
                 runCatching { credentialVault.touchCredential(credentialId, autofilledAtEpochMillis = System.currentTimeMillis()) }
             }
         }
@@ -675,11 +668,16 @@ class PasswordStudio @Inject constructor(
     )
 
     /** برای آزمون و برای بازنشانیِ وضعیت پس از خروجِ کامل از سایت. */
-    fun forgetTab() {
-        activeAccountId = null
-        _pendingPrompt.value = null
-        pendingSubmission = null
+    suspend fun forgetTab(tabId: String) {
+        mutex.withLock { pendingSubmissions.remove(tabId) }
     }
+
+    private fun sameLoginOrigin(first: String, second: String): Boolean = runCatching {
+        val one = java.net.URI(first)
+        val two = java.net.URI(second)
+        fun port(uri: java.net.URI) = uri.port.takeIf { it >= 0 } ?: if (uri.scheme.equals("https", true)) 443 else 80
+        one.host != null && one.host.equals(two.host, true) && one.scheme.equals(two.scheme, true) && port(one) == port(two)
+    }.getOrDefault(false)
 
     private data class PendingSubmission(
         val url: String,

@@ -52,9 +52,10 @@ const document = {
 };
 const navigator = { storage: { persisted: async () => false, persist: async () => { persistCalls++; return true; } } };
 const timers = [];
+const location = { origin: "https://my.mci.ir", href: "https://my.mci.ir/panel" };
 const code = fs.readFileSync("engine/src/main/assets/extensions/never_signout/content.js", "utf8");
 vm.runInNewContext(code, {
-  browser, window, document, navigator, location: { origin: "https://my.mci.ir", href: "https://my.mci.ir/panel" },
+  browser, window, document, navigator, location,
   URL, AbortController, setInterval: fn => { listeners.interval = fn; }, setTimeout: fn => { timers.push(fn); return 1; },
   clearTimeout: () => {}
 });
@@ -62,7 +63,7 @@ vm.runInNewContext(code, {
 (async () => {
   listeners.DOMContentLoaded();
   timers.shift()();
-  listeners.interval();
+  listeners.visibilitychange();
   await Promise.resolve();
   assert.equal(persistCalls, 0, "unprotected pages must not request persistent storage");
   assert.equal(sent.length, 0, "unprotected pages must not send automatic snapshots");
@@ -77,9 +78,24 @@ vm.runInNewContext(code, {
   await Promise.resolve();
   assert.equal(persistCalls, 1);
   assert.equal(runtimeMessages.at(-1).enabled, true);
-  listeners.interval();
+  document.visibilityState = "hidden";
+  listeners.visibilitychange();
   await new Promise(resolve => setImmediate(resolve));
   assert.ok(sent.some(message => message.event === "STORAGE_SNAPSHOT" && !message.requestId));
+
+  const evaluate = expectedUrl => listeners.port({
+    type: "EVAL_JS", requestId: "fill", expectedUrl, script: "'filled'"
+  });
+  await evaluate(location.href);
+  assert.equal(sent.at(-1).result, "filled");
+  await evaluate("https://my.mci.ir/old-route");
+  assert.equal(sent.at(-1).result, "");
+  await evaluate("https://my.mci.ir:8443/panel");
+  assert.equal(sent.at(-1).result, "");
+  listeners.pagehide();
+  await evaluate(location.href);
+  assert.equal(sent.at(-1).result, "", "same-URL reload must not fill the document being left");
+  listeners.pageshow();
 
   await listeners.port({ type: "APPLY_VAULT_SNAPSHOT", requestId: "wrong-origin", payload: {
     origin: "https://other.test", localStorage: { injected: "no" }
@@ -87,9 +103,10 @@ vm.runInNewContext(code, {
   assert.equal(localStorage.getItem("injected"), null);
   assert.equal(sent.at(-1).storageKeyCount, 0);
   await listeners.port({ type: "APPLY_VAULT_SNAPSHOT", requestId: "same-origin", payload: {
-    origin: "https://my.mci.ir", localStorage: { restored: "yes" }
+    origin: "https://my.mci.ir", localStorage: { restored: "yes", user: "old value" }
   } });
   assert.equal(localStorage.getItem("restored"), "yes");
+  assert.equal(localStorage.getItem("user"), "one", "restore preserves live storage");
   assert.equal(sent.at(-1).storageKeyCount, 1);
 
   const cookiePayload = { origin: "https://my.mci.ir", cookies: [{ name: "session", value: "private" }] };
@@ -114,7 +131,7 @@ vm.runInNewContext(code, {
 
   await listeners.port({ type: "SET_COOKIE_POLICY", enabled: false, persistStorage: true });
   const count = sent.length;
-  listeners.interval();
+  listeners.visibilitychange();
   await Promise.resolve();
   assert.equal(sent.length, count, "disabling protection stops automatic snapshots immediately");
   assert.equal(persistCalls, 1);

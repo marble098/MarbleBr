@@ -12,28 +12,14 @@ import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Provider
 import javax.inject.Singleton
 
-/**
- * «رصدگرِ ورود» — پلِ میانِ صفحهٔ وب و استودیوی ورود.
- *
- * این کلاس هیچ تصمیمی نمی‌گیرد؛ فقط:
- * ۱. پس از کامل‌شدنِ هر صفحه، کاوشِ بی‌خطر را اجرا می‌کند و نتیجه را به [PasswordStudio] می‌دهد.
- * ۲. اگر دستورِ پرکردن/نوشتنِ کد آمد، همان اسکریپت را در همان تب اجرا می‌کند.
- * ۳. ارسالِ فرم را از content script می‌گیرد و پس از تأییدِ موفقیت، کارتِ ذخیره را می‌سازد.
- * ۴. وقتی صفحه‌ای کادرِ کد دارد، پیامک/اعلانِ تازه را می‌شنود و کد را می‌نویسد.
- *
- * نکتهٔ مهمِ بازنویسی: نسخهٔ قبلی برای هر بار بارگذاری یک درخواستِ خودکار به صفحه می‌فرستاد و
- * نتیجه را در یک `ConcurrentHashMap` نگه می‌داشت، اما هیچ‌جا کدِ یکبارمصرف را جست‌وجو نمی‌کرد و
- * اسکریپتِ پرکردن را اجرا نمی‌کرد. حالا هر دو مسیر واقعاً به اجرا می‌رسند.
- */
+/** Connects login and OTP operations to the exact Gecko document that requested them. */
 @Singleton
 class LoginWatcher @Inject constructor(
     private val siteEngine: SiteCompatibilityEngine,
@@ -41,133 +27,42 @@ class LoginWatcher @Inject constructor(
     private val passwordStudio: PasswordStudio,
     private val smsBridge: Provider<SmsBridge>,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    /** آخرین آدرسی که برای هر تب کاوش شده؛ کاوشِ دوباره روی همان آدرس لازم نیست. */
-    private val lastObserved = java.util.concurrent.ConcurrentHashMap<String, String>()
+    fun currentPage(tabId: String, url: String): LoginPage? = sessionManager.currentLoginPage(tabId, url)
 
-    /** کاوش‌های در جریان، تا دو کاوشِ هم‌زمان روی یک تب اجرا نشود. */
-    private val inFlight = java.util.concurrent.ConcurrentHashMap<String, Job>()
+    fun isCurrent(page: LoginPage): Boolean = currentPage(page.tabId, page.url) == page
 
-    /** پایشگرهای فعالِ کدِ یکبارمصرف برای هر تب. */
-    private val codeWatchers = java.util.concurrent.ConcurrentHashMap<String, Job>()
-
-    /**
-     * پس از هر بارگذاریِ موفقِ صفحه.
-     *
-     * @param url آدرسِ نهاییِ صفحه (پس از ریدایرکت‌ها)
-     */
-    fun observePage(tabId: String, url: String) {
-        if (url.isBlank() || !url.startsWith("http", ignoreCase = true)) return
-        if (lastObserved[tabId] == url) return
-        lastObserved[tabId] = url
-        inFlight.remove(tabId)?.cancel()
-
-        // ارسالِ فرمِ قبلی ممکن است با همین پیمایش تأیید شود. «فرمِ صفحهٔ تازه» را حدس نمی‌زنیم؛
-        // `null` می‌فرستیم تا استودیو با دانشِ خودش (همان لحظهٔ ارسال) داوری کند.
-        scope.launch {
-            runCatching {
-                passwordStudio.settlePendingSubmission(
-                    movedToNewUrl = true,
-                    passwordFieldsAfter = null,
-                    otpFieldsAfter = if (url.contains("otp", true) || url.contains("verif", true)) 1 else 0,
-                )
-            }
-        }
-
-        inFlight[tabId] = scope.launch {
-            withContext(Dispatchers.Main.immediate) {
-                runCatching { observeNow(tabId, url) }
-            }
-        }
-    }
-
-    private suspend fun observeNow(tabId: String, url: String) {
-        val isPrivate = sessionManager.isPrivateSession(tabId)
-        val observationRaw = sessionManager.evalInPageForLogin(tabId, LoginObservationProbe.OBSERVE_SCRIPT)
-        siteEngine.onPageLoaded(tabId, url, observationRaw)
-        if (isPrivate) return
-
-        val directive = passwordStudio.onPageReady(
-            tabId = tabId,
-            pageUrl = url,
-            observationRaw = observationRaw,
-            isPrivateTab = isPrivate,
-        )
-        when (directive) {
-            is LoginPageDirective.FillCredentials -> {
-                // پرکردن فقط پس از تأییدِ بیومتریک (اگر تنظیم شده باشد) توسط لایهٔ رابط انجام
-                // می‌شود؛ این‌جا فقط اسکریپتِ آماده را ثبت می‌کنیم تا UI اجرا کند.
-                pendingFillDirective = directive
-            }
-
-            is LoginPageDirective.OriginWarning -> Unit
-
-            LoginPageDirective.None -> {
-                // شاید این صفحه کادرِ کد داشته باشد؛ آن‌وقت کد را دنبال می‌کنیم.
-                watchForOneTimeCode(tabId, url)
-            }
-        }
-    }
-
-    /** دستورِ پرکردنِ منتظرِ تأییدِ کاربر/بیومتریک (فقط در حافظه؛ هیچ گذرواژه‌ای در جریان نیست). */
-    @Volatile
-    var pendingFillDirective: LoginPageDirective.FillCredentials? = null
-        private set
-
-    fun consumeFillDirective(): LoginPageDirective.FillCredentials? = pendingFillDirective.also { pendingFillDirective = null }
-
-    /**
-     * اجرای اسکریپتِ پرکردن (`filled` / `no-form` / `no-password` / `failed`).
-     * بلافاصله پس از پرکردن، `autofill` در مخزن ثبت می‌شود تا این حساب اولویت بگیرد.
-     */
-    suspend fun executeAutofill(tabId: String, script: String): Boolean =
+    suspend fun observePage(page: LoginPage): LoginPageDirective =
         withContext(Dispatchers.Main.immediate) {
-            val result = sessionManager.evalInPageForLogin(tabId, script)
-            result == "filled"
+            val raw = sessionManager.evalInPageForLogin(page, LoginObservationProbe.OBSERVE_SCRIPT)
+                ?: return@withContext LoginPageDirective.None
+            if (!isCurrent(page)) return@withContext LoginPageDirective.None
+
+            siteEngine.onPageLoaded(page.tabId, page.url, raw)
+            val observation = LoginObservationProbe.parse(raw)
+            passwordStudio.settlePendingSubmission(
+                tabId = page.tabId,
+                currentUrl = page.url,
+                passwordFieldsAfter = observation.passwordFieldCount,
+                otpFieldsAfter = observation.oneTimeCodeFieldCount,
+            )
+            if (!isCurrent(page)) return@withContext LoginPageDirective.None
+            val domain = ContainerSessionManager.extractDomain(page.url)
+            val canAutoFill = page.containerId == AccountContainers.defaultId(domain)
+            passwordStudio.onPageReady(page.tabId, page.url, raw, allowAutofill = canAutoFill)
         }
 
-    /**
-     * پایشِ کدِ یکبارمصرف تا وقتی این صفحه باز است.
-     *
-     * چرا پایش و نه فقط یک‌بار خواندن؟ چون پیامک معمولاً ۱ تا ۱۵ ثانیه بعد از درخواست می‌رسد.
-     * این پایش حداکثر [CODE_WATCH_WINDOW_MILLIS] طول می‌کشد، هر چند ثانیه یک‌بار صندوق را
-     * می‌بیند و در پایان خودش را می‌بندد (هیچ منبعی معطل نمی‌ماند).
-     */
-    fun watchForOneTimeCode(tabId: String, url: String) {
-        if (codeWatchers[tabId]?.isActive == true) return
-        codeWatchers[tabId] = scope.launch {
-            val deadline = System.currentTimeMillis() + CODE_WATCH_WINDOW_MILLIS
-            var lastTried = ""
-            while (System.currentTimeMillis() < deadline && sessionManager.hasOpenSession(tabId)) {
-                delay(CODE_POLL_INTERVAL_MILLIS)
-                val fieldsRaw = sessionManager.evalInPageForLogin(tabId, OtpFieldProbe.DISCOVER_SCRIPT)
-                    ?: continue
-                if (!passwordStudio.hasCodeField(fieldsRaw, url)) continue
-                val directive = passwordStudio.requestOneTimeCode(
-                    pageUrl = url,
-                    observationRaw = null,
-                    fieldsRaw = fieldsRaw,
-                    isPrivateTab = sessionManager.isPrivateSession(tabId),
-                )
-                if (directive is LoginOneTimeCodeDirective.Ready) {
-                    if (directive.script == lastTried) continue
-                    lastTried = directive.script
-                    val filled = sessionManager.evalInPageForLogin(tabId, directive.script)
-                    if (filled == "filled" || filled == "already") {
-                        passwordStudio.consumeNotificationCode()
-                        smsBridge.get().notifyCodeFilled(directive.digits, directive.fromSms)
-                        return@launch
-                    }
-                }
-            }
+    suspend fun executeAutofill(page: LoginPage, script: String): Boolean =
+        withContext(Dispatchers.Main.immediate) {
+            sessionManager.evalInPageForLogin(page, script) == "filled"
         }
-    }
 
     /** کد را همین حالا از پیامک/اعلان پیدا و در کادر بنویس؛ برای دکمهٔ «کد را بگذار». */
     suspend fun fillOneTimeCodeNow(tabId: String, url: String): Boolean =
         withContext(Dispatchers.Main.immediate) {
-            val fieldsRaw = sessionManager.evalInPageForLogin(tabId, OtpFieldProbe.DISCOVER_SCRIPT) ?: return@withContext false
+            val page = currentPage(tabId, url) ?: return@withContext false
+            val fieldsRaw = sessionManager.evalInPageForLogin(page, OtpFieldProbe.DISCOVER_SCRIPT) ?: return@withContext false
             if (!passwordStudio.hasCodeField(fieldsRaw, url)) return@withContext false
             val directive = passwordStudio.requestOneTimeCode(
                 pageUrl = url,
@@ -176,7 +71,7 @@ class LoginWatcher @Inject constructor(
                 isPrivateTab = sessionManager.isPrivateSession(tabId),
             )
             if (directive !is LoginOneTimeCodeDirective.Ready) return@withContext false
-            val result = sessionManager.evalInPageForLogin(tabId, directive.script)
+            val result = sessionManager.evalInPageForLogin(page, directive.script)
             val filled = result == "filled" || result == "already"
             if (filled) {
                 passwordStudio.consumeNotificationCode()
@@ -198,7 +93,8 @@ class LoginWatcher @Inject constructor(
     /** آیا این صفحه کادرِ کد دارد؟ (برای نمایشِ دکمه در نوار بالا) */
     suspend fun pageAcceptsOneTimeCode(tabId: String, url: String): Boolean =
         withContext(Dispatchers.Main.immediate) {
-            val fieldsRaw = sessionManager.evalInPageForLogin(tabId, OtpFieldProbe.DISCOVER_SCRIPT) ?: return@withContext false
+            val page = currentPage(tabId, url) ?: return@withContext false
+            val fieldsRaw = sessionManager.evalInPageForLogin(page, OtpFieldProbe.DISCOVER_SCRIPT) ?: return@withContext false
             passwordStudio.hasCodeField(fieldsRaw, url)
         }
 
@@ -217,24 +113,10 @@ class LoginWatcher @Inject constructor(
         /** پیامِ خطا همان لحظهٔ ارسال دیده شد؟ اگر بله، ورود موفق نبوده است. */
         errorVisible: Boolean = false,
     ) {
-        if (password.isBlank()) return
+        if (password.isBlank() || errorVisible) return
         scope.launch {
             runCatching {
-                passwordStudio.onLoginSubmit(
-                    pageUrl = url,
-                    username = username,
-                    password = password,
-                    otpFieldCount = otpFieldCount,
-                    isPrivateTab = sessionManager.isPrivateSession(tabId),
-                )
-                // ارسال‌هایی که فقط کد می‌خواهند (بدونِ ناوبری) هم باید تأیید شوند؛ اگر گذرواژه
-                // همراه بود، «ناوبری» یا «ناپدیدشدنِ فرم» شاهدِ موفقیت است و این فراخوانیِ زودهنگام
-                // چیزی را خراب نمی‌کند چون تا رسیدنِ مهلت، تصمیم `UNKNOWN` می‌ماند.
-                // `null` یعنی «تعدادِ آخرین کاوش را خودِ استودیو می‌داند»؛ حدس نمی‌زنیم.
-                passwordStudio.settlePendingSubmission(
-                    movedToNewUrl = false,
-                    passwordFieldsAfter = null,
-                )
+                passwordStudio.onLoginSubmit(tabId, url, username, password, otpFieldCount)
             }
         }
     }
@@ -243,9 +125,12 @@ class LoginWatcher @Inject constructor(
     fun captureCurrentForm(tabId: String, url: String) {
         scope.launch {
             withContext(Dispatchers.Main.immediate) {
-                val raw = sessionManager.evalInPageForLogin(tabId, LoginObservationProbe.CAPTURE_SUBMIT_SCRIPT)
+                val page = currentPage(tabId, url) ?: return@withContext
+                val raw = sessionManager.evalInPageForLogin(page, LoginObservationProbe.CAPTURE_SUBMIT_SCRIPT)
+                if (!isCurrent(page)) return@withContext
                 val submitted = LoginObservationProbe.parseSubmitted(raw) ?: return@withContext
                 passwordStudio.onLoginSubmit(
+                    tabId = tabId,
                     pageUrl = url,
                     username = submitted.username,
                     password = submitted.password,
@@ -253,14 +138,9 @@ class LoginWatcher @Inject constructor(
                     isPrivateTab = sessionManager.isPrivateSession(tabId),
                 )
                 // فرم دستی خوانده شد؛ اگر خطا دیده شد رد، وگرنه «فرم ناپدید شد» شاهدِ موفقیت است.
-                passwordStudio.settlePendingSubmission(movedToNewUrl = false, passwordFieldsAfter = 0)
+                passwordStudio.settlePendingSubmission(tabId, url, passwordFieldsAfter = 0)
             }
         }
-    }
-
-    /** اجرای یک اسکریپتِ آماده در صفحهٔ همان تب (پرکردنِ دستی از پنل مخزن). */
-    fun runInPage(tabId: String, script: String, onResult: (String?) -> Unit = {}) {
-        sessionManager.evaluateInPageForLogin(tabId, script, onResult)
     }
 
     /** پارسِ امنِ پاسخِ content script برای آزمون‌های واحد. */
@@ -274,19 +154,8 @@ class LoginWatcher @Inject constructor(
     }
 
     fun forget(tabId: String) {
-        lastObserved.remove(tabId)
-        inFlight.remove(tabId)?.cancel()
-        codeWatchers.remove(tabId)?.cancel()
         siteEngine.forgetTab(tabId)
-        pendingFillDirective = null
-    }
-
-    /** برای آزمون: آیا الان پایشگری برای این تب فعال است؟ */
-    fun isWatchingForCode(tabId: String): Boolean = codeWatchers[tabId]?.isActive == true
-
-    companion object {
-        const val CODE_WATCH_WINDOW_MILLIS = 90_000L
-        const val CODE_POLL_INTERVAL_MILLIS = 2_500L
+        scope.launch { passwordStudio.forgetTab(tabId) }
     }
 }
 

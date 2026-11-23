@@ -456,6 +456,8 @@ class VaultDashboardViewModel @Inject constructor(
             when {
                 outcome.payloadUnavailable -> notify { it.feedbackRestoreFailed }
 
+                outcome.superseded -> notify { it.vaultRestoreSuperseded }
+
                 outcome.openTabMissing -> notify { it.vaultRestoreNeedsOpenTab }
 
                 outcome.cookiesRestored == 0 && outcome.storageKeysRestored == 0 ->

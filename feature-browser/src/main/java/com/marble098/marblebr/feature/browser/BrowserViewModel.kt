@@ -20,7 +20,6 @@ import com.marble098.marblebr.core.model.AutofillCandidate
 import com.marble098.marblebr.core.model.BookmarkItem
 import com.marble098.marblebr.core.model.BrowserTab
 import com.marble098.marblebr.core.model.DownloadItem
-import com.marble098.marblebr.core.model.HealthReason
 import com.marble098.marblebr.core.model.HistoryItem
 import com.marble098.marblebr.core.model.PermissionState
 import com.marble098.marblebr.core.model.SessionHealthStatus
@@ -36,6 +35,7 @@ import com.marble098.marblebr.core.preferences.BrowserPreferencesRepository
 import com.marble098.marblebr.core.preferences.SavedBrowserTabs
 import com.marble098.marblebr.engine.ContainerSessionManager
 import com.marble098.marblebr.engine.LightweightAdBlocker
+import com.marble098.marblebr.engine.LoginPage
 import com.marble098.marblebr.engine.LoginWatcher
 import com.marble098.marblebr.engine.PageContextTarget
 import com.marble098.marblebr.engine.ContentPermissionRequest
@@ -118,7 +118,7 @@ data class BrowserUiState(
     /** پنلِ «چطور وارد شویم» و پرکردنِ دستی. */
     val showSiteCompatibilitySheet: Boolean = false,
     /** پرسشِ «برای پرکردنِ ورود، اثر انگشت» باز است؟ */
-    val showAutofillUnlockPrompt: Boolean = false,
+    val autofillUnlockRequestId: String? = null,
     /** آیا برای دامنهٔ همین صفحه، ورودِ ذخیره‌شده داریم؟ (برای منوی «پر کردن») */
     val hasStoredLoginForCurrentSite: Boolean = false,
     /** متنِ در حال تایپ در نوار آدرس (برای پیشنهادهای زنده). */
@@ -485,6 +485,7 @@ class BrowserViewModel @Inject constructor(
         if (container?.neverSignOutEnabled == true) SessionHealthStatus.PROTECTED_ACTIVE else SessionHealthStatus.DISABLED
 
     fun showHome() {
+        clearAutofillRequest()
         dismissPendingPermission()
         toggleFindInPage(false)
         _uiState.update { it.copy(showHome = true) }
@@ -496,11 +497,16 @@ class BrowserViewModel @Inject constructor(
     }
 
     private fun activateTab(tab: BrowserTab?) {
+        if (_uiState.value.activeTabId != tab?.id) {
+            _codeFieldAvailable.value = false
+            clearAutofillRequest()
+        }
         if (_uiState.value.pendingPermission?.tabId != tab?.id) dismissPendingPermission()
         toggleFindInPage(false)
         _uiState.update {
             it.copy(
                 activeTabId = tab?.id.orEmpty(),
+                fallbackPromptDomain = it.fallbackPromptDomain.takeIf { _ -> it.activeTabId == tab?.id },
                 activeContainer = tab?.id?.let(containers::get),
                 showHome = tab?.url.isNullOrBlank() && tab?.isLoading != true,
                 contextTarget = null,
@@ -786,8 +792,8 @@ class BrowserViewModel @Inject constructor(
         onTitleChanged = { title -> onPageTitleChanged(tab.id, title) },
         onProgressChanged = { progress, loading -> onPageProgressChanged(tab.id, progress, loading) },
         onNavStateChanged = { back, fwd -> onNavStateChanged(tab.id, back, fwd) },
-        onHealthRestored = ::onHealthRestored,
-        onServerRevokedFallbackRequired = ::onServerRevokedFallbackRequired,
+        onReauthenticationRequired = { domain -> onReauthenticationRequired(tab.id, domain) },
+        onLoginPageChanged = { url -> onPageSettled(tab.id, url) },
         onDownloadRequested = { url, _ -> if (!tab.isPrivate) enqueueDownload(url) },
         onContextMenu = { target -> onPageContextMenu(tab.id, target) },
         onPopupRequest = ::onPopupRequest,
@@ -994,6 +1000,10 @@ class BrowserViewModel @Inject constructor(
         ) {
             dismissPendingPermission()
         }
+        if (tab.url != url && _uiState.value.activeTabId == tabId) {
+            _codeFieldAvailable.value = false
+            clearAutofillRequest()
+        }
         updateTab(tabId) { it.copy(url = url, isSecure = isSecure) }
         // دسترسی‌های همان دامنه روی نشست اعمال می‌شوند (جاوااسکریپت/پخش خودکار/دیالوگ‌ها).
         viewModelScope.launch {
@@ -1032,9 +1042,9 @@ class BrowserViewModel @Inject constructor(
      */
     fun onPageProgressChanged(tabId: String, progress: Int, isLoading: Boolean) {
         updateTab(tabId) { it.copy(progress = progress, isLoading = isLoading) }
-        if (!isLoading) {
-            val tab = _uiState.value.tabs.firstOrNull { it.id == tabId } ?: return
-            if (tab.url.startsWith("http")) onPageSettled(tabId, tab.url)
+        if (isLoading && _uiState.value.activeTabId == tabId) {
+            _codeFieldAvailable.value = false
+            clearAutofillRequest()
         }
     }
 
@@ -1133,20 +1143,11 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
-    fun onHealthRestored(reason: HealthReason) {
-        val tab = _uiState.value.activeTab
-        if (tab != null) {
-            updateTab(tab.id) { it.copy(healthStatus = SessionHealthStatus.RECOVERED_FROM_VAULT) }
+    private fun onReauthenticationRequired(tabId: String, domain: String) {
+        updateTab(tabId) { it.copy(healthStatus = SessionHealthStatus.REAUTH_REQUIRED) }
+        if (_uiState.value.activeWebTab()?.id == tabId) {
+            _uiState.update { it.copy(fallbackPromptDomain = domain) }
         }
-        showLocalizedBanner { it.healthReasonLabel(reason) }
-    }
-
-    fun onServerRevokedFallbackRequired(domain: String) {
-        val tab = _uiState.value.activeTab
-        if (tab != null) {
-            updateTab(tab.id) { it.copy(healthStatus = SessionHealthStatus.SERVER_REVOKED_FALLBACK) }
-        }
-        _uiState.update { it.copy(fallbackPromptDomain = domain) }
     }
 
     fun dismissFallbackPrompt() {
@@ -1186,99 +1187,100 @@ class BrowserViewModel @Inject constructor(
     private val _codeFieldAvailable = MutableStateFlow(false)
     val codeFieldAvailable: StateFlow<Boolean> = _codeFieldAvailable.asStateFlow()
 
-    /** دستورِ پرکردنِ منتظرِ تأییدِ بیومتریک. */
-    private var pendingFill: LoginPageDirective.FillCredentials? = null
+    private data class AutofillRequest(
+        val page: LoginPage,
+        val script: String? = null,
+        val credentialId: String? = null,
+        val id: String = UUID.randomUUID().toString(),
+    )
 
-    /**
-     * پس از هر بار کامل‌شدنِ صفحه (از نوار پیشرفتِ مرورگر).
-     *
-     * اگر استودیو یک دستورِ پرکردن داده باشد و قفلِ بیومتریک لازم باشد، همین‌جا درخواستِ
-     * اثر انگشت آماده می‌شود؛ در غیرِ این صورت اجرا انجام می‌شود. این همان حلقه‌ای است که در
-     * نسخهٔ قبلی نبود و «پرکردنِ خودکار» را عملاً بی‌اثر می‌کرد.
-     */
-    fun onPageSettled(tabId: String, url: String) {
-        viewModelScope.launch {
-            val directive = loginWatcher.consumeFillDirective() ?: run {
-                _codeFieldAvailable.value = loginWatcher.pageAcceptsOneTimeCode(tabId, url)
-                return@launch
+    private var pendingFill: AutofillRequest? = null
+    private var loginObservation: Job? = null
+
+    private fun isActiveLoginPage(page: LoginPage): Boolean {
+        val tab = _uiState.value.activeWebTab()
+        return tab?.id == page.tabId && tab.containerId == page.containerId && loginWatcher.isCurrent(page)
+    }
+
+    private fun onPageSettled(tabId: String, url: String) {
+        if (_uiState.value.activeWebTab()?.id != tabId) return
+        val page = loginWatcher.currentPage(tabId, url) ?: return
+        loginObservation?.cancel()
+        loginObservation = viewModelScope.launch {
+            val directive = loginWatcher.observePage(page)
+            val codeAvailable = loginWatcher.pageAcceptsOneTimeCode(tabId, url)
+            if (!isActiveLoginPage(page)) return@launch
+            _codeFieldAvailable.value = codeAvailable
+            if (directive is LoginPageDirective.FillCredentials && pendingFill == null) {
+                val request = AutofillRequest(page, script = directive.script)
+                if (directive.needsBiometricConfirmation) {
+                    promptForAutofill(request)
+                } else {
+                    applyAutofill(request)
+                }
             }
-            pendingFill = directive
-            if (directive.needsBiometricConfirmation) {
-                _uiState.update { it.copy(showAutofillUnlockPrompt = true) }
-            } else {
-                applyPendingFill()
-            }
-            _codeFieldAvailable.value = loginWatcher.pageAcceptsOneTimeCode(tabId, url)
         }
     }
 
-    /**
-     * «این ورود را با اثر انگشت پر کن» — کاری که منوی میانبر و نوارِ ورود انجام می‌دهند.
-     * اگر اعتمادِ بیومتریک در همین نشست هست، بدونِ پرسش دوباره پر می‌کند.
-     */
     fun requestAutofill() {
+        val tab = _uiState.value.activeWebTab() ?: return
+        val page = loginWatcher.currentPage(tab.id, tab.url) ?: return
         viewModelScope.launch {
-            val tab = _uiState.value.activeWebTab() ?: return@launch
-            val url = tab.url
-            if (url.isBlank()) return@launch
-            val accounts = passwordStudio.candidatesFor(url)
-            if (accounts.isEmpty()) {
-                showLocalizedBanner { it.saveLoginNoStored }
-                return@launch
-            }
-            if (passwordStudio.requiresBiometricForFill()) {
-                _uiState.update { it.copy(showAutofillUnlockPrompt = true) }
-            } else {
-                autofillFromVault(accounts.first().id)
+            val accounts = passwordStudio.candidatesFor(page.url)
+            if (!isActiveLoginPage(page)) return@launch
+            when (accounts.size) {
+                0 -> showLocalizedBanner { it.saveLoginNoStored }
+                1 -> fillCredential(page, accounts.single().id)
+                else -> openSiteCompatibilitySheet()
             }
         }
     }
 
-    /** لایهٔ رابط پس از تأییدِ بیومتریک این را صدا می‌زند. */
-    fun onBiometricConfirmedForAutofill() {
-        passwordStudio.onBiometricConfirmed()
-        _uiState.update { it.copy(showAutofillUnlockPrompt = false) }
-        val directive = pendingFill
-        if (directive != null) {
-            applyPendingFill()
+    private suspend fun fillCredential(page: LoginPage, credentialId: String) {
+        if (!isActiveLoginPage(page)) return
+        val request = AutofillRequest(page, credentialId = credentialId)
+        if (passwordStudio.requiresBiometricForFill()) {
+            promptForAutofill(request)
         } else {
-            requestAutofillDirect()
+            applyAutofill(request)
         }
+    }
+
+    private fun promptForAutofill(request: AutofillRequest) {
+        if (pendingFill != null) return
+        pendingFill = request
+        _uiState.update { it.copy(autofillUnlockRequestId = request.id) }
+    }
+
+    fun onBiometricConfirmedForAutofill(requestId: String) {
+        val request = pendingFill?.takeIf { it.id == requestId } ?: return
+        clearAutofillRequest()
+        if (!isActiveLoginPage(request.page)) return
+        passwordStudio.onBiometricConfirmed()
+        viewModelScope.launch { applyAutofill(request) }
     }
 
     fun dismissAutofillUnlock() {
         passwordStudio.onBiometricDeclined()
-        pendingFill = null
-        _uiState.update { it.copy(showAutofillUnlockPrompt = false) }
+        clearAutofillRequest()
     }
 
-    private fun requestAutofillDirect() {
-        viewModelScope.launch {
-            val tab = _uiState.value.activeWebTab() ?: return@launch
-            val candidate = passwordStudio.candidatesFor(tab.url).firstOrNull() ?: return@launch
-            autofillFromVault(candidate.id)
-        }
+    private fun clearAutofillRequest() {
+        pendingFill = null
+        _uiState.update { it.copy(autofillUnlockRequestId = null) }
     }
 
-    private fun applyPendingFill() {
-        // `pendingFill` فقط وقتی پاک می‌شود که واقعاً اجرا شود؛ اگر تبی در کار نباشد، دستور
-        // برای بارِ بعد می‌ماند (مثلاً کاربر هنگامِ پرسشِ اثر انگشت به صفحهٔ دیگری رفته است).
-        val directive = pendingFill ?: return
-        val tab = _uiState.value.activeWebTab() ?: return
-        if (tab.isPrivate) {
-            pendingFill = null
-            return
+    private suspend fun applyAutofill(request: AutofillRequest) {
+        if (!isActiveLoginPage(request.page)) return
+        val script = request.script ?: request.credentialId?.let {
+            passwordStudio.buildManualAutofillScript(request.page.url, it)
         }
-        pendingFill = null
-        viewModelScope.launch {
-            val filled = loginWatcher.executeAutofill(tab.id, directive.script)
-            if (filled) {
-                // «پر شد» بدونِ نامِ کاربری: هیچ شناسه‌ای در نوارِ بالای صفحه دیده نمی‌شود.
-                showLocalizedBanner { it.saveLoginFillAction }
-            } else {
-                // صفحه عوض شده یا فرمی نبوده؛ دکمهٔ «کد را بگذار» را به‌روز می‌کنیم و ساکت می‌مانیم.
-                _codeFieldAvailable.value = loginWatcher.pageAcceptsOneTimeCode(tab.id, tab.url)
-            }
+        if (!isActiveLoginPage(request.page)) return
+        val filled = script != null && loginWatcher.executeAutofill(request.page, script)
+        if (filled) {
+            showLocalizedBanner { it.saveLoginFillAction }
+        } else if (request.credentialId != null) {
+            showLocalizedBanner { it.saveLoginNoStored }
         }
     }
 
@@ -1346,15 +1348,8 @@ class BrowserViewModel @Inject constructor(
     /** پرکردنِ فرمِ ورودِ همین صفحه از رکوردی که کاربر انتخاب می‌کند. */
     fun autofillFromVault(credentialId: String) {
         val tab = _uiState.value.activeWebTab() ?: return
-        viewModelScope.launch {
-            val script = passwordStudio.buildManualAutofillScript(tab.url, credentialId)
-            if (script == null) {
-                showLocalizedBanner { it.saveLoginNoStored }
-                return@launch
-            }
-            val filled = loginWatcher.executeAutofill(tab.id, script)
-            if (!filled) showLocalizedBanner { it.saveLoginNoStored }
-        }
+        val page = loginWatcher.currentPage(tab.id, tab.url) ?: return
+        viewModelScope.launch { fillCredential(page, credentialId) }
     }
 
     /**

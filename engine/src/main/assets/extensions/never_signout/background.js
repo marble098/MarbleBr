@@ -116,8 +116,14 @@
     }
     if (message.type === "PREPARE_RESTORE" && Array.isArray(message.cookies)) {
       const target = new URL(origin);
+      const currentCookies = jars.get(tabId)?.get(origin)?.values() || [];
+      const liveNames = new Set(Array.from(currentCookies)
+        .filter(cookie => cookie.expiresEpochMillis === null || cookie.expiresEpochMillis > Date.now())
+        .map(cookie => cookie.name));
+      // The restore request is at /. Only restore cookies whose scope can be checked there.
       const headers = message.cookies.slice(0, MAX_COOKIES)
-        .map(c => cookieHeader(c, target.hostname.toLowerCase(), target.protocol, Date.now())).filter(Boolean);
+        .filter(cookie => cookie?.isHostOnly && cookie.path === "/" && !liveNames.has(cookie.name))
+        .map(cookie => cookieHeader(cookie, target.hostname.toLowerCase(), target.protocol, Date.now())).filter(Boolean);
       if (!headers.length) return Promise.resolve({ nonce: null });
       const bytes = new Uint8Array(16);
       crypto.getRandomValues(bytes);
@@ -161,6 +167,16 @@
     }
   }, { urls: ["<all_urls>"] });
 
+  browser.webRequest.onBeforeSendHeaders.addListener(details => {
+    const pending = restores.get(details.tabId);
+    if (!pending || pending.origin !== originOf(details.url)) return;
+    if (new URL(details.url).searchParams.get("__marble_vault_restore") !== pending.nonce) return;
+    const names = new Set((details.requestHeaders || [])
+      .filter(header => header.name.toLowerCase() === "cookie")
+      .flatMap(header => (header.value || "").split(";").map(pair => pair.split("=")[0].trim())));
+    pending.headers = pending.headers.filter(header => !names.has(header.split("=")[0]));
+  }, { urls: ["<all_urls>"], types: ["sub_frame"] }, ["requestHeaders"]);
+
   browser.webRequest.onHeadersReceived.addListener(details => {
     const origin = originOf(details.url);
     if (!origin || details.tabId < 0) return {};
@@ -170,6 +186,9 @@
       const request = new URL(details.url);
       if (request.searchParams.get("__marble_vault_restore") === pending.nonce) {
         restores.delete(details.tabId);
+        const serverNames = new Set(headers.filter(header => header.name.toLowerCase() === "set-cookie")
+          .map(header => (header.value || "").split("=")[0].trim()));
+        pending.headers = pending.headers.filter(header => !serverNames.has(header.split("=")[0]));
         pending.applied = pending.headers.length;
         restores.set(details.tabId, pending);
         return { responseHeaders: headers.concat(pending.headers.map(value => ({ name: "Set-Cookie", value }))) };

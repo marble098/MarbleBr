@@ -34,6 +34,7 @@ enum class SessionHealthStatus {
     HEALING_IN_PROGRESS,
     RECOVERED_FROM_VAULT,
     SERVER_REVOKED_FALLBACK,
+    REAUTH_REQUIRED,
     DISABLED,
 }
 
@@ -197,7 +198,6 @@ sealed interface SessionHealthSignal {
  */
 enum class HealthGuardAction {
     NONE,
-    RESTORE_LATEST_SNAPSHOT,
     ESCALATE_TO_CREDENTIAL_FALLBACK,
 }
 

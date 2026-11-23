@@ -125,6 +125,32 @@ class SessionVaultFeaturesTest {
         assertTrue(restored?.cookies?.isNotEmpty() == true)
     }
 
+    @Test
+    fun `preferences and expired cookies do not provide session evidence`() {
+        val now = System.currentTimeMillis()
+        val data = payload().copy(
+            localStorage = mapOf("user_preferences" to "dark"),
+            cookies = payload().cookies.map { it.copy(expiresEpochMillis = now) },
+        )
+        assertTrue(vaultManager.hasRestorableData(data, now))
+        assertFalse(vaultManager.hasSessionCookieEvidence(data, now))
+    }
+
+    @Test
+    fun `an older pinned snapshot remains readable but is superseded in the live account`() = runTest {
+        val original = payload()
+        val first = vaultManager.captureSnapshot(original)
+        vaultManager.setSnapshotPinned(first.id, true)
+        val newer = original.copy(
+            capturedAtEpochMillis = original.capturedAtEpochMillis + 1,
+            cookies = original.cookies.map { it.copy(value = "rotated") },
+        )
+        val second = vaultManager.captureSnapshot(newer)
+        assertNotNull(vaultManager.restoreGoldenSnapshot(original.containerId))
+        assertTrue(vaultManager.hasNewerSnapshot(first.id, original))
+        assertFalse(vaultManager.hasNewerSnapshot(second.id, newer))
+    }
+
     private class FakeSnapshotDao : SnapshotDao {
         private val items = MutableStateFlow<List<SnapshotEntity>>(emptyList())
 

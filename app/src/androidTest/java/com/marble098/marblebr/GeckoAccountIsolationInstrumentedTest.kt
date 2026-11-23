@@ -8,15 +8,18 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.marble098.marblebr.core.database.MarbleBrDatabase
 import com.marble098.marblebr.core.i18n.LocalizationManager
 import com.marble098.marblebr.core.model.WebAppContainer
+import com.marble098.marblebr.core.model.SessionSnapshotMeta
 import com.marble098.marblebr.core.preferences.BrowserPreferencesRepository
 import com.marble098.marblebr.engine.ContainerSessionManager
 import com.marble098.marblebr.engine.PopupPermissionRequest
 import com.marble098.marblebr.engine.LightweightAdBlocker
 import com.marble098.marblebr.engine.SessionHealthGuard
+import com.marble098.marblebr.engine.VaultRestoreOutcome
 import com.marble098.marblebr.vault.AesGcmVaultCipher
 import com.marble098.marblebr.vault.CookiePersistenceConverter
 import com.marble098.marblebr.vault.SessionVaultManager
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -59,7 +62,7 @@ class GeckoAccountIsolationInstrumentedTest {
         val key = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
         val vault = SessionVaultManager(db.snapshotDao(), AesGcmVaultCipher { key }, converter)
         val manager = ContainerSessionManager(
-            context, db.containerDao(), vault, SessionHealthGuard(vault, db.healthEventDao()),
+            context, db.containerDao(), vault, SessionHealthGuard(db.healthEventDao()),
             LightweightAdBlocker(), LocalizationManager(prefs), prefs,
             // این تست فقط جریانِ نشست/کوکی را می‌سنجد؛ کاوشگرِ ورود لازم نیست.
             javax.inject.Provider { error("LoginWatcher is not used in this test") },
@@ -124,18 +127,16 @@ class GeckoAccountIsolationInstrumentedTest {
                 open(manager, first, "first", "${site.origin}/observe-page?tag=first-reopen")
                 assertAccount(site.observe("first-reopen"), "first")
 
-                // Delete the second account's cookie/storage, restore its saved snapshot, then ask
-                // the real site what Gecko actually sent (the bridge's header count is not enough).
+                // Save the current account state, then remove its browser data and test an explicit restore.
+                assertTrue(capture(manager, "second", "${site.origin}/observe-page"))
+                val latestSnapshot = runBlocking { requireNotNull(db.snapshotDao().getLatestHealthySnapshot(second.id)) }
+                val staleOutcome = runBlocking { manager.restoreSnapshotOnOpenTab(secondSnapshot.toMeta()) }
+                assertTrue("An older snapshot must not replace newer state", staleOutcome.superseded)
                 navigate(manager, "second", "${site.origin}/clear-page")
                 val cleared = site.observe("cleared")
                 assertEquals("none", cleared.identity)
                 assertFalse(cleared.cookie.contains("sid="))
-                // The page can make requests before its new native extension port is ready.
-                // Confirm that the bridge responds before asking it to restore the snapshot.
-                awaitCapture(manager, "second", "${site.origin}/panel")
-                val outcome = runBlocking {
-                    withContext(Dispatchers.Main) { manager.restoreSnapshotOnOpenTab(secondSnapshot.toMeta()) }
-                }
+                val outcome = awaitRestore(manager, latestSnapshot.toMeta())
                 val cookieMetadata = secondPayload.cookies.map { it.copy(value = "[redacted]") }
                 assertTrue("Cookie restore failed: $outcome; cookies: $cookieMetadata", outcome.cookiesRestored > 0)
                 assertTrue("Storage restore failed: $outcome", outcome.storageKeysRestored > 0)
@@ -175,16 +176,17 @@ class GeckoAccountIsolationInstrumentedTest {
     }
 
     private fun capture(manager: ContainerSessionManager, tab: String, url: String): Boolean = runBlocking {
-        withContext(Dispatchers.Main) { manager.capturePageSnapshot(tab, url) }
+        withContext(Dispatchers.Main) { manager.capturePageSnapshot(tab, url, manual = true) }
     }
 
-    private fun awaitCapture(manager: ContainerSessionManager, tab: String, url: String) {
+    private fun awaitRestore(manager: ContainerSessionManager, snapshot: SessionSnapshotMeta): VaultRestoreOutcome = runBlocking {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20)
-        while (System.nanoTime() < deadline) {
-            if (capture(manager, tab, url)) return
-            Thread.sleep(200)
+        var outcome = manager.restoreSnapshotOnOpenTab(snapshot)
+        while (outcome.openTabMissing && System.nanoTime() < deadline) {
+            delay(200)
+            outcome = manager.restoreSnapshotOnOpenTab(snapshot)
         }
-        error("The extension bridge did not become ready for $tab")
+        outcome
     }
 
     private fun assertAccount(observation: Observation, expected: String) {
