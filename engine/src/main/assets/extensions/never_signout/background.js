@@ -114,7 +114,8 @@
       const jar = jars.get(tabId)?.get(origin);
       return Promise.resolve({ cookies: jar ? Array.from(jar.values()) : [] });
     }
-    if (message.type === "PREPARE_RESTORE" && Array.isArray(message.cookies)) {
+    if (message.type === "PREPARE_RESTORE" && typeof message.restoreId === "string" && message.restoreId.length > 0 &&
+        message.restoreId.length <= 128 && Array.isArray(message.cookies)) {
       const target = new URL(origin);
       const currentCookies = jars.get(tabId)?.get(origin)?.values() || [];
       const liveNames = new Set(Array.from(currentCookies)
@@ -128,8 +129,16 @@
       const bytes = new Uint8Array(16);
       crypto.getRandomValues(bytes);
       const nonce = Array.from(bytes, n => n.toString(16).padStart(2, "0")).join("");
-      restores.set(tabId, { nonce, origin, headers, applied: 0, requestTab: "NOT_SEEN", expires: Date.now() + 10000 });
+      restores.set(tabId, {
+        nonce, origin, restoreId: message.restoreId, headers, applied: 0, requestTab: "NOT_SEEN", expires: Date.now() + 10000,
+        requestId: null, checkedHeaders: false, completed: false
+      });
       return Promise.resolve({ nonce });
+    }
+    if (message.type === "CANCEL_RESTORE") {
+      const pending = restores.get(tabId);
+      if (pending && pending.origin === origin && pending.restoreId === message.restoreId) restores.delete(tabId);
+      return Promise.resolve({ ok: true });
     }
     if (message.type === "RESTORE_STATUS") {
       const pending = restores.get(tabId);
@@ -151,14 +160,20 @@
         const nonce = request.searchParams.get("__marble_vault_restore");
         if (nonce) {
           for (const [tabId, pending] of restores) {
-            if (pending.nonce === nonce && pending.origin === request.origin) {
+            if (pending.nonce === nonce && pending.origin === request.origin && !pending.completed) {
               pending.requestTab = details.tabId < 0 ? "NO_TAB" : details.tabId === tabId ? "EXPECTED_TAB" : "OTHER_TAB";
+              if (details.tabId === tabId && details.type === "sub_frame" && pending.expires >= Date.now() &&
+                  pending.requestId === null && typeof details.requestId === "string") {
+                pending.requestId = details.requestId;
+              }
             }
           }
         }
       } catch (_) {}
     }
     if (details.type !== "main_frame" || details.tabId < 0) return;
+    // Even same-origin navigation abandons the document that authorized this restore.
+    restores.delete(details.tabId);
     const policy = policies.get(details.tabId);
     if (policy && policy.origin !== originOf(details.url)) {
       policies.delete(details.tabId);
@@ -169,12 +184,14 @@
 
   browser.webRequest.onBeforeSendHeaders.addListener(details => {
     const pending = restores.get(details.tabId);
-    if (!pending || pending.origin !== originOf(details.url)) return;
+    if (!pending || pending.completed || pending.expires < Date.now() || pending.origin !== originOf(details.url)) return;
+    if (details.type !== "sub_frame" || pending.requestId === null || details.requestId !== pending.requestId) return;
     if (new URL(details.url).searchParams.get("__marble_vault_restore") !== pending.nonce) return;
     const names = new Set((details.requestHeaders || [])
       .filter(header => header.name.toLowerCase() === "cookie")
       .flatMap(header => (header.value || "").split(";").map(pair => pair.split("=")[0].trim())));
     pending.headers = pending.headers.filter(header => !names.has(header.split("=")[0]));
+    pending.checkedHeaders = true;
   }, { urls: ["<all_urls>"], types: ["sub_frame"] }, ["requestHeaders"]);
 
   browser.webRequest.onHeadersReceived.addListener(details => {
@@ -182,16 +199,20 @@
     if (!origin || details.tabId < 0) return {};
     const headers = details.responseHeaders || [];
     const pending = restores.get(details.tabId);
-    if (pending && pending.expires >= Date.now() && pending.origin === origin) {
+    if (pending && !pending.completed && pending.expires >= Date.now() && pending.origin === origin &&
+        pending.requestId !== null && details.requestId === pending.requestId && details.type === "sub_frame" && pending.checkedHeaders) {
       const request = new URL(details.url);
       if (request.searchParams.get("__marble_vault_restore") === pending.nonce) {
-        restores.delete(details.tabId);
+        pending.completed = true;
+        const clearsCookies = headers.some(header => header.name.toLowerCase() === "clear-site-data" &&
+          /(?:^|,)\s*"(?:cookies|\*)"\s*(?:,|$)/i.test(header.value || ""));
         const serverNames = new Set(headers.filter(header => header.name.toLowerCase() === "set-cookie")
           .map(header => (header.value || "").split("=")[0].trim()));
-        pending.headers = pending.headers.filter(header => !serverNames.has(header.split("=")[0]));
-        pending.applied = pending.headers.length;
-        restores.set(details.tabId, pending);
-        return { responseHeaders: headers.concat(pending.headers.map(value => ({ name: "Set-Cookie", value }))) };
+        const safeStatus = details.statusCode >= 200 && details.statusCode < 400;
+        const proposed = safeStatus && !clearsCookies ? pending.headers.filter(header => !serverNames.has(header.split("=")[0])) : [];
+        pending.headers = [];
+        pending.applied = proposed.length;
+        return { responseHeaders: headers.concat(proposed.map(value => ({ name: "Set-Cookie", value }))) };
       }
     }
     const policy = policies.get(details.tabId);

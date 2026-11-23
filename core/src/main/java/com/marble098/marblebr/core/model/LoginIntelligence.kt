@@ -253,11 +253,18 @@ class LoginIntelligence(
         if (isPrivateTab) return LoginAdvance.Nothing
         if (!policy.otpAssistEnabled) return LoginAdvance.Nothing
         if (codeHit == null || !fieldPlan.isActionable) return LoginAdvance.Nothing
-        val fingerprint = "${OneTimeCodeExtractor.fingerprint(codeHit.code)}@${hostOf(url)}"
-        if (fingerprint in filledCodes) return LoginAdvance.Nothing
-        filledCodes += fingerprint
+        val fingerprint = OneTimeCodeExtractor.fingerprint(codeHit.code)
+        if (codeKey(url, fingerprint) in filledCodes) return LoginAdvance.Nothing
         return LoginAdvance.FillOneTimeCode(codeHit.code, fieldPlan)
     }
+
+    /** A proposed fill is not a completed fill; mark it only after the page reports success. */
+    fun markOneTimeCodeFilled(url: String, fingerprint: String) {
+        filledCodes += codeKey(url, fingerprint)
+    }
+
+    private fun codeKey(url: String, fingerprint: String): String =
+        "$fingerprint@${SecureOrigin.from(url) ?: hostOf(url)}"
 
     /** ارسالِ فرمِ ورود؛ سازگاریِ کامل با API پیشین. */
     fun onFormSubmitted(

@@ -8,6 +8,8 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import javax.crypto.KeyGenerator
@@ -26,7 +28,7 @@ class CredentialVaultTest {
         for (secret in listOf(fields.site, fields.username, fields.password, fields.notes)) {
             assertFalse(stored.toString().contains(secret))
         }
-        assertEquals(fields, vault.observeCredentials().first().credentials.single().fields)
+        assertEquals(fields.copy(autofillOrigin = "https://my.mci.ir"), vault.observeCredentials().first().credentials.single().fields)
         vault.save(fields.copy(password = "new-password"), saved.id)
         assertEquals("new-password", vault.observeCredentials().first().credentials.single().fields.password)
         assertEquals(saved.createdAtEpochMillis, dao.getById(saved.id)?.createdAtEpochMillis)
@@ -89,6 +91,49 @@ class CredentialVaultTest {
         assertTrue(one.any { it in "!@#%+-_=" })
     }
 
+    @Test
+    fun autofillRequiresTheConfirmedHttpsOriginIncludingHostAndPort() = runTest {
+        val saved = vault.save(CredentialFields("https://www.example.org:8443/login", "alice", "secret"))
+        assertNotNull(vault.credentialsForAutofill(saved.id, "https://www.example.org:8443/other"))
+        assertNull(vault.credentialsForAutofill(saved.id, "https://example.org:8443/other"))
+        assertNull(vault.credentialsForAutofill(saved.id, "https://www.example.org/other"))
+        assertNull(vault.credentialsForAutofill(saved.id, "https://sub.www.example.org:8443/other"))
+        assertNull(vault.credentialsForAutofill(saved.id, "http://www.example.org:8443/other"))
+        assertNull(vault.credentialsForAutofill(saved.id, "https://user@www.example.org:8443/other"))
+
+        val defaultPort = vault.save(CredentialFields("example.org", "bob", "password"))
+        assertNotNull(vault.credentialsForAutofill(defaultPort.id, "https://example.org:443/"))
+        assertNull(vault.credentialsForAutofill(defaultPort.id, "https://www.example.org/"))
+    }
+
+    @Test
+    fun legacyOriginMustBeExplicitlyReviewedAndMetadataUpdatesDoNotApproveIt() = runTest {
+        val id = "legacy"
+        val legacyJson = """{"site":"https://example.org","username":"alice","password":"secret"}"""
+        val blob = AesGcmVaultCipher { key }.encrypt(legacyJson, "credential:$id", includePlaintextHash = false)
+        dao.upsert(CredentialEntity(id, blob.ciphertextBase64, blob.ivBase64, blob.plaintextSha256, 1L, 1L))
+        assertNull(vault.credentialsForAutofill(id, "https://example.org/"))
+        assertTrue(vault.touchCredential(id, oneTimeCodeAtEpochMillis = 2L))
+        assertNull(vault.credentialsForAutofill(id, "https://example.org/"))
+        val legacy = requireNotNull(vault.credentialById(id))
+        vault.save(legacy.fields.copy(site = "https://www.example.org:8443"), id)
+        assertNotNull(vault.credentialsForAutofill(id, "https://www.example.org:8443/login"))
+        assertNull(vault.credentialsForAutofill(id, "https://example.org/"))
+    }
+
+    @Test
+    fun backupPreservesConfirmedOriginAndOldBackupsRemainUnconfirmed() = runTest {
+        val saved = vault.save(CredentialFields("https://www.example.org:8443", "alice", "secret"))
+        val backup = vault.credentialsForBackup().single()
+        assertEquals("https://www.example.org:8443", backup.autofillOrigin)
+        vault.delete(saved.id)
+        val restored = vault.saveFromBackup(backup)
+        assertNotNull(vault.credentialsForAutofill(restored.id, "https://www.example.org:8443/login"))
+        vault.delete(restored.id)
+        val old = vault.saveFromBackup(backup.copy(autofillOrigin = null))
+        assertNull(vault.credentialsForAutofill(old.id, "https://www.example.org:8443/login"))
+    }
+
     /**
      * همان قراردادِ واقعیِ اپ: یک `Mac` آماده با کلیدِ ثابتِ آزمون (در اپ، کلیدِ غیرقابل‌استخراجِ
      * Keystore تزریق می‌شود). بایت‌های کلید این‌جا فقط برای آزمون است.
@@ -119,7 +164,8 @@ class CredentialVaultTest {
         assertTrue(CredentialVault.isValidSite("example.com/login?next=/panel"))
         assertTrue(CredentialVault.isValidSite("app.example.ir:8443/sso"))
         assertEquals("https://my.mci.ir/panel", CredentialVault.normalizeSite("my.mci.ir/panel"))
-        assertEquals("https://example.com", CredentialVault.normalizeSite("https://WWW.Example.COM"))
+        assertEquals("https://www.example.com", CredentialVault.normalizeSite("https://WWW.Example.COM"))
+        assertEquals("https://app.example.ir:8443/sso", CredentialVault.normalizeSite("app.example.ir:8443/sso"))
         // اسکیم‌های خطرناک هنوز رد می‌شوند؛ «هر سایتی» یعنی آدرسِ وب، نه هر رشته‌ای.
         assertFalse(CredentialVault.isValidSite("data:text/html,<script>alert(1)</script>"))
         assertFalse(CredentialVault.isValidSite("file:///etc/passwd"))

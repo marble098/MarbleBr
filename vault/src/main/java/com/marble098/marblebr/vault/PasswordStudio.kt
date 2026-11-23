@@ -15,6 +15,7 @@ import com.marble098.marblebr.core.model.LoginPolicy
 import com.marble098.marblebr.core.model.LoginSubmissionVerifier
 import com.marble098.marblebr.core.model.SubmittedLogin
 import com.marble098.marblebr.core.model.LoginOriginGuard
+import com.marble098.marblebr.core.model.OneTimeCodeExtractor
 import com.marble098.marblebr.core.model.OneTimeCodeHit
 import com.marble098.marblebr.core.model.OneTimeCodeSource
 import com.marble098.marblebr.core.model.OtpFieldDescriptor
@@ -121,8 +122,9 @@ class PasswordStudio @Inject constructor(
         allowAutofill: Boolean = true,
     ): LoginPageDirective = mutex.withLock {
         val observation = LoginObservationProbe.parse(observationRaw)
-        val accounts = loginAccounts()
-        val knownDomains = (accounts.map { it.domain } + CredentialCaptureHeuristics.domainOf(pageUrl)).toSet()
+        val saved = credentialVault.loginAccountIndex()
+        val accounts = saved.filter { it.canAutofillOn(pageUrl) }.map { it.toLoginAccount() }
+        val knownDomains = (saved.map { it.domain } + CredentialCaptureHeuristics.domainOf(pageUrl)).toSet()
 
         val advance = intelligence.run(
             LoginFlowRequest(
@@ -146,7 +148,7 @@ class PasswordStudio @Inject constructor(
                 if (!allowAutofill || exactAccounts.singleOrNull()?.id != advance.account.id) {
                     return@withLock LoginPageDirective.None
                 }
-                val script = buildFillScript(advance.account.id)
+                val script = buildFillScript(advance.account.id, pageUrl)
                 if (script == null) {
                     LoginPageDirective.None
                 } else {
@@ -219,11 +221,12 @@ class PasswordStudio @Inject constructor(
                 },
             )
         }
-        scoreForCode(hit)
         LoginOneTimeCodeDirective.Ready(
             script = OtpFieldProbe.fillScript(hit.code, plan),
             digits = hit.code.filter(Char::isDigit).length,
             fromSms = hit.source == OneTimeCodeSource.SMS,
+            fingerprint = OneTimeCodeExtractor.fingerprint(hit.code),
+            receivedAtEpochMillis = hit.receivedAtEpochMillis,
         )
     }
 
@@ -249,34 +252,16 @@ class PasswordStudio @Inject constructor(
         // `recentMessages()` را می‌گشت و در گوشی‌هایی که خواندنِ صندوقِ پیامک ممکن نبود،
         // کدِ تازهٔ رسیده هیچ‌وقت در صفحه نوشته نمی‌شد. حالا آخرین کدِ رسیده همین‌جا
         // نگه داشته می‌شود و در اولویتِ خواندن قرار می‌گیرد.
-        latestCode?.let { previous ->
-            if (previous.code == hit.code && previous.receivedAtEpochMillis == hit.receivedAtEpochMillis) {
-                return
-            }
-        }
-        latestCode = hit
+        if (!latestCode.offer(hit)) return
         _lastActivity.value = LoginActivity.OneTimeCodeAvailable(hit.length)
     }
 
-    /** آخرین کدِ رسیده از اعلان را مصرف می‌کند (تا دوباره استفاده نشود). */
-    fun consumeNotificationCode() {
-        notificationBridge.consume()
-        // OTPs are single-use: clear the in-memory live-SMS cache after a successful fill too.
-        clearLatestCode()
-    }
-
-    /**
-     * آخرین کدِ رسیده از مسیرِ پیامکِ زنده (broadcast).
-     *
-     * چرا `@Volatile`؟ چون `SmsCodeListener` از threadِ فرعیِ broadcast صدا زده می‌شود و
-     * `findOneTimeCode` از coroutine دیگری می‌خواند.
-     */
-    @Volatile
-    private var latestCode: OneTimeCodeHit? = null
+    /** Live SMS and notification callbacks can arrive while a previous fill is still pending. */
+    private val latestCode = PendingOneTimeCode()
 
     /** پاک‌کردنِ کدِ نگه‌داشته‌شده (مثلاً وقتی کاربر از صفحهٔ کد خارج شد). */
     fun clearLatestCode() {
-        latestCode = null
+        latestCode.clear()
     }
 
     /* ---------------------------------------- پیشنهادِ ذخیره ---------------------------------------- */
@@ -445,7 +430,7 @@ class PasswordStudio @Inject constructor(
         val username = editedUsername?.takeIf { it.isNotBlank() } ?: prompt.username
         val result = runCatching {
             val existing = credentialVault.loginAccountIndex().firstOrNull {
-                it.domain.equals(prompt.site, ignoreCase = true) &&
+                it.canAutofillOn(prompt.url) &&
                     CredentialSavePolicy.normalizeUsername(it.fields.username) ==
                     CredentialSavePolicy.normalizeUsername(username)
             }
@@ -498,13 +483,9 @@ class PasswordStudio @Inject constructor(
 
     /** فهرستِ حساب‌های همین سایت برای پنلِ دستی (بدونِ گذرواژه). */
     suspend fun candidatesFor(pageUrl: String): List<AutofillCandidate> {
-        val accounts = loginAccounts()
+        val accounts = credentialVault.loginAccountIndex().filter { it.canAutofillOn(pageUrl) }.map { it.toLoginAccount() }
         val plan = intelligence.planFor(pageUrl, accounts)
-        val domain = CredentialCaptureHeuristics.domainOf(pageUrl)
         return accounts
-            .filter {
-                it.domain.equals(domain, true) || domain.endsWith(".${it.domain}") || it.domain.endsWith(".$domain")
-            }
             .map { account ->
                 account.asCandidate().copy(
                     lastUsedAtEpochMillis = if (plan.candidate?.id == account.id) {
@@ -526,10 +507,9 @@ class PasswordStudio @Inject constructor(
             _notice.value = PasswordNotice.PhishingWarning(verdict.host, verdict.impersonated)
             return null
         }
-        val account = credentialVault.loginAccountIndex().firstOrNull { it.id == credentialId } ?: return null
-        val pageHost = runCatching { java.net.URI(pageUrl).host }.getOrNull() ?: return null
-        if (!pageHost.removePrefix("www.").equals(account.domain, ignoreCase = true)) return null
-        return buildFillScript(credentialId).also {
+        val account = credentialVault.credentialById(credentialId) ?: return null
+        if (!account.canAutofillOn(pageUrl)) return null
+        return buildFillScript(credentialId, pageUrl).also {
             if (it != null) {
                 runCatching { credentialVault.touchCredential(credentialId, autofilledAtEpochMillis = System.currentTimeMillis()) }
             }
@@ -540,8 +520,8 @@ class PasswordStudio @Inject constructor(
      * اسکریپتِ پرکردنِ فرم؛ گذرواژه فقط در همین رشته و برای همین لحظه وجود دارد.
      * پیش از ساخت، تاریخچهٔ «حساب‌های این دامنه» دوباره سنجیده می‌شود.
      */
-    private suspend fun buildFillScript(credentialId: String): String? {
-        val secret = credentialVault.credentialsForAutofill(credentialId) ?: return null
+    private suspend fun buildFillScript(credentialId: String, pageUrl: String): String? {
+        val secret = credentialVault.credentialsForAutofill(credentialId, pageUrl) ?: return null
         return LoginObservationProbe.autofillScript(secret.username, secret.password)
     }
 
@@ -556,7 +536,7 @@ class PasswordStudio @Inject constructor(
     suspend fun findOneTimeCode(pageUrl: String, lookBackMillis: Long = SmsOneTimeCodeReader.DEFAULT_LOOKBACK_MILLIS): OneTimeCodeHit? {
         val now = System.currentTimeMillis()
         // ۱) کدِ زندهٔ پیامک (broadcast) — تازه‌ترین منبع و دقیقاً همان پیامکی که کاربر می‌بیند.
-        latestCode?.takeIf { hit -> now - hit.receivedAtEpochMillis <= lookBackMillis }?.let { return it }
+        latestCode.peek()?.takeIf { hit -> now - hit.receivedAtEpochMillis <= lookBackMillis }?.let { return it }
         // ۲) اعلان‌ها (اپ‌های پیام‌رسان معمولاً اعلان را زودتر نشان می‌دهند).
         val fromNotification = notificationBridge.lastCode.value?.takeIf { hit ->
             now - hit.receivedAtEpochMillis <= lookBackMillis
@@ -566,31 +546,32 @@ class PasswordStudio @Inject constructor(
         return smsReader.findRecentCode(now, lookBackMillis)
     }
 
-    private fun scoreForCode(hit: OneTimeCodeHit) {
-        _lastActivity.value = LoginActivity.OneTimeCodeFilled(
-            length = hit.code.filter(Char::isDigit).length,
-            fromSms = hit.source == OneTimeCodeSource.SMS,
-        )
+    suspend fun confirmOneTimeCodeFilled(pageUrl: String, directive: LoginOneTimeCodeDirective.Ready) {
+        mutex.withLock {
+            intelligence.markOneTimeCodeFilled(pageUrl, directive.fingerprint)
+            _lastActivity.value = LoginActivity.OneTimeCodeFilled(directive.digits, directive.fromSms)
+            val source = if (directive.fromSms) OneTimeCodeSource.SMS else OneTimeCodeSource.NOTIFICATION
+            val identity = CodeIdentity(directive.fingerprint, directive.receivedAtEpochMillis, source)
+            latestCode.consumeMatching(identity)
+            notificationBridge.consumeMatching(identity)
+        }
     }
 
     /* ----------------------------------------- دادهٔ مخزن ----------------------------------------- */
 
     /** حساب‌های قابلِ استفاده (فراوردِ کامل از مخزن) برای تصمیم‌های ماشین‌حالت. */
-    private suspend fun loginAccounts(): List<LoginAccount> = credentialVault.loginAccountIndex().map { saved ->
-        LoginAccount(
-            id = saved.id,
-            domain = saved.domain,
-            username = saved.fields.username,
-            strengthScore = PasswordQualityChecker.evaluate(saved.fields.password, saved.fields.username, saved.domain).score,
-            updatedAtEpochMillis = saved.updatedAtEpochMillis,
-            lastUsedAtEpochMillis = saved.fields.lastAutofillAtEpochMillis.takeIf { it > 0 },
-        )
-    }
+    private fun SavedCredential.toLoginAccount(): LoginAccount = LoginAccount(
+        id = id,
+        domain = domain,
+        username = fields.username,
+        strengthScore = PasswordQualityChecker.evaluate(fields.password, fields.username, domain).score,
+        updatedAtEpochMillis = updatedAtEpochMillis,
+        lastUsedAtEpochMillis = fields.lastAutofillAtEpochMillis.takeIf { it > 0 },
+    )
 
-    private suspend fun knownAccountsFor(pageUrl: String): List<KnownAccount> {
-        val domain = CredentialCaptureHeuristics.domainOf(pageUrl)
-        return credentialVault.loginAccountIndex()
-            .filter { it.domain.equals(domain, true) }
+    private suspend fun knownAccountsFor(pageUrl: String): List<KnownAccount> =
+        credentialVault.loginAccountIndex()
+            .filter { it.canAutofillOn(pageUrl) }
             .map { saved ->
                 KnownAccount(
                     username = saved.fields.username,
@@ -602,7 +583,6 @@ class PasswordStudio @Inject constructor(
                     }.getOrDefault(""),
                 )
             }
-    }
 
     private suspend fun saveCaptured(url: String, username: String, password: String, id: String? = null) =
         credentialVault.saveCaptured(
@@ -706,7 +686,13 @@ sealed interface LoginPageDirective {
 
 /** خروجیِ درخواستِ کدِ یکبارمصرف. */
 sealed interface LoginOneTimeCodeDirective {
-    data class Ready(val script: String, val digits: Int, val fromSms: Boolean) : LoginOneTimeCodeDirective
+    data class Ready(
+        val script: String,
+        val digits: Int,
+        val fromSms: Boolean,
+        val fingerprint: String,
+        val receivedAtEpochMillis: Long,
+    ) : LoginOneTimeCodeDirective
 
     data class Unavailable(val reason: String) : LoginOneTimeCodeDirective
 }

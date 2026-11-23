@@ -1213,6 +1213,7 @@ class BrowserViewModel @Inject constructor(
 
     private var pendingFill: AutofillRequest? = null
     private var loginObservation: Job? = null
+    private var oneTimeCodeFill: Job? = null
 
     private fun isActiveLoginPage(page: LoginPage): Boolean {
         val tab = _uiState.value.activeWebTab()
@@ -1284,6 +1285,8 @@ class BrowserViewModel @Inject constructor(
 
     private fun clearAutofillRequest() {
         pendingFill = null
+        oneTimeCodeFill?.cancel()
+        oneTimeCodeFill = null
         _uiState.update { it.copy(autofillUnlockRequestId = null) }
     }
 
@@ -1303,13 +1306,13 @@ class BrowserViewModel @Inject constructor(
 
     /** دکمهٔ «کد را بگذار»: کد را از پیامک/اعلان پیدا و در کادر می‌نویسد. */
     fun fillOneTimeCodeNow() {
+        if (oneTimeCodeFill?.isActive == true) return
         val tab = _uiState.value.activeWebTab() ?: return
         val page = loginWatcher.currentPage(tab.id, tab.url) ?: return
-        viewModelScope.launch {
+        oneTimeCodeFill = viewModelScope.launch {
             if (!isActiveLoginPage(page)) return@launch
-            val filled = loginWatcher.fillOneTimeCodeNow(page)
-            if (!filled) {
-                // «کدی پیدا نشد» یا «کادرِ کد نبود» — دو پیامِ متفاوت، نه یک متنِ مبهم.
+            val filled = loginWatcher.fillOneTimeCodeNow(page) { isActiveLoginPage(page) }
+            if (!filled && isActiveLoginPage(page)) {
                 showLocalizedBanner { it.codeUnavailableTitle }
             }
         }

@@ -123,6 +123,9 @@ private fun UnlockedCredentials(vault: CredentialVault) {
             Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(credential.fields.site, style = MaterialTheme.typography.labelLarge, maxLines = 2)
                 Text(credential.fields.username, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                if (credential.fields.autofillOrigin == null) {
+                    Text(strings.credentialOriginReview, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(onClick = {
                         copySensitive(context, credential.fields.username)

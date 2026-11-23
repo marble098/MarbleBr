@@ -31,7 +31,7 @@ class SessionPulseAndLoginGuardTest {
                 activeHours = setOf(9, 10, 11),
                 averageVisitsPerDay = 4f,
                 lastVisitAtEpochMillis = now - 6 * day,
-                lastSuccessfulCheckAtEpochMillis = now - 6 * day,
+                lastSnapshotAtEpochMillis = now - 6 * day,
             ),
         )
         val recommendation = SessionPulsePlanner.plan(patterns, nowEpochMillis = now, localHour = 3).single()
@@ -47,11 +47,11 @@ class SessionPulseAndLoginGuardTest {
             domain = "shop.example",
             activeHours = setOf(20, 21, 22),
             lastVisitAtEpochMillis = now,
-            lastSuccessfulCheckAtEpochMillis = null,
+            lastSnapshotAtEpochMillis = null,
         )
         val recommendation = SessionPulsePlanner.plan(listOf(pattern), nowEpochMillis = now, localHour = 4).single()
         assertEquals(PulseUrgency.HIGH, recommendation.urgency)
-        assertTrue(PulseReason.NEVER_CHECKED in recommendation.reasons)
+        assertTrue(PulseReason.NEVER_SNAPSHOTTED in recommendation.reasons)
         val windows = SessionPulsePlanner.quietWindows(pattern)
         assertTrue(windows.isNotEmpty())
         assertTrue(windows.none { window -> 20 in window || 21 in window || 22 in window })
@@ -63,7 +63,7 @@ class SessionPulseAndLoginGuardTest {
             domain = "calm.example",
             averageVisitsPerDay = 0.2f,
             lastVisitAtEpochMillis = now,
-            lastSuccessfulCheckAtEpochMillis = now - TimeUnit.HOURS.toMillis(1),
+            lastSnapshotAtEpochMillis = now - TimeUnit.HOURS.toMillis(1),
         )
         assertTrue(SessionPulsePlanner.plan(listOf(pattern), nowEpochMillis = now, localHour = 12).isEmpty())
     }

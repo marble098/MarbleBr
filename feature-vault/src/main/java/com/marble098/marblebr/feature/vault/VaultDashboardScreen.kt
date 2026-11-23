@@ -191,6 +191,7 @@ fun VaultDashboardScreen(
 
     var pendingSignOutContainer by remember { mutableStateOf<WebAppContainer?>(null) }
     var pendingDeleteSnapshot by remember { mutableStateOf<SessionSnapshotMeta?>(null) }
+    var pendingRestoreSnapshot by remember { mutableStateOf<SessionSnapshotMeta?>(null) }
 
     // پیام‌های موفقیت/خطا خودشان کنار می‌روند؛ قبلاً تا بستنِ دستی روی صفحه می‌ماندند.
     LaunchedEffect(feedback?.id) {
@@ -393,7 +394,7 @@ fun VaultDashboardScreen(
                             totalCount = siteSnapshots.size,
                             strings = strings,
                             busyAction = busyAction,
-                            onRollback = { snapshot -> viewModel.rollbackToSnapshot(snapshot) },
+                            onRollback = { snapshot -> pendingRestoreSnapshot = snapshot },
                             onDelete = { snapshot -> pendingDeleteSnapshot = snapshot },
                             onTogglePin = viewModel::toggleSnapshotPinned,
                         )
@@ -454,7 +455,7 @@ fun VaultDashboardScreen(
                 onToggleKeepAlive = { viewModel.updateKeepAlivePolicy(selected, it, selected.keepAliveIntervalMinutes) },
                 onKeepAliveIntervalChanged = { viewModel.updateKeepAliveInterval(selected, it) },
                 onSaveNow = { viewModel.captureSnapshotNow(selected) },
-                onRollback = viewModel::rollbackToSnapshot,
+                onRollback = { pendingRestoreSnapshot = it },
                 onDeleteSnapshot = { pendingDeleteSnapshot = it },
                 onTogglePin = viewModel::toggleSnapshotPinned,
                 onSignOutNow = {
@@ -503,6 +504,21 @@ fun VaultDashboardScreen(
                     Text(strings.cancel)
                 }
             },
+        )
+    }
+
+    pendingRestoreSnapshot?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingRestoreSnapshot = null },
+            title = { Text(strings.vaultRestoreConfirmTitle) },
+            text = { Text(strings.vaultRestoreConfirmBody) },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingRestoreSnapshot = null
+                    viewModel.rollbackToSnapshot(target)
+                }) { Text(strings.restore) }
+            },
+            dismissButton = { TextButton(onClick = { pendingRestoreSnapshot = null }) { Text(strings.cancel) } },
         )
     }
 

@@ -90,6 +90,16 @@ class SessionHealthGuardTest {
     }
 
     @Test
+    fun `heartbeat does not verify authentication`() = runTest {
+        val assessment = healthGuard.evaluateSignal(
+            SessionHealthSignal.HeartbeatOk("ctx_example", "example.org", "https://example.org/"),
+        )
+        assertEquals(SessionHealthStatus.PROTECTED_ACTIVE, assessment.status)
+        assertEquals(HealthReason.UNKNOWN, assessment.reason)
+        assertEquals(HealthGuardAction.NONE, assessment.action)
+    }
+
+    @Test
     fun `manual restore records local results without verifying sign in`() = runTest {
         healthGuard.recordRestoreOutcome("ctx_example", "example.org", VaultRestoreOutcome(cookiesRestored = 1))
         healthGuard.recordRestoreOutcome("ctx_example", "example.org", VaultRestoreOutcome(superseded = true))

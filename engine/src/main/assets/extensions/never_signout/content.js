@@ -4,6 +4,21 @@
   const NATIVE_APP = "marble_never_signout";
   let port = null;
   let autoCaptureEnabled = false;
+  let restoreGeneration = 0;
+  let activeRestoreId = null;
+
+  function cancelBackgroundRestore(restoreId) {
+    if (!restoreId) return;
+    try { browser.runtime.sendMessage({ type: "CANCEL_RESTORE", restoreId }).catch(() => {}); } catch (_) {}
+  }
+
+  function cancelRestore(restoreId = null) {
+    if (!activeRestoreId || (restoreId && restoreId !== activeRestoreId)) return;
+    const cancelledId = activeRestoreId;
+    activeRestoreId = null;
+    restoreGeneration++;
+    cancelBackgroundRestore(cancelledId);
+  }
 
   async function ensurePersistentStorage() {
     try {
@@ -26,41 +41,38 @@
     });
   }
 
-  // Fallback when the background jar has nothing (site not enabled in Never sign out, or
-  // Set-Cookie was ignored): every non-HttpOnly cookie visible through document.cookie.
-  function parseDocumentCookies() {
+  // document.cookie exposes names and values but not scope or expiry. Use only the
+  // names to avoid overwriting live cookies; never invent metadata for a backup.
+  function visibleCookieNames() {
     try {
-      let host = location.hostname;
-      if (!host) {
-        try { host = new URL(location.origin || location.href).hostname; } catch (_) { host = ""; }
-      }
-      if (!host) return [];
-      return String(document.cookie || "")
-        .split(";")
-        .map(pair => pair.trim())
-        .filter(Boolean)
-        .map(pair => {
-          const i = pair.indexOf("=");
-          if (i <= 0) return null;
-          const name = pair.slice(0, i).trim();
-          const value = pair.slice(i + 1).trim();
-          if (!name) return null;
-          return {
-            name, value, domain: host, path: "/", isHostOnly: true,
-            isSecure: location.protocol === "https:", isHttpOnly: false, sameSite: "unspecified",
-            isSessionOnly: true, expiresEpochMillis: null
-          };
-        })
-        .filter(Boolean);
+      return new Set(String(document.cookie || "").split(";").map(pair => {
+        const index = pair.indexOf("=");
+        return index > 0 ? pair.slice(0, index).trim() : "";
+      }).filter(Boolean));
     } catch (_) {
-      return [];
+      return new Set();
     }
   }
 
-  async function collectStorageSnapshot() {
+  async function collectStorageSnapshot(expectedUrl) {
+    const startUrl = location.href;
+    const origin = location.origin;
+    if (pageHidden || (expectedUrl && startUrl !== expectedUrl)) return null;
+    const idbDump = {};
+    // Only names and versions are available here; this is NOT an IndexedDB backup.
+    const idbDbs = await withBudget(async () => {
+      if (!window.indexedDB || typeof window.indexedDB.databases !== "function") return [];
+      return (await window.indexedDB.databases()) || [];
+    }, 1200);
+    for (const db of idbDbs || []) if (db && db.name) idbDump[db.name] = String(db.version || 1);
+    let persisted = false;
+    try { persisted = (await withBudget(() => navigator.storage.persisted(), 400)) === true; } catch (_) {}
+    const jarReply = await withBudget(() => browser.runtime.sendMessage({ type: "GET_CAPTURED_COOKIES" }), 1500);
+    if (pageHidden || location.href !== startUrl || location.origin !== origin) return null;
+    const cookies = Array.isArray(jarReply?.cookies) ? jarReply.cookies : [];
     const localDump = {};
     const sessionDump = {};
-    const idbDump = {};
+    // Read live storage last, without another asynchronous pause before posting it.
     try {
       for (let i = 0; i < window.localStorage.length; i++) {
         const k = window.localStorage.key(i);
@@ -73,20 +85,8 @@
         if (k) sessionDump[k] = window.sessionStorage.getItem(k) || "";
       }
     } catch (_) {}
-    // Only names and versions are available here; this is NOT an IndexedDB backup.
-    const idbDbs = await withBudget(async () => {
-      if (!window.indexedDB || typeof window.indexedDB.databases !== "function") return [];
-      return (await window.indexedDB.databases()) || [];
-    }, 1200);
-    for (const db of idbDbs || []) if (db && db.name) idbDump[db.name] = String(db.version || 1);
-    let cookies = [];
-    const jarReply = await withBudget(() => browser.runtime.sendMessage({ type: "GET_CAPTURED_COOKIES" }), 1500);
-    if (Array.isArray(jarReply?.cookies)) cookies = jarReply.cookies;
-    if (!cookies.length) cookies = parseDocumentCookies();
-    let persisted = false;
-    try { persisted = (await withBudget(() => navigator.storage.persisted(), 400)) === true; } catch (_) {}
     return {
-      event: "STORAGE_SNAPSHOT", origin: location.origin, href: location.href,
+      event: "STORAGE_SNAPSHOT", origin, href: startUrl,
       cookies,
       localStorage: localDump, sessionStorage: sessionDump, indexedDbDump: idbDump,
       storagePersisted: persisted === true
@@ -122,8 +122,10 @@
     });
   }
 
-  async function restoreSnapshot(payload) {
-    if (!payload || payload.origin !== location.origin) {
+  async function restoreSnapshot(payload, expectedUrl, generation, restoreId) {
+    const isCurrent = () => generation === restoreGeneration && activeRestoreId === restoreId && !pageHidden &&
+      (!expectedUrl || location.href === expectedUrl);
+    if (!payload || payload.origin !== location.origin || !isCurrent()) {
       return { cookieCount: 0, storageKeyCount: 0, cookieStatus: "ORIGIN_MISMATCH" };
     }
     let storageKeyCount = 0;
@@ -141,11 +143,13 @@
       cookieStatus = "INVALID_COOKIES";
     } else if (payload.cookies.length) {
       try {
-        const liveNames = new Set(parseDocumentCookies().map(cookie => cookie.name));
+        const liveNames = visibleCookieNames();
         const cookies = payload.cookies.filter(cookie => !liveNames.has(cookie.name));
-        const prepared = await browser.runtime.sendMessage({ type: "PREPARE_RESTORE", cookies });
+        const prepared = await browser.runtime.sendMessage({ type: "PREPARE_RESTORE", restoreId, cookies });
         cookieStatus = "NO_ELIGIBLE_COOKIES";
-        if (prepared?.nonce && !pageHidden) {
+        if (prepared?.nonce && !isCurrent()) {
+          cancelBackgroundRestore(restoreId);
+        } else if (prepared?.nonce) {
           const restoreUrl = new URL("/", location.origin);
           restoreUrl.searchParams.set("__marble_vault_restore", prepared.nonce);
           const requestSucceeded = await requestRestoreInTab(restoreUrl.href);
@@ -159,12 +163,14 @@
         }
       } catch (_) { cookieStatus = "BRIDGE_FAILED"; }
     }
-    return { cookieCount, storageKeyCount, cookieStatus };
+    return isCurrent() ? { cookieCount, storageKeyCount, cookieStatus } :
+      { cookieCount: 0, storageKeyCount: 0, cookieStatus: "BRIDGE_FAILED" };
   }
 
   function sendSnapshot() {
-    if (!port || !autoCaptureEnabled) return;
-    collectStorageSnapshot().then(snapshot => port.postMessage(snapshot)).catch(() => {});
+    if (!port || !autoCaptureEnabled || pageHidden) return;
+    // Native code binds every capture to the current tab, account and navigation.
+    try { port.postMessage({ event: "AUTO_CAPTURE_REQUEST", url: location.href }); } catch (_) {}
   }
 
   // ---------------------------------------------------------------------------
@@ -262,28 +268,36 @@
           try { await browser.runtime.sendMessage({ type: "SET_POLICY", enabled: autoCaptureEnabled, days: message.days }); } catch (_) {}
           if (autoCaptureEnabled && message.persistStorage === true) ensurePersistentStorage();
         } else if (message.type === "APPLY_VAULT_SNAPSHOT") {
+          if (typeof message.requestId !== "string" || !message.requestId) return;
           let result = { cookieCount: 0, storageKeyCount: 0, cookieStatus: "BRIDGE_FAILED" };
+          cancelRestore();
+          activeRestoreId = message.requestId;
+          const generation = ++restoreGeneration;
           try {
             if (!pageHidden && (!message.expectedUrl || location.href === message.expectedUrl)) {
-              result = await restoreSnapshot(message.payload);
+              result = await restoreSnapshot(message.payload, message.expectedUrl, generation, message.requestId);
             }
-          } catch (_) {}
+          } catch (_) {} finally {
+            if (activeRestoreId === message.requestId) activeRestoreId = null;
+            cancelBackgroundRestore(message.requestId);
+          }
           port.postMessage({ event: "RESTORE_RESULT", requestId: message.requestId, ...result });
+        } else if (message.type === "CANCEL_VAULT_RESTORE") {
+          if (typeof message.requestId === "string" && message.requestId) cancelRestore(message.requestId);
         } else if (message.type === "EVAL_JS") {
           let result = "";
-          const matchesPage = !message.expectedUrl || (!pageHidden && location.href === message.expectedUrl);
+          const matchesPage = (!message.expectedUrl || (!pageHidden && location.href === message.expectedUrl)) &&
+            (!message.requireVisible || document.visibilityState === "visible");
           try { if (matchesPage) result = String(eval(message.script) ?? ""); } catch (_) {}
           port.postMessage({ event: "JS_RESULT", requestId: message.requestId, result });
         } else if (message.type === "CAPTURE_PAGE") {
-          // The caller waits on this response, so always answer: even a failed collection is
-          // answered with a (possibly empty) snapshot instead of leaving the caller hanging.
+          // Always answer the waiting caller, but never relabel an old document's data.
           let snapshot = null;
-          try { snapshot = await collectStorageSnapshot(); } catch (_) { snapshot = null; }
-          const finalSnapshot = snapshot || {
-            event: "STORAGE_SNAPSHOT", origin: location.origin, href: location.href,
-            cookies: [], localStorage: {}, sessionStorage: {}, indexedDbDump: {}, storagePersisted: false
-          };
-          try { port.postMessage({ ...finalSnapshot, requestId: message.requestId }); } catch (_) {}
+          try { snapshot = await collectStorageSnapshot(message.expectedUrl); } catch (_) { snapshot = null; }
+          try {
+            port.postMessage(snapshot ? { ...snapshot, requestId: message.requestId } :
+              { event: "CAPTURE_FAILED", requestId: message.requestId });
+          } catch (_) {}
         }
       });
     } catch (_) {}
@@ -325,7 +339,7 @@
   });
   window.addEventListener("load", announceLoginForm);
   let pageHidden = false;
-  window.addEventListener("pagehide", () => { pageHidden = true; });
+  window.addEventListener("pagehide", () => { pageHidden = true; cancelRestore(); });
   window.addEventListener("pageshow", event => {
     pageHidden = false;
     if (event?.persisted) {

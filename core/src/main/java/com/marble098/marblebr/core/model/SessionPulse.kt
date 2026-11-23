@@ -3,16 +3,9 @@ package com.marble098.marblebr.core.model
 import java.util.concurrent.TimeUnit
 
 /**
- * «نبضِ نشست» (Session Pulse) — ایدهٔ تازهٔ ۱.
- *
- * بیشترِ سرویس‌ها نشست را **بی‌صدا** می‌بندند: نه خطایی می‌دهند، نه پیامی؛ فقط دفعهٔ بعد که
- * سراغشان می‌روی می‌بینی بیرون افتاده‌ای. MarbleBr تا امروز فقط وقتی متوجه می‌شد که خودت
- * برمی‌گشتی. «نبض» همان را برعکس می‌کند: از روی **الگوی واقعیِ استفادهٔ خودت** یاد می‌گیرد که
- * سایت‌هایت چه‌وقت خواب‌آلود می‌شوند و پیش از آن لحظه، در یک بازهٔ «آرام» (شب، یا وقتی گوشی
- * شارژ می‌شود) یک بازدیدِ سبک می‌زند تا نشست بیدار بماند.
- *
- * این فایل هیچ کاری با شبکه ندارد؛ فقط تصمیم می‌گیرد «کی» و «کدام سایت» و «چرا». اجرای واقعی
- * در WorkManager و با همان Smart Keep-alive موجود انجام می‌شود.
+ * پیشنهاد ثبت نسخهٔ محلی از تب باز بر اساس تاریخچهٔ استفاده و زمان نسخه‌های قبلی.
+ * این برنامه‌ریز هیچ درخواست شبکه‌ای نمی‌فرستد، اعتبار ورود را بررسی نمی‌کند و انقضای سرور را
+ * پیش‌بینی نمی‌کند. اجرای زمان‌بندی‌شدهٔ اندروید ممکن است به تعویق بیفتد.
  */
 data class SiteUsagePattern(
     val domain: String,
@@ -20,7 +13,8 @@ data class SiteUsagePattern(
     val activeHours: Set<Int> = emptySet(),
     val averageVisitsPerDay: Float = 0f,
     val lastVisitAtEpochMillis: Long = 0L,
-    val lastSuccessfulCheckAtEpochMillis: Long? = null,
+    /** Local checkpoint time only; not an authentication health check. */
+    val lastSnapshotAtEpochMillis: Long? = null,
     val neverSignOutEnabled: Boolean = true,
     val cookieDaysConfigured: Int = 365,
 )
@@ -43,8 +37,8 @@ enum class PulseReason {
     EARLY_MORNING_HABIT,
     FREQUENT_DAILY_USE,
     LONG_SILENCE,
-    LOGIN_LIFETIME_ENDING,
-    NEVER_CHECKED,
+    SHORT_LOCAL_RETENTION,
+    NEVER_SNAPSHOTTED,
     PROTECTION_OFF,
 }
 
@@ -105,13 +99,13 @@ object SessionPulsePlanner {
     ): PulseRecommendation? {
         val reasons = mutableListOf<PulseReason>()
         val silenceMillis = (nowEpochMillis - pattern.lastVisitAtEpochMillis).coerceAtLeast(0)
-        val sinceCheck = pattern.lastSuccessfulCheckAtEpochMillis
+        val sinceCheck = pattern.lastSnapshotAtEpochMillis
             ?.let { (nowEpochMillis - it).coerceAtLeast(0) }
 
-        if (pattern.lastSuccessfulCheckAtEpochMillis == null) reasons += PulseReason.NEVER_CHECKED
+        if (pattern.lastSnapshotAtEpochMillis == null) reasons += PulseReason.NEVER_SNAPSHOTTED
         if (pattern.averageVisitsPerDay >= 1.5f) reasons += PulseReason.FREQUENT_DAILY_USE
         if (silenceMillis >= TimeUnit.DAYS.toMillis(2)) reasons += PulseReason.LONG_SILENCE
-        if (pattern.cookieDaysConfigured <= 14) reasons += PulseReason.LOGIN_LIFETIME_ENDING
+        if (pattern.cookieDaysConfigured <= 14) reasons += PulseReason.SHORT_LOCAL_RETENTION
 
         val lateNight = (0..3).any { it in pattern.activeHours } || (22..23).any { it in pattern.activeHours }
         if (lateNight) reasons += PulseReason.LATE_NIGHT_HABIT
@@ -126,7 +120,7 @@ object SessionPulsePlanner {
         if (sinceCheck != null && sinceCheck < MIN_INTERVAL_MILLIS) {
             interval = interval.coerceAtLeast(MIN_INTERVAL_MILLIS - sinceCheck)
         }
-        if (PulseReason.LOGIN_LIFETIME_ENDING in reasons) interval = (interval * 0.6f).toLong()
+        if (PulseReason.SHORT_LOCAL_RETENTION in reasons) interval = (interval * 0.6f).toLong()
         val due = interval.coerceIn(MIN_INTERVAL_MILLIS / 2, MAX_INTERVAL_MILLIS)
 
         val urgency = when {
@@ -171,9 +165,9 @@ object SessionPulsePlanner {
                     activeHours = hours,
                     averageVisitsPerDay = if (distinctDays == 0) 0f else items.size.toFloat() / distinctDays,
                     lastVisitAtEpochMillis = items.maxOf { it.visitedAtEpochMillis },
-                    // هرگز بازدیدشده یعنی «سالم‌بودن نامعلوم»؛ همان نشانهٔ NEVER_CHECKED را می‌دهد
+                    // هرگز بازدیدشده یعنی «سالم‌بودن نامعلوم»؛ همان نشانهٔ NEVER_SNAPSHOTTED را می‌دهد
                     // و نبض را به سمتِ سایت‌های محافظت‌شده‌ای می‌برد که تا حالا بررسی نشده‌اند.
-                    lastSuccessfulCheckAtEpochMillis = null,
+                    lastSnapshotAtEpochMillis = null,
                 )
             }
 }

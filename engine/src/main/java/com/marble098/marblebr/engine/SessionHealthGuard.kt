@@ -57,7 +57,8 @@ class SessionHealthGuard @Inject constructor(
                 domain = signal.domain,
                 status = SessionHealthStatus.PROTECTED_ACTIVE,
                 action = HealthGuardAction.NONE,
-                reason = HealthReason.HEALTHY,
+                // Reachability or a successful HTTP response is not evidence of authentication.
+                reason = HealthReason.UNKNOWN,
             )
         }
 
@@ -66,7 +67,7 @@ class SessionHealthGuard @Inject constructor(
             is SessionHealthSignal.LoginRedirectDetected -> HealthReason.LOGIN_REDIRECT
             is SessionHealthSignal.AuthCookieMissing -> HealthReason.AUTH_COOKIE_MISSING
             is SessionHealthSignal.StorageClearedUnexpectedly -> HealthReason.STORAGE_CLEARED
-            is SessionHealthSignal.HeartbeatOk -> HealthReason.HEALTHY
+            is SessionHealthSignal.HeartbeatOk -> HealthReason.UNKNOWN
         }
         val requiresSignIn = signal is SessionHealthSignal.HttpUnauthorized || signal is SessionHealthSignal.LoginRedirectDetected
         val assessment = SessionHealthAssessment(

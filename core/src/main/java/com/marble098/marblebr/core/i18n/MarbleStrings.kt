@@ -32,6 +32,7 @@ abstract class MarbleStrings {
     abstract val credentialAdd: String
     abstract val credentialEdit: String
     abstract val credentialSite: String
+    abstract val credentialOriginReview: String
     abstract val credentialUsername: String
     abstract val credentialPassword: String
     abstract val credentialNotes: String
@@ -271,6 +272,8 @@ abstract class MarbleStrings {
     abstract val vaultProtectAllOffDone: String
     abstract val vaultRestoreNeedsOpenTab: String
     abstract val vaultRestoreSuperseded: String
+    abstract val vaultRestoreConfirmTitle: String
+    abstract val vaultRestoreConfirmBody: String
     abstract val vaultQuickActionsTitle: String
     abstract val vaultJumpToSite: String
     abstract val feedbackRestoreEmpty: String
@@ -827,6 +830,7 @@ private object PersianStrings : MarbleStrings() {
     override val credentialAdd = "افزودن اطلاعات ورود"
     override val credentialEdit = "ویرایش اطلاعات ورود"
     override val credentialSite = "آدرس سایت (https://...)"
+    override val credentialOriginReview = "برای پرکردن امن، آدرس دقیق HTTPS (از جمله www و پورت) را بررسی و دوباره ذخیره کن."
     override val credentialUsername = "نام کاربری"
     override val credentialPassword = "گذرواژه"
     override val credentialNotes = "یادداشت"
@@ -1038,11 +1042,11 @@ private object PersianStrings : MarbleStrings() {
     override val vaultSitePinned = "میانبر صفحهٔ خانه"
     override val vaultSiteDetailsTitle = "تنظیمات این سایت"
     override val vaultProtectSwitchTitle = "مراقبت از ورود"
-    override val vaultProtectSwitchBody = "اگر سایت بیرونت کرد، خودکار برمی‌گردانیم."
+    override val vaultProtectSwitchBody = "داده‌های محلی تب محافظت می‌شوند؛ اعتبار ورود را خود سایت تعیین می‌کند."
     override val vaultKeepAliveSwitchTitle = "ثبت دوره‌ای نسخهٔ محلی"
     override val vaultKeepAliveSwitchBody = "از تب باز این حساب نسخهٔ محلی می‌گیرد. اندروید ممکن است ثبت را به تأخیر بیندازد."
-    override val vaultCookieDaysTitle = "مدت ماندن ورود"
-    override val vaultCookieDaysBody = "کوکی‌های ورود این سایت تا این مدت ماندگار می‌شوند."
+    override val vaultCookieDaysTitle = "مدت نگهداری کوکی موقت"
+    override val vaultCookieDaysBody = "کوکی‌های موقتِ مشاهده‌شده تا این مدت نگهداری می‌شوند؛ انقضا و اعتبار سرور تغییر نمی‌کند."
     override val vaultSnapshotsOfSite = "نسخه‌های همین سایت"
     override val vaultSaveNow = "همین حالا ذخیره کن"
     override val vaultDelete = "حذف"
@@ -1058,6 +1062,10 @@ private object PersianStrings : MarbleStrings() {
     override val vaultProtectAllOffDone = "مراقبت از همهٔ سایت‌ها خاموش شد"
     override val vaultRestoreNeedsOpenTab = "برای بازیابی، صفحهٔ همان سایت را در حساب مربوط باز نگه دار."
     override val vaultRestoreSuperseded = "نسخهٔ جدیدتری برای این حساب ثبت شده است. از تازه‌ترین نسخه استفاده کن یا دوباره وارد سایت شو."
+    override val vaultRestoreConfirmTitle = "اعمال نسخهٔ محلی؟"
+    override val vaultRestoreConfirmBody =
+        "حتی تازه‌ترین نسخه ممکن است شامل توکن قدیمی باشد و باعث خروج یا ابطال نشست شود. " +
+            "اعتبار ورود بررسی نمی‌شود؛ ورود مجدد از خود سایت امن‌تر است. با آگاهی از این خطر ادامه می‌دهی؟"
     override val vaultQuickActionsTitle = "کارهای سریع"
     override val vaultJumpToSite = "رفتن به سایت"
     override val feedbackRestoreEmpty = "بازیابی انجام نشد؛ صفحه و دسترسی شبکه را بررسی کن."
@@ -1431,15 +1439,15 @@ private object PersianStrings : MarbleStrings() {
     override val backupIncludeSessions = "نسخه‌های نشست"
     override val backupIncludeSites = "تنظیمات سایت‌ها"
     override val pulseTitle = "نبضِ نشست"
-    override val pulseDescription = "از عادتِ خودت یاد می‌گیریم و پیش از خواب‌آلود شدنِ سایت‌ها، آرام بیدارشان می‌کنیم."
-    override val pulseRunNow = "بیدار کردنِ حالا"
-    override val pulseEmpty = "همه‌چیز تازه است؛ فعلاً کاری لازم نیست."
+    override val pulseDescription = "بر اساس استفاده و زمان نسخه‌های محلی، تب‌های باز را برای ثبت نسخه پیشنهاد می‌کند؛ وضعیت ورود را نمی‌سنجد."
+    override val pulseRunNow = "ثبت نسخه از تب‌های باز"
+    override val pulseEmpty = "پیشنهادی نیست یا تب مناسب باز نیست."
     override fun pulseSiteLine(domain: String, urgency: String) = "$domain · $urgency"
     override val pulseUrgencyLow = "آرام"
     override val pulseUrgencyNormal = "معمولی"
     override val pulseUrgencyHigh = "زودتر لازم است"
-    override val pulseUrgencyCritical = "خیلی نزدیک به خروج"
-    override val pulseDone = "بیدارسازی انجام شد."
+    override val pulseUrgencyCritical = "نسخهٔ محلی قدیمی"
+    override val pulseDone = "نسخهٔ محلی ثبت شد؛ اعتبار ورود بررسی نشده است."
     override val permissionPopups = "باز کردن پنجرهٔ جدید"
     override val permissionPopupTitle = "این سایت می‌خواهد پنجرهٔ تازه باز کند"
     override val permissionPopupBody = "اگر منتظرِ پرداخت، ورود با گوگل یا پیش‌نمایشِ فایل هستی، اجازه بده."
@@ -1532,6 +1540,7 @@ private object EnglishStrings : MarbleStrings() {
     override val credentialAdd = "Add login"
     override val credentialEdit = "Edit login"
     override val credentialSite = "Site URL (https://...)"
+    override val credentialOriginReview = "For safe autofill, review and save the exact HTTPS address, including www and port."
     override val credentialUsername = "Username"
     override val credentialPassword = "Password"
     override val credentialNotes = "Notes"
@@ -1743,11 +1752,11 @@ private object EnglishStrings : MarbleStrings() {
     override val vaultSitePinned = "Home screen shortcut"
     override val vaultSiteDetailsTitle = "Settings for this site"
     override val vaultProtectSwitchTitle = "Guard my login"
-    override val vaultProtectSwitchBody = "If the site signs you out, we bring you back automatically."
+    override val vaultProtectSwitchBody = "Protects local tab data; the site decides whether your sign-in is valid."
     override val vaultKeepAliveSwitchTitle = "Periodic local snapshots"
     override val vaultKeepAliveSwitchBody = "Saves local snapshots from an open tab for this account. Android may delay capture."
-    override val vaultCookieDaysTitle = "How long the login lasts"
-    override val vaultCookieDaysBody = "This site’s login cookies stay for this many days."
+    override val vaultCookieDaysTitle = "Session cookie retention"
+    override val vaultCookieDaysBody = "Observed session cookies are retained for this long; server expiry and validity do not change."
     override val vaultSnapshotsOfSite = "Copies of this site"
     override val vaultSaveNow = "Save right now"
     override val vaultDelete = "Delete"
@@ -1763,6 +1772,10 @@ private object EnglishStrings : MarbleStrings() {
     override val vaultProtectAllOffDone = "Protection turned off for all sites"
     override val vaultRestoreNeedsOpenTab = "Keep the site open in the matching account to restore its data."
     override val vaultRestoreSuperseded = "A newer snapshot exists for this account. Use the latest snapshot or sign in again."
+    override val vaultRestoreConfirmTitle = "Apply this local copy?"
+    override val vaultRestoreConfirmBody =
+        "Even the latest copy may contain old tokens and cause a sign-out or session revocation. " +
+            "Sign-in is not verified; signing in through the site is safer. Continue knowing this risk?"
     override val vaultQuickActionsTitle = "Quick actions"
     override val vaultJumpToSite = "Jump to site"
     override val feedbackRestoreEmpty = "Nothing could be restored; check the open page and network connection."
@@ -2138,15 +2151,15 @@ private object EnglishStrings : MarbleStrings() {
     override val backupIncludeSessions = "Session versions"
     override val backupIncludeSites = "Site settings"
     override val pulseTitle = "Session pulse"
-    override val pulseDescription = "We learn your habits and quietly wake sites up before they go to sleep."
-    override val pulseRunNow = "Wake them now"
-    override val pulseEmpty = "Everything is fresh — nothing to do right now."
+    override val pulseDescription = "Suggests local checkpoints from open tabs based on usage and snapshot age; it does not check sign-in."
+    override val pulseRunNow = "Save open tabs now"
+    override val pulseEmpty = "No suggestion or matching open tab is available."
     override fun pulseSiteLine(domain: String, urgency: String) = "$domain · $urgency"
     override val pulseUrgencyLow = "calm"
     override val pulseUrgencyNormal = "normal"
     override val pulseUrgencyHigh = "needed soon"
-    override val pulseUrgencyCritical = "about to sign out"
-    override val pulseDone = "Wake-up finished."
+    override val pulseUrgencyCritical = "old local copy"
+    override val pulseDone = "Local copy saved; sign-in has not been verified."
     override val permissionPopups = "Open pop-up windows"
     override val permissionPopupTitle = "This site wants to open a new window"
     override val permissionPopupBody = "Allow it if you are expecting a payment, Google sign-in or a file preview."

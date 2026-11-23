@@ -1,5 +1,7 @@
 package com.marble098.marblebr.core.model
 
+import kotlinx.serialization.Serializable
+
 /**
  * «پشتیبان‌گیری از گذرواژه‌ها و ورودها» — منطقِ خالصِ ساخت/خواندن/ادغامِ بستهٔ پشتیبان.
  *
@@ -36,6 +38,7 @@ object VaultBackupFormat {
 }
 
 /** محتوای رمزنگاری‌نشدهٔ بسته؛ فقط در حافظه و فقط در همان لحظه وجود دارد. */
+@Serializable
 data class VaultBackupPayload(
     val createdAtEpochMillis: Long,
     val appVersionName: String,
@@ -47,12 +50,14 @@ data class VaultBackupPayload(
     val sites: List<VaultBackupSite> = emptyList(),
 )
 
+@Serializable
 data class KdfMetadata(
     val algorithm: String = "PBKDF2WithHmacSHA256",
     val iterations: Int = VaultBackupFormat.KDF_ITERATIONS,
     val saltBase64: String = "",
 )
 
+@Serializable
 data class VaultBackupCredential(
     val id: String,
     val site: String,
@@ -61,8 +66,10 @@ data class VaultBackupCredential(
     val notes: String = "",
     val createdAtEpochMillis: Long = 0,
     val updatedAtEpochMillis: Long = 0,
+    val autofillOrigin: String? = null,
 )
 
+@Serializable
 data class VaultBackupSession(
     val id: String,
     val containerId: String,
@@ -79,6 +86,7 @@ data class VaultBackupSession(
     val isPinned: Boolean,
 )
 
+@Serializable
 data class VaultBackupSite(
     val domain: String,
     val displayName: String,
