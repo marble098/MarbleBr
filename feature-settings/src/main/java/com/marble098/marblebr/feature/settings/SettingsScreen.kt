@@ -1,6 +1,7 @@
 package com.marble098.marblebr.feature.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,7 +38,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -69,6 +69,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
 import com.marble098.marblebr.core.designsystem.MarbleBackButton
+import com.marble098.marblebr.core.designsystem.MarbleChoiceChip
+import com.marble098.marblebr.core.designsystem.MarbleLayout
 import com.marble098.marblebr.core.designsystem.MarbleSegmentedRow
 import com.marble098.marblebr.core.designsystem.SelectablePalettes
 import com.marble098.marblebr.core.designsystem.liquidGlass
@@ -201,11 +203,13 @@ fun SettingsScreen(
 
             Box(modifier = Modifier.weight(1f)) {
                 LazyColumn(
+                    // فاصله‌ها از ریتمِ مشترکِ MarbleLayout می‌آیند تا تنظیمات با صفحهٔ خانه و
+                    // شیت‌ها یکدست باشد (پیش‌تر ۱۶/۱۴/۱۰/۹ همه با هم در یک صفحه دیده می‌شد).
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                    contentPadding = PaddingValues(top = 8.dp, bottom = 28.dp),
+                        .padding(horizontal = MarbleLayout.Screen),
+                    verticalArrangement = Arrangement.spacedBy(MarbleLayout.SectionGap),
+                    contentPadding = PaddingValues(top = MarbleLayout.Inner, bottom = 28.dp),
                 ) {
                     item(key = "tab_intro") {
                         Text(
@@ -620,7 +624,9 @@ private fun LazyListScope.networkTab(
                     label = { Text(strings.dnsCustomHint) },
                     singleLine = true,
                     shape = MaterialTheme.shapes.medium,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fieldSurface(),
                 )
             }
 
@@ -647,7 +653,9 @@ private fun LazyListScope.networkTab(
                         null
                     },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fieldSurface(),
                 )
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
@@ -665,6 +673,7 @@ private fun LazyListScope.networkTab(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier
                         .fillMaxWidth()
+                        .fieldSurface()
                         .testTag("settings_proxy_port"),
                 )
                 if (viewModel.isRuntimeCreated()) {
@@ -848,12 +857,17 @@ private fun <T> OptionChips(
     label: (T) -> String,
     onSelect: (T) -> Unit,
 ) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    // چرا چیپِ اختصاصی و نه FilterChip؟ چون FilterChip در حالتِ انتخاب‌نشده پس‌زمینهٔ
+    // `surface` (تقریباً سفید) می‌گرفت و داخلِ کارتِ شیشه‌ای، «کادرِ سفیدِ زشت» می‌ساخت.
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         options.forEach { option ->
-            FilterChip(
+            MarbleChoiceChip(
+                label = label(option),
                 selected = option == selected,
                 onClick = { onSelect(option) },
-                label = { Text(label(option)) },
             )
         }
     }
@@ -989,8 +1003,18 @@ private fun PaletteChip(
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(50))
+            // پیش‌تر `surface` (نزدیکِ سفید) بود و روی کارتِ شیشه‌ای مثلِ وصلهٔ سفید دیده می‌شد.
             .background(
-                if (isSelected) colors.primary.copy(alpha = 0.16f) else colors.surface.copy(alpha = 0.6f),
+                if (isSelected) {
+                    colors.primary.copy(alpha = 0.16f)
+                } else {
+                    colors.surfaceContainerHighest.copy(alpha = 0.42f)
+                },
+            )
+            .border(
+                width = 0.8.dp,
+                color = if (isSelected) colors.primary.copy(alpha = 0.45f) else colors.outlineVariant.copy(alpha = 0.50f),
+                shape = RoundedCornerShape(50),
             )
             .clickable(role = Role.RadioButton, onClick = onClick)
             .padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
@@ -1085,4 +1109,20 @@ private fun ThemePreviewCard(strings: MarbleStrings) {
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+/**
+ * سطحِ نیمه‌شفافِ فیلدهای متنی.
+ *
+ * `OutlinedTextField` متریال بدنهٔ خودش را شفاف می‌کشد؛ اما روی کارتِ شیشه‌ای، خطِ دور و بدنهٔ
+ * سفیدِ پیش‌فرض شبیهِ یک «جعبهٔ سفید» دیده می‌شد. این لایه یک بدنهٔ کم‌رنگ و هم‌خانواده با کارت
+ * می‌سازد تا فیلد بخشی از همان کارت به‌نظر برسد.
+ */
+@Composable
+private fun Modifier.fieldSurface(): Modifier {
+    val colors = MaterialTheme.colorScheme
+    val shape = MaterialTheme.shapes.medium
+    return this
+        .clip(shape)
+        .background(colors.surfaceContainerHighest.copy(alpha = 0.35f))
 }

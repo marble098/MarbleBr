@@ -445,6 +445,14 @@ class BrowserViewModel @Inject constructor(
                 if (recreate) sessionManager.closeTabSession(tab.id)
                 val profile = sitePermissionStore.profileFor(target)
                 sessionManager.applySitePermissions(tab.id, profile)
+                // اگر کاربر پیش‌تر برای همین تب «حالت سازگاری ورود» را روشن کرده بود، پس از
+                // بازسازیِ نشست (یا بازگردانیِ تب‌ها) هم حفظ می‌شود.
+                if (tab.loginCompatibility &&
+                    !sessionManager.loginCompatibilityPlanFor(tab.id, target).isRelaxed
+                ) {
+                    sessionManager.setLoginCompatibility(tab.id, true)
+                }
+                val loginCompatibility = sessionManager.loginCompatibilityPlanFor(tab.id, target).isRelaxed
                 containers[tab.id] = container
                 updateTab(tab.id) {
                     it.copy(
@@ -453,6 +461,7 @@ class BrowserViewModel @Inject constructor(
                         containerId = container.id,
                         contextId = container.contextId,
                         isSecure = target.startsWith("https://"),
+                        loginCompatibility = loginCompatibility,
                         sessionRevision = it.sessionRevision + if (sessionMissing) 1 else 0,
                         canGoBack = !recreate && it.canGoBack,
                         canGoForward = !recreate && it.canGoForward,
@@ -627,6 +636,25 @@ class BrowserViewModel @Inject constructor(
         sessionManager.setDesktopMode(tab.id, nextDesktop)
         updateTab(tab.id) { it.copy(isDesktopMode = nextDesktop) }
         showLocalizedBanner { if (nextDesktop) it.bannerDesktopOn else it.bannerDesktopOff }
+    }
+
+    /**
+     * روشن/خاموش کردنِ «حالت سازگاری ورود» برای همین سایت.
+     *
+     * چرا دستی هم لازم است؟ چون تشخیصِ خودکار فقط بانک‌ها و درگاه‌های شناخته‌شده را پوشش می‌دهد؛
+     * اگر سایتِ دیگری (سازمانی، بیمه، دانشگاه) هم دکمهٔ ورودش کار نکرد، کاربر خودش می‌تواند از
+     * همین منو محافظتِ ردیابی و بلاکِ پنجرهٔ تازه را برای همان تب کنار بگذارد و صفحه دوباره
+     * بارگذاری شود.
+     */
+    fun toggleLoginCompatibility() {
+        val tab = _uiState.value.activeTab ?: return
+        val next = !tab.loginCompatibility
+        sessionManager.setLoginCompatibility(tab.id, next)
+        updateTab(tab.id) { it.copy(loginCompatibility = next) }
+        showLocalizedBanner {
+            if (next) it.bannerLoginCompatibilityOn else it.bannerLoginCompatibilityOff
+        }
+        if (tab.url.isNotBlank()) sessionManager.reload(tab.id)
     }
 
     /** به‌اشتراک‌گذاشتن پیوند همین صفحه با مرورگرهای دیگر (اپ‌های نصب‌شدهٔ Android). */
@@ -1019,7 +1047,10 @@ class BrowserViewModel @Inject constructor(
             _codeFieldAvailable.value = false
             clearAutofillRequest()
         }
-        updateTab(tabId) { it.copy(url = url, isSecure = isSecure) }
+        // با هر جابه‌جایی، وضعیتِ «حالت سازگاری ورود» هم به‌روز می‌شود؛ مثلاً وقتی بانک کاربر
+        // را به درگاهِ پرداخت می‌فرستد، منو باید همان لحظه «روشن» را نشان بدهد.
+        val loginCompatibility = sessionManager.loginCompatibilityPlanFor(tabId, url).isRelaxed
+        updateTab(tabId) { it.copy(url = url, isSecure = isSecure, loginCompatibility = loginCompatibility) }
         // دسترسی‌های همان دامنه روی نشست اعمال می‌شوند (جاوااسکریپت/پخش خودکار/دیالوگ‌ها).
         viewModelScope.launch {
             val profile = sitePermissionStore.profileFor(url)

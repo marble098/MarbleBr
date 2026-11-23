@@ -219,26 +219,6 @@ internal fun HomeContent(
                 )
             }
 
-            item(key = "any_site") {
-                AddAnySiteCard(
-                    strings = strings,
-                    onAdd = onAddAnySite,
-                    chromeBarStyle = chromeBarStyle,
-                )
-            }
-
-            item(key = "vault_glance") {
-                VaultGlanceCard(
-                    strings = strings,
-                    passwordCount = passwordCount,
-                    protectedSiteCount = protectedSiteCount,
-                    pulseSites = pulseSites,
-                    chromeBarStyle = chromeBarStyle,
-                    onOpenVault = onOpenVault,
-                    onOpenPasswordStudio = onOpenPasswordStudio,
-                )
-            }
-
             item(key = "shortcuts_header") {
                 HomeSectionHeader(
                     title = strings.homeShortcutsTitle,
@@ -257,7 +237,7 @@ internal fun HomeContent(
                 }
             } else {
                 // شبکهٔ دو ستونیِ نشان‌ها؛ با سایت‌های پرتکرار همیشه هم‌اندازه و منظم می‌ماند.
-                bookmarks.take(6).chunked(2).forEachIndexed { index, row ->
+                bookmarks.take(4).chunked(2).forEachIndexed { index, row ->
                     item(key = "shortcut_row_$index") {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -295,10 +275,34 @@ internal fun HomeContent(
                     )
                 }
             } else {
-                items(historyItems.take(5), key = { it.id }) { item ->
+                // حداکثر سه بازدیدِ آخر: فهرستِ بلندِ ده‌تایی فقط اسکرول را طولانی می‌کرد.
+                items(historyItems.take(3), key = { it.id }) { item ->
                     RecentRow(item = item, onClick = { submit(item.url) })
                 }
             }
+
+            // کارت‌های «ابزار» عمداً به آخرِ صفحه رفتند: چیزی که کاربر هر روز می‌خواهد
+            // (جستجو، میانبرها، سایت‌های اخیر) اول می‌آید و کارت‌های توضیحی آخر.
+            item(key = "any_site") {
+                AddAnySiteCard(
+                    strings = strings,
+                    onAdd = onAddAnySite,
+                    chromeBarStyle = chromeBarStyle,
+                )
+            }
+
+            item(key = "vault_glance") {
+                VaultGlanceCard(
+                    strings = strings,
+                    passwordCount = passwordCount,
+                    protectedSiteCount = protectedSiteCount,
+                    pulseSites = pulseSites,
+                    chromeBarStyle = chromeBarStyle,
+                    onOpenVault = onOpenVault,
+                    onOpenPasswordStudio = onOpenPasswordStudio,
+                )
+            }
+
         }
     }
 }
@@ -331,7 +335,9 @@ private fun AddAnySiteCard(
                 glow = false,
                 elevation = 4.dp,
             )
-            .padding(14.dp),
+            // بدنهٔ فشرده: توضیحِ دوخطی حذف شد و جای آن راهنمای کوتاه داخلِ خودِ فیلد است؛
+            // این کارت پیش‌تر حدودِ یک‌سومِ صفحهٔ خانه را می‌گرفت.
+            .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(
@@ -340,7 +346,7 @@ private fun AddAnySiteCard(
         ) {
             Box(
                 modifier = Modifier
-                    .size(30.dp)
+                    .size(28.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(colors.primary.copy(alpha = 0.16f)),
                 contentAlignment = Alignment.Center,
@@ -359,13 +365,6 @@ private fun AddAnySiteCard(
                 modifier = Modifier.weight(1f),
             )
         }
-        Text(
-            text = strings.addAnySiteDescription,
-            style = MaterialTheme.typography.bodySmall,
-            color = colors.onSurfaceVariant,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -448,8 +447,8 @@ private fun VaultGlanceCard(
                 glow = false,
                 elevation = 4.dp,
             )
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -491,17 +490,27 @@ private fun VaultGlanceCard(
                 accent = colors.secondary,
             )
         }
-        if (pulseSites.isNotEmpty()) {
-            Text(
-                text = strings.pulseDescription,
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        TextButton(onClick = onOpenPasswordStudio, modifier = Modifier.testTag("home_vault_glance_btn")) {
-            Text(strings.saveLoginFillTitle)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(
+                onClick = onOpenPasswordStudio,
+                modifier = Modifier.testTag("home_vault_glance_btn"),
+            ) {
+                Text(strings.saveLoginFillTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (pulseSites.isNotEmpty()) {
+                Text(
+                    text = strings.pulseDescription,
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 10.sp),
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }
@@ -517,7 +526,7 @@ private fun GlanceStat(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
             .background(accent.copy(alpha = 0.10f))
-            .padding(vertical = 10.dp, horizontal = 8.dp),
+            .padding(vertical = 8.dp, horizontal = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
@@ -604,8 +613,8 @@ private fun MarbleLogoMark() {
     val colors = MaterialTheme.colorScheme
     Box(
         modifier = Modifier
-            .size(46.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .size(42.dp)
+            .clip(RoundedCornerShape(15.dp))
             .background(Brush.linearGradient(listOf(colors.primary, colors.tertiary)))
             .border(
                 width = 1.dp,

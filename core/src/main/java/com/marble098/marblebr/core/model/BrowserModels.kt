@@ -52,6 +52,8 @@ data class BrowserTab(
     val title: String = "",
     val isPrivate: Boolean = false,
     val isDesktopMode: Boolean = false,
+    /** آیا «حالت سازگاری ورود» برای همین تب روشن است؟ (بانک/درگاه یا درخواستِ کاربر) */
+    val loginCompatibility: Boolean = false,
     val isLoading: Boolean = false,
     val progress: Int = 0,
     val canGoBack: Boolean = false,

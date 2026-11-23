@@ -307,6 +307,7 @@ fun BrowserScreen(
         downloadsCount = downloads.size,
         hasSavedLogin = uiState.hasStoredLoginForCurrentSite,
         acceptsOneTimeCode = codeFieldAvailable,
+        isLoginCompatibilityOn = activeTab?.loginCompatibility == true,
     )
     val menuActions = BrowserMenuActions(
         onCopyLink = {
@@ -340,6 +341,7 @@ fun BrowserScreen(
         onSavePdf = { activeTab?.let { requestPdf(it.id, it.title) } },
         onSharePage = { viewModel.shareCurrentPage() },
         onBookmarkPage = { viewModel.toggleBookmarkCurrentPage() },
+        onToggleLoginCompatibility = viewModel::toggleLoginCompatibility,
     )
 
     Column(

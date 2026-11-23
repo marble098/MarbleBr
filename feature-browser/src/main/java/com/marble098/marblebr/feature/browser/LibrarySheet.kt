@@ -27,7 +27,6 @@ import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -52,6 +51,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
+import com.marble098.marblebr.core.designsystem.MarbleChoiceChip
 import com.marble098.marblebr.core.designsystem.MarbleLayout
 import com.marble098.marblebr.core.designsystem.SiteBadgeLogo
 import com.marble098.marblebr.core.designsystem.liquidGlass
@@ -128,15 +128,15 @@ internal fun LibrarySheet(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            FilterChip(
+            MarbleChoiceChip(
+                label = strings.libraryBookmarksTab,
                 selected = section == 0,
                 onClick = { section = 0 },
-                label = { Text(strings.libraryBookmarksTab) },
             )
-            FilterChip(
+            MarbleChoiceChip(
+                label = strings.libraryHistoryTab,
                 selected = section == 1,
                 onClick = { section = 1 },
-                label = { Text(strings.libraryHistoryTab) },
             )
             Spacer(Modifier.weight(1f))
             Box {

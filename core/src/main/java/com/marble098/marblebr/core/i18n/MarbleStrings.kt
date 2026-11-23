@@ -167,6 +167,15 @@ abstract class MarbleStrings {
     abstract val snapshotUnavailable: String
     abstract val bannerDesktopOn: String
     abstract val bannerDesktopOff: String
+    abstract val bannerLoginCompatibilityOn: String
+    abstract val bannerLoginCompatibilityOff: String
+
+    // «سازگاری ورود»: گزینهٔ منو و جستجوی گزینه‌ها
+    abstract val menuLoginCompatibility: String
+    abstract val menuLoginCompatibilityHint: String
+    abstract val menuLoginCompatibilityOnChip: String
+    abstract val menuSearchHint: String
+    abstract val menuSearchEmpty: String
 
     // ------------------------------------------------------- تنظیمات
     abstract val settingsTitle: String
@@ -960,6 +969,14 @@ private object PersianStrings : MarbleStrings() {
     override val snapshotUnavailable = "برای این صفحه دادهٔ نشست قابل ذخیره در دسترس نیست."
     override val bannerDesktopOn = "حالا نسخه دسکتاپ را می بینی"
     override val bannerDesktopOff = "حالا نسخه موبایل را می بینی"
+    override val bannerLoginCompatibilityOn =
+        "حالت سازگاری ورود روشن شد؛ صفحه دوباره باز می شود و پنجره های ورود بسته نمی شوند"
+    override val bannerLoginCompatibilityOff = "حالت سازگاری ورود خاموش شد؛ محافظت همیشگی برگشت"
+    override val menuLoginCompatibility = "حالت سازگاری ورود"
+    override val menuLoginCompatibilityHint = "اگر دکمهٔ ورود یا کد پیامکی کار نکرد، این را روشن کن"
+    override val menuLoginCompatibilityOnChip = "روشن برای این سایت"
+    override val menuSearchHint = "دنبال چه گزینه ای می گردی؟"
+    override val menuSearchEmpty = "گزینه ای با این نام پیدا نشد"
 
     override val settingsTitle = "تنظیمات"
     override val settingsIntro = "هر چیزی را که لازم داری ساده و کوتاه اینجا تنظیم کن."
@@ -1670,6 +1687,14 @@ private object EnglishStrings : MarbleStrings() {
     override val snapshotUnavailable = "This page has no session data available to save."
     override val bannerDesktopOn = "Desktop version is on"
     override val bannerDesktopOff = "Mobile version is on"
+    override val bannerLoginCompatibilityOn =
+        "Login compatibility is on — the page reloads and sign-in windows stay open"
+    override val bannerLoginCompatibilityOff = "Login compatibility is off — full protection is back"
+    override val menuLoginCompatibility = "Login compatibility"
+    override val menuLoginCompatibilityHint = "Turn this on if the sign-in button or SMS code does nothing"
+    override val menuLoginCompatibilityOnChip = "On for this site"
+    override val menuSearchHint = "Which option are you looking for?"
+    override val menuSearchEmpty = "No option matches that name"
 
     override val settingsTitle = "Settings"
     override val settingsIntro = "Tune what you need, in plain language."
