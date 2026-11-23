@@ -222,17 +222,18 @@ class ContainerSessionManager @Inject constructor(
             loginCompatibilityOptOutTabs.add(tabId)
         }
         val session = activeSessions[tabId] ?: return
-        val apply = {
+        val applyTrackingProtection: () -> Unit = {
             val url = lastKnownUrls[session].orEmpty()
             val relaxed = loginCompatibilityPlanFor(tabId, url).isRelaxed
             runCatching {
                 session.settings.useTrackingProtection = (adBlockByTab[tabId] ?: true) && !relaxed
             }
+            Unit
         }
         if (Looper.myLooper() == Looper.getMainLooper()) {
-            apply()
+            applyTrackingProtection()
         } else {
-            Handler(Looper.getMainLooper()).post(apply)
+            Handler(Looper.getMainLooper()).post(applyTrackingProtection)
         }
     }
 
