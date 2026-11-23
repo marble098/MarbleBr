@@ -302,7 +302,6 @@ internal fun HomeContent(
                     onOpenPasswordStudio = onOpenPasswordStudio,
                 )
             }
-
         }
     }
 }
