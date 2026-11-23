@@ -45,6 +45,6 @@ class MarbleBrApplication : Application(), Configuration.Provider, NotificationB
 
     override fun onCreate() {
         super.onCreate()
-        applicationScope.launch { keepAliveScheduler.refreshSchedule() }
+        applicationScope.launch { runCatching { keepAliveScheduler.refreshSchedule() } }
     }
 }

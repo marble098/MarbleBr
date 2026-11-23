@@ -317,6 +317,7 @@ class ContainerSessionManager @Inject constructor(
         onContentPermissionRequest: (ContentPermissionRequest) -> Unit = {},
         onAndroidPermissionRequest: (AndroidPermissionRequest) -> Unit = {},
         onWindowClose: () -> Unit = {},
+        onProcessEnded: () -> Unit = {},
         openedByGecko: Boolean = false,
     ): GeckoSession {
         activeSessions[tabId]?.let { return it }
@@ -353,6 +354,7 @@ class ContainerSessionManager @Inject constructor(
             tabId = tabId,
             onPopupRequest = onPopupRequest,
             onWindowClose = onWindowClose,
+            onProcessEnded = onProcessEnded,
         )
 
         attachPermissionDelegates(
@@ -872,7 +874,11 @@ class ContainerSessionManager @Inject constructor(
     /** Restore only into an open tab of the exact account and origin, never into a global cookie jar. */
     suspend fun restoreSnapshotOnOpenTab(snapshot: SessionSnapshotMeta): VaultRestoreOutcome =
         withContext(Dispatchers.Main.immediate) {
-            sessionDataMutex.withLock { restoreLatestSnapshotOnOpenTab(snapshot) }
+            sessionDataMutex.withLock {
+                val outcome = restoreLatestSnapshotOnOpenTab(snapshot)
+                healthGuard.recordRestoreOutcome(snapshot.containerId, snapshot.domain, outcome)
+                outcome
+            }
         }
 
     private suspend fun restoreLatestSnapshotOnOpenTab(snapshot: SessionSnapshotMeta): VaultRestoreOutcome {
@@ -893,7 +899,8 @@ class ContainerSessionManager @Inject constructor(
     private suspend fun applyPayloadToSession(session: GeckoSession?, payload: SessionSnapshotPayload): VaultRestoreOutcome {
         if (session == null || sessionContainers[session] != payload.containerId) return VaultRestoreOutcome(openTabMissing = true)
         val port = capturePorts[session] ?: return VaultRestoreOutcome(openTabMissing = true)
-        if (!sameOrigin(port.sender.url, payload.origin) || restoreRequests.containsKey(session)) {
+        val expectedUrl = lastKnownUrls[session] ?: return VaultRestoreOutcome(openTabMissing = true)
+        if (!sameOrigin(port.sender.url, payload.origin) || !sameOrigin(expectedUrl, payload.origin) || restoreRequests.containsKey(session)) {
             return VaultRestoreOutcome(openTabMissing = true)
         }
         val cookies = JSONArray()
@@ -920,7 +927,12 @@ class ContainerSessionManager @Inject constructor(
         val request = RestoreRequest(UUID.randomUUID().toString(), CompletableDeferred())
         restoreRequests[session] = request
         return try {
-            port.postMessage(JSONObject().put("type", "APPLY_VAULT_SNAPSHOT").put("requestId", request.id).put("payload", body))
+            port.postMessage(
+                JSONObject().put("type", "APPLY_VAULT_SNAPSHOT")
+                    .put("expectedUrl", expectedUrl)
+                    .put("requestId", request.id)
+                    .put("payload", body),
+            )
             withTimeoutOrNull(6_000) { request.response.await() } ?: VaultRestoreOutcome()
         } catch (_: Exception) {
             VaultRestoreOutcome()
@@ -1188,6 +1200,7 @@ class ContainerSessionManager @Inject constructor(
         tabId: String,
         onPopupRequest: (PopupPermissionRequest) -> Unit,
         onWindowClose: () -> Unit,
+        onProcessEnded: () -> Unit,
     ) {
         var previousUrl = ""
         var canBack = false
@@ -1296,6 +1309,18 @@ class ContainerSessionManager @Inject constructor(
 
         session.contentDelegate = object : GeckoSession.ContentDelegate {
             override fun onCloseRequest(session: GeckoSession) = onWindowClose()
+
+            override fun onCrash(session: GeckoSession) = onProcessExit(session)
+
+            override fun onKill(session: GeckoSession) = onProcessExit(session)
+
+            private fun onProcessExit(session: GeckoSession) {
+                if (activeSessions[tabId] !== session) return
+                val permissions = permissionProfiles[tabId]
+                closeTabSession(tabId)
+                if (permissions != null) permissionProfiles[tabId] = permissions
+                onProcessEnded()
+            }
 
             override fun onContextMenu(
                 session: GeckoSession,

@@ -145,7 +145,7 @@
         const cookies = payload.cookies.filter(cookie => !liveNames.has(cookie.name));
         const prepared = await browser.runtime.sendMessage({ type: "PREPARE_RESTORE", cookies });
         cookieStatus = "NO_ELIGIBLE_COOKIES";
-        if (prepared?.nonce) {
+        if (prepared?.nonce && !pageHidden) {
           const restoreUrl = new URL("/", location.origin);
           restoreUrl.searchParams.set("__marble_vault_restore", prepared.nonce);
           const requestSucceeded = await requestRestoreInTab(restoreUrl.href);
@@ -252,36 +252,43 @@
     try { port.postMessage(postValues(values)); } catch (_) {}
   }
 
-  try {
-    port = browser.runtime.connectNative(NATIVE_APP);
-    port.onMessage.addListener(async message => {
-      if (!message || !message.type) return;
-      if (message.type === "SET_COOKIE_POLICY") {
-        autoCaptureEnabled = message.enabled === true;
-        try { await browser.runtime.sendMessage({ type: "SET_POLICY", enabled: autoCaptureEnabled, days: message.days }); } catch (_) {}
-        if (autoCaptureEnabled && message.persistStorage === true) ensurePersistentStorage();
-      } else if (message.type === "APPLY_VAULT_SNAPSHOT") {
-        let result = { cookieCount: 0, storageKeyCount: 0, cookieStatus: "BRIDGE_FAILED" };
-        try { if (!pageHidden) result = await restoreSnapshot(message.payload); } catch (_) {}
-        port.postMessage({ event: "RESTORE_RESULT", requestId: message.requestId, ...result });
-      } else if (message.type === "EVAL_JS") {
-        let result = "";
-        const matchesPage = !message.expectedUrl || (!pageHidden && location.href === message.expectedUrl);
-        try { if (matchesPage) result = String(eval(message.script) ?? ""); } catch (_) {}
-        port.postMessage({ event: "JS_RESULT", requestId: message.requestId, result });
-      } else if (message.type === "CAPTURE_PAGE") {
-        // The caller waits on this response, so always answer: even a failed collection is
-        // answered with a (possibly empty) snapshot instead of leaving the caller hanging.
-        let snapshot = null;
-        try { snapshot = await collectStorageSnapshot(); } catch (_) { snapshot = null; }
-        const finalSnapshot = snapshot || {
-          event: "STORAGE_SNAPSHOT", origin: location.origin, href: location.href,
-          cookies: [], localStorage: {}, sessionStorage: {}, indexedDbDump: {}, storagePersisted: false
-        };
-        try { port.postMessage({ ...finalSnapshot, requestId: message.requestId }); } catch (_) {}
-      }
-    });
-  } catch (_) {}
+  function connectNative() {
+    try {
+      port = browser.runtime.connectNative(NATIVE_APP);
+      port.onMessage.addListener(async message => {
+        if (!message || !message.type) return;
+        if (message.type === "SET_COOKIE_POLICY") {
+          autoCaptureEnabled = message.enabled === true;
+          try { await browser.runtime.sendMessage({ type: "SET_POLICY", enabled: autoCaptureEnabled, days: message.days }); } catch (_) {}
+          if (autoCaptureEnabled && message.persistStorage === true) ensurePersistentStorage();
+        } else if (message.type === "APPLY_VAULT_SNAPSHOT") {
+          let result = { cookieCount: 0, storageKeyCount: 0, cookieStatus: "BRIDGE_FAILED" };
+          try {
+            if (!pageHidden && (!message.expectedUrl || location.href === message.expectedUrl)) {
+              result = await restoreSnapshot(message.payload);
+            }
+          } catch (_) {}
+          port.postMessage({ event: "RESTORE_RESULT", requestId: message.requestId, ...result });
+        } else if (message.type === "EVAL_JS") {
+          let result = "";
+          const matchesPage = !message.expectedUrl || (!pageHidden && location.href === message.expectedUrl);
+          try { if (matchesPage) result = String(eval(message.script) ?? ""); } catch (_) {}
+          port.postMessage({ event: "JS_RESULT", requestId: message.requestId, result });
+        } else if (message.type === "CAPTURE_PAGE") {
+          // The caller waits on this response, so always answer: even a failed collection is
+          // answered with a (possibly empty) snapshot instead of leaving the caller hanging.
+          let snapshot = null;
+          try { snapshot = await collectStorageSnapshot(); } catch (_) { snapshot = null; }
+          const finalSnapshot = snapshot || {
+            event: "STORAGE_SNAPSHOT", origin: location.origin, href: location.href,
+            cookies: [], localStorage: {}, sessionStorage: {}, indexedDbDump: {}, storagePersisted: false
+          };
+          try { port.postMessage({ ...finalSnapshot, requestId: message.requestId }); } catch (_) {}
+        }
+      });
+    } catch (_) {}
+  }
+  connectNative();
 
   // ارسالِ فرم با Enter، با دکمهٔ submit یا با کلیک روی دکمهٔ ورودِ اسکریپتی.
   document.addEventListener("submit", reportLoginSubmit, true);
@@ -319,7 +326,16 @@
   window.addEventListener("load", announceLoginForm);
   let pageHidden = false;
   window.addEventListener("pagehide", () => { pageHidden = true; });
-  window.addEventListener("pageshow", () => { pageHidden = false; announceLoginForm(); });
+  window.addEventListener("pageshow", event => {
+    pageHidden = false;
+    if (event?.persisted) {
+      try { port?.disconnect(); } catch (_) {}
+      port = null;
+      lastFormState = "";
+      connectNative();
+    }
+    announceLoginForm();
+  });
   try {
     let pending = null;
     const observer = new MutationObserver(() => {

@@ -90,6 +90,17 @@ class SessionHealthGuardTest {
     }
 
     @Test
+    fun `manual restore records local results without verifying sign in`() = runTest {
+        healthGuard.recordRestoreOutcome("ctx_example", "example.org", VaultRestoreOutcome(cookiesRestored = 1))
+        healthGuard.recordRestoreOutcome("ctx_example", "example.org", VaultRestoreOutcome(superseded = true))
+
+        val events = fakeHealthEventDao.events
+        assertEquals(SessionHealthStatus.RESTORE_UNVERIFIED.name, events.first().statusName)
+        assertEquals(HealthReason.RESTORE_ATTEMPTED.name, events.first().descriptionFa)
+        assertEquals(SessionHealthStatus.RESTORE_FAILED.name, events.last().statusName)
+    }
+
+    @Test
     fun `cache-only clear flags never include cookies or dom storages or auth sessions`() {
         val flags = ContainerSessionManager.SAFE_CACHE_ONLY_CLEAR_FLAGS
         assertEquals(0L, flags and StorageController.ClearFlags.COOKIES)

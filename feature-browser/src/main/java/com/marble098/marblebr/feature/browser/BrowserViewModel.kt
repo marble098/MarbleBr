@@ -440,6 +440,7 @@ class BrowserViewModel @Inject constructor(
                 } else {
                     sessionManager.getOrCreateContainerForUrl(target)
                 }
+                val sessionMissing = sessionManager.activeSession(tab.id) == null
                 val recreate = !tab.isPrivate && containers[tab.id]?.contextId != container.contextId
                 if (recreate) sessionManager.closeTabSession(tab.id)
                 val profile = sitePermissionStore.profileFor(target)
@@ -452,6 +453,7 @@ class BrowserViewModel @Inject constructor(
                         containerId = container.id,
                         contextId = container.contextId,
                         isSecure = target.startsWith("https://"),
+                        sessionRevision = it.sessionRevision + if (sessionMissing) 1 else 0,
                         canGoBack = !recreate && it.canGoBack,
                         canGoForward = !recreate && it.canGoForward,
                         healthStatus = healthStatus(container.takeUnless { tab.isPrivate }),
@@ -612,8 +614,11 @@ class BrowserViewModel @Inject constructor(
     fun reloadPage() {
         val tab = _uiState.value.activeTab ?: return
         if (tab.url.isBlank()) return
-        updateTab(tab.id) { it.copy(progress = 0, isLoading = true) }
-        sessionManager.reload(tab.id)
+        val sessionMissing = sessionManager.activeSession(tab.id) == null
+        updateTab(tab.id) {
+            it.copy(progress = 0, isLoading = true, sessionRevision = it.sessionRevision + if (sessionMissing) 1 else 0)
+        }
+        if (!sessionMissing) sessionManager.reload(tab.id)
     }
 
     fun toggleDesktopMode() {
@@ -801,6 +806,15 @@ class BrowserViewModel @Inject constructor(
         onContentPermissionRequest = ::onContentPermissionRequest,
         onAndroidPermissionRequest = ::onAndroidPermissionRequest,
         onWindowClose = { if (openedByGecko) closeTab(tab.id) },
+        onProcessEnded = {
+            if (_uiState.value.pendingPermission?.tabId == tab.id) dismissPendingPermission()
+            updateTab(tab.id) { it.copy(isLoading = false, canGoBack = false, canGoForward = false) }
+            if (_uiState.value.activeWebTab()?.id == tab.id) {
+                clearAutofillRequest()
+                _codeFieldAvailable.value = false
+                showLocalizedBanner { it.tabProcessEnded }
+            }
+        },
         openedByGecko = openedByGecko,
     )
 
@@ -1145,6 +1159,8 @@ class BrowserViewModel @Inject constructor(
     }
 
     private fun onReauthenticationRequired(tabId: String, domain: String) {
+        val liveUrl = sessionManager.lastKnownUrl(tabId)
+        if (ContainerSessionManager.extractDomain(liveUrl) != domain) return
         updateTab(tabId) { it.copy(healthStatus = SessionHealthStatus.REAUTH_REQUIRED) }
         if (preferences.value.credentialFallbackEnabled && _uiState.value.activeWebTab()?.id == tabId) {
             _uiState.update { it.copy(fallbackPromptDomain = domain) }
@@ -1288,8 +1304,10 @@ class BrowserViewModel @Inject constructor(
     /** دکمهٔ «کد را بگذار»: کد را از پیامک/اعلان پیدا و در کادر می‌نویسد. */
     fun fillOneTimeCodeNow() {
         val tab = _uiState.value.activeWebTab() ?: return
+        val page = loginWatcher.currentPage(tab.id, tab.url) ?: return
         viewModelScope.launch {
-            val filled = loginWatcher.fillOneTimeCodeNow(tab.id, tab.url)
+            if (!isActiveLoginPage(page)) return@launch
+            val filled = loginWatcher.fillOneTimeCodeNow(page)
             if (!filled) {
                 // «کدی پیدا نشد» یا «کادرِ کد نبود» — دو پیامِ متفاوت، نه یک متنِ مبهم.
                 showLocalizedBanner { it.codeUnavailableTitle }

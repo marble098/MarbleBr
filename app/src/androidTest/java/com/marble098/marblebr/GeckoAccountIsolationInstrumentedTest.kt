@@ -122,8 +122,12 @@ class GeckoAccountIsolationInstrumentedTest {
                 }
                 assertAccount(site.observe("popup-with-opener"), "first")
 
-                // Closing and recreating a tab must retain its named account, not the other account.
-                instrumentation.runOnMainSync { manager.closeTabSession("first") }
+                // Simulate Gecko reporting a content process exit, then reopen the same account and URL.
+                instrumentation.runOnMainSync {
+                    val session = requireNotNull(manager.activeSession("first"))
+                    requireNotNull(session.contentDelegate).onKill(session)
+                    assertEquals(null, manager.activeSession("first"))
+                }
                 open(manager, first, "first", "${site.origin}/observe-page?tag=first-reopen")
                 assertAccount(site.observe("first-reopen"), "first")
 

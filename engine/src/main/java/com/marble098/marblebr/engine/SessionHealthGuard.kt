@@ -37,9 +37,6 @@ class SessionHealthGuard @Inject constructor(
         return REDIRECT_QUERY_KEYS.any { key -> query.contains("$key=") }
     }
 
-    /**
-     * ارزیابی سیگنال سلامت نشست و اجرای تصمیم ترمیم خودکار یا ارجاع به Credential Fallback.
-     */
     suspend fun evaluateSignal(
         signal: SessionHealthSignal,
         neverSignOutEnabled: Boolean = true,
@@ -80,6 +77,25 @@ class SessionHealthGuard @Inject constructor(
             reason = reason,
         )
 
+        recordEvent(assessment, signal.timestampEpochMillis)
+        return assessment
+    }
+
+    internal suspend fun recordRestoreOutcome(containerId: String, domain: String, outcome: VaultRestoreOutcome) {
+        val dataApplied = outcome.cookiesRestored > 0 || outcome.storageKeysRestored > 0
+        recordEvent(
+            SessionHealthAssessment(
+                containerId = containerId,
+                domain = domain,
+                status = if (dataApplied) SessionHealthStatus.RESTORE_UNVERIFIED else SessionHealthStatus.RESTORE_FAILED,
+                action = HealthGuardAction.NONE,
+                reason = if (dataApplied) HealthReason.RESTORE_ATTEMPTED else HealthReason.RESTORE_UNAVAILABLE,
+            ),
+            System.currentTimeMillis(),
+        )
+    }
+
+    private suspend fun recordEvent(assessment: SessionHealthAssessment, timestamp: Long) {
         healthEventDao.insert(
             HealthEventEntity(
                 id = UUID.randomUUID().toString(),
@@ -87,13 +103,10 @@ class SessionHealthGuard @Inject constructor(
                 domain = assessment.domain,
                 statusName = assessment.status.name,
                 actionName = assessment.action.name,
-                // ستون قدیمی `descriptionFa` حالا کدِ پایدارِ دلیل را نگه می‌دارد تا متن‌ها دوزبانه نمایش داده شوند.
                 descriptionFa = assessment.reason.name,
-                timestampEpochMillis = signal.timestampEpochMillis,
+                timestampEpochMillis = timestamp,
             ),
         )
-
-        return assessment
     }
 
     private fun sameBaseDomain(urlA: String, urlB: String): Boolean {

@@ -137,6 +137,7 @@ abstract class MarbleStrings {
     abstract val googleNewTabDescription: String
     abstract val goToAddress: String
     abstract val navigationFailed: String
+    abstract val tabProcessEnded: String
     abstract val stopLoading: String
     abstract val duplicateTab: String
     abstract val reopenTab: String
@@ -669,6 +670,8 @@ abstract class MarbleStrings {
         SessionHealthStatus.SERVER_REVOKED_FALLBACK,
         SessionHealthStatus.REAUTH_REQUIRED,
         -> statusNeedsSignIn
+        SessionHealthStatus.RESTORE_UNVERIFIED -> statusRestoreUnverified
+        SessionHealthStatus.RESTORE_FAILED -> statusRestoreFailed
         SessionHealthStatus.DISABLED -> statusProtectionOff
     }
 
@@ -681,6 +684,8 @@ abstract class MarbleStrings {
         HealthReason.STORAGE_CLEARED -> reasonStorageCleared
         HealthReason.HEALED -> reasonHealed
         HealthReason.SERVER_REVOKED -> reasonServerRevoked
+        HealthReason.RESTORE_ATTEMPTED -> reasonRestoreAttempted
+        HealthReason.RESTORE_UNAVAILABLE -> reasonRestoreUnavailable
         HealthReason.UNKNOWN -> reasonUnknown
     }
 
@@ -707,6 +712,10 @@ abstract class MarbleStrings {
     protected abstract val reasonHealed: String
     protected abstract val reasonServerRevoked: String
     protected abstract val reasonUnknown: String
+    protected abstract val statusRestoreUnverified: String
+    protected abstract val statusRestoreFailed: String
+    protected abstract val reasonRestoreAttempted: String
+    protected abstract val reasonRestoreUnavailable: String
 
     // ------------------------------------------------- دسترسی‌ها و پاپ‌آپ
     abstract val permissionPopups: String
@@ -1279,6 +1288,11 @@ private object PersianStrings : MarbleStrings() {
     override val reasonHealed = "برای بازیابی نشست تلاش شد؛ وضعیت ورود را بررسی کن."
     override val reasonServerRevoked = "سایت نشست را بست؛ با اثر انگشت یا Passkey سریع برگرد."
     override val reasonUnknown = "اتفاقی برای نشست افتاد که بررسی شد."
+    override val tabProcessEnded = "صفحه بسته شد. برای باز کردن دوبارهٔ آن، تازه‌سازی را بزن."
+    override val statusRestoreUnverified = "ورود تأیید نشده"
+    override val statusRestoreFailed = "بازیابی ناموفق"
+    override val reasonRestoreAttempted = "نسخهٔ محلی اعمال شد. وضعیت ورود را در سایت بررسی کن."
+    override val reasonRestoreUnavailable = "هیچ داده‌ای از نسخهٔ محلی اعمال نشد."
 
     // ---------------------------------------- افزودن هر سایتی
     override val addAnySiteTitle = "افزودن هر سایتی، حتی سخت‌ها"
@@ -1980,6 +1994,11 @@ private object EnglishStrings : MarbleStrings() {
     override val reasonServerRevoked = "The site ended your session — get back in with your fingerprint or a passkey."
 
     override val reasonUnknown = "Something touched your session, so we checked it."
+    override val tabProcessEnded = "The page stopped. Reload to reopen it."
+    override val statusRestoreUnverified = "Sign-in unverified"
+    override val statusRestoreFailed = "Restore failed"
+    override val reasonRestoreAttempted = "Local data was applied. Check sign-in on the site."
+    override val reasonRestoreUnavailable = "No local snapshot data was applied."
 
     // ---------------------------------------- Add any site
     override val addAnySiteTitle = "Add any site, even the difficult ones"

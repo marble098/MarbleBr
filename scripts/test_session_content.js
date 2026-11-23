@@ -102,6 +102,10 @@ vm.runInNewContext(code, {
   } });
   assert.equal(localStorage.getItem("injected"), null);
   assert.equal(sent.at(-1).storageKeyCount, 0);
+  await listeners.port({ type: "APPLY_VAULT_SNAPSHOT", requestId: "different-route", expectedUrl: "https://my.mci.ir/old", payload: {
+    origin: location.origin, localStorage: { injected: "no" }
+  } });
+  assert.equal(localStorage.getItem("injected"), null);
   await listeners.port({ type: "APPLY_VAULT_SNAPSHOT", requestId: "same-origin", payload: {
     origin: "https://my.mci.ir", localStorage: { restored: "yes", user: "old value" }
   } });

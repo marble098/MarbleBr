@@ -35,6 +35,8 @@ enum class SessionHealthStatus {
     RECOVERED_FROM_VAULT,
     SERVER_REVOKED_FALLBACK,
     REAUTH_REQUIRED,
+    RESTORE_UNVERIFIED,
+    RESTORE_FAILED,
     DISABLED,
 }
 
@@ -61,6 +63,7 @@ data class BrowserTab(
     val findTotalMatches: Int = 0,
     val createdAtEpochMillis: Long = System.currentTimeMillis(),
     val lastVisitedAtEpochMillis: Long = System.currentTimeMillis(),
+    val sessionRevision: Int = 0,
 )
 
 /**
@@ -223,6 +226,8 @@ enum class HealthReason {
     STORAGE_CLEARED,
     HEALED,
     SERVER_REVOKED,
+    RESTORE_ATTEMPTED,
+    RESTORE_UNAVAILABLE,
     UNKNOWN,
 }
 

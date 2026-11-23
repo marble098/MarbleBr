@@ -1499,7 +1499,7 @@ private fun LauncherContent(
             )
 
             activeTab != null && hasPage && renderGeckoWebView && !isInspection && container != null && container.id == activeTab.containerId -> {
-                key(activeTab.id, activeTab.contextId) {
+                key(activeTab.id, activeTab.contextId, activeTab.sessionRevision) {
                     GeckoSessionWebView(
                         tab = activeTab,
                         container = container,
