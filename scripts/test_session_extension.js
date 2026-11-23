@@ -7,7 +7,7 @@ const listeners = {};
 const event = name => ({ addListener: fn => { listeners[name] = fn; } });
 const browser = {
   runtime: { onMessage: event("message") },
-  webRequest: { onBeforeRequest: event("before"), onHeadersReceived: event("headers"), onCompleted: event("completed") },
+  webRequest: { onBeforeRequest: event("before"), onBeforeSendHeaders: event("requestHeaders"), onHeadersReceived: event("headers"), onCompleted: event("completed") },
   tabs: { onRemoved: event("removed"), sendMessage: () => Promise.resolve() }
 };
 const code = fs.readFileSync("engine/src/main/assets/extensions/never_signout/background.js", "utf8");
@@ -70,6 +70,14 @@ const headers = (id, values, url = "https://my.mci.ir/login") => listeners.heade
   assert.equal(restoreStatus.requestTab, "EXPECTED_TAB");
   assert.equal((await send(1, { type: "PREPARE_RESTORE", cookies: [{ ...one[0], domain: "evil.test" }] })).nonce, null);
   assert.equal((await send(1, { type: "PREPARE_RESTORE", cookies: [{ ...one[0], value: "x\r\nSet-Cookie: bad" }] })).nonce, null);
+  const live = await send(1, { type: "PREPARE_RESTORE", cookies: one });
+  const liveUrl = `https://my.mci.ir/?__marble_vault_restore=${live.nonce}`;
+  listeners.requestHeaders({ tabId: 1, url: liveUrl, requestHeaders: [{ name: "Cookie", value: "session=newer" }] });
+  assert.equal(headers(1, [], liveUrl).responseHeaders.length, 0, "preserve cookies already sent by Gecko");
+  const rotated = await send(1, { type: "PREPARE_RESTORE", cookies: one });
+  const rotatedUrl = `https://my.mci.ir/?__marble_vault_restore=${rotated.nonce}`;
+  const serverHeaders = headers(1, ["session=newer; Path=/; HttpOnly"], rotatedUrl).responseHeaders;
+  assert.deepEqual(serverHeaders.map(h => h.value), ["session=newer; Path=/; HttpOnly"]);
   listeners.removed(2);
   assert.equal((await send(2, { type: "GET_CAPTURED_COOKIES" })).cookies.length, 0);
   console.log("Session extension isolation, expiry and restore tests passed.");

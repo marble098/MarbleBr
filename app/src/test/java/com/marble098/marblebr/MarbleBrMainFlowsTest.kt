@@ -43,7 +43,7 @@ class MarbleBrMainFlowsTest {
         val snapshotDao = InMemorySnapshotDao()
         val healthEventDao = InMemoryHealthEventDao()
         val vaultManager = SessionVaultManager(snapshotDao, cipher, converter)
-        val healthGuard = SessionHealthGuard(vaultManager, healthEventDao)
+        val healthGuard = SessionHealthGuard(healthEventDao)
         val urlResolver = SmartAddressUrlResolver()
         val adBlocker = LightweightAdBlocker()
 
@@ -94,7 +94,7 @@ class MarbleBrMainFlowsTest {
             label = "لاگین تلگرام",
         )
 
-        // Flow 3: Session Health Guard detects unexpected redirect to /login and auto-heals
+        // Flow 3: Session Health Guard offers reauthentication after an unexpected login redirect
         val assessment = healthGuard.evaluateSignal(
             signal = SessionHealthSignal.LoginRedirectDetected(
                 containerId = githubContainer.id,
@@ -103,7 +103,7 @@ class MarbleBrMainFlowsTest {
                 redirectedToUrl = "https://github.com/login?return_to=%2Fsettings%2Fprofile",
             ),
         )
-        assertEquals(HealthGuardAction.RESTORE_LATEST_SNAPSHOT, assessment.action)
+        assertEquals(HealthGuardAction.ESCALATE_TO_CREDENTIAL_FALLBACK, assessment.action)
         val latestRestored = vaultManager.restoreLatestHealthySnapshot(githubContainer.id)
         assertEquals("gh_token_v2", latestRestored?.cookies?.first()?.value)
 

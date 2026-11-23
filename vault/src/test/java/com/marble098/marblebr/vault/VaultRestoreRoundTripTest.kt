@@ -85,7 +85,7 @@ class VaultRestoreRoundTripTest {
             sessionStorage = emptyMap(),
             indexedDbDump = mapOf("user_auth_database" to "1"),
         )
-        assertTrue(!vaultManager.evaluatePayloadHealth(metadataOnly))
+        assertTrue(!vaultManager.hasRestorableData(metadataOnly, metadataOnly.capturedAtEpochMillis))
         val snapshot = vaultManager.captureSnapshot(metadataOnly)
         assertTrue(!snapshot.isHealthy)
         assertEquals(0, snapshot.storageKeyCount)
@@ -134,13 +134,13 @@ class VaultRestoreRoundTripTest {
     }
 
     @Test
-    fun `payload without any auth signal is rejected as unhealthy`() {
+    fun `payload without any restorable data is empty`() {
         val empty = SessionSnapshotPayload(
             origin = "https://example.org",
             containerId = "ctx_example",
             capturedAtEpochMillis = 1L,
         )
-        assertTrue("payload بدون کوکی و حافظه نباید سالم شمرده شود", !vaultManager.evaluatePayloadHealth(empty))
+        assertTrue("payload بدون کوکی و حافظه نباید سالم شمرده شود", !vaultManager.hasRestorableData(empty, empty.capturedAtEpochMillis))
     }
 
     private class InMemorySnapshotDao : SnapshotDao {

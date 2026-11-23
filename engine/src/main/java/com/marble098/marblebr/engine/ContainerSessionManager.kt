@@ -9,7 +9,6 @@ import com.marble098.marblebr.core.database.ContainerEntity
 import com.marble098.marblebr.core.i18n.LocalizationManager
 import com.marble098.marblebr.core.model.CookieRecord
 import com.marble098.marblebr.core.model.HealthGuardAction
-import com.marble098.marblebr.core.model.HealthReason
 import com.marble098.marblebr.core.model.ProxyDnsConfig
 import com.marble098.marblebr.core.model.PermissionState
 import com.marble098.marblebr.core.model.ProxyType
@@ -106,6 +105,7 @@ data class VaultRestoreOutcome(
     val storageKeysRestored: Int = 0,
     val openTabMissing: Boolean = false,
     val payloadUnavailable: Boolean = false,
+    val superseded: Boolean = false,
     val cookieStatus: CookieRestoreStatus = CookieRestoreStatus.UNKNOWN,
 )
 
@@ -151,6 +151,10 @@ class ContainerSessionManager @Inject constructor(
 
     // پورت‌ها از تردِ Gecko هم لمس می‌شوند؛ نگه‌داشتن آن‌ها در ConcurrentHashMap از
     // ConcurrentModificationException و نشتِ پورتِ بسته‌شده جلوگیری می‌کند.
+    private val sessionDataMutex = Mutex()
+    private val loginNavigationIds = ConcurrentHashMap<GeckoSession, String>()
+    private val loadingSessions = ConcurrentHashMap.newKeySet<GeckoSession>()
+
     private val capturePorts = ConcurrentHashMap<GeckoSession, WebExtension.Port>()
     private val snapshotRequests = ConcurrentHashMap<GeckoSession, SnapshotRequest>()
     private val restoreRequests = ConcurrentHashMap<GeckoSession, RestoreRequest>()
@@ -305,14 +309,15 @@ class ContainerSessionManager @Inject constructor(
         onTitleChanged: (title: String) -> Unit = {},
         onProgressChanged: (progress: Int, isLoading: Boolean) -> Unit = { _, _ -> },
         onNavStateChanged: (canGoBack: Boolean, canGoForward: Boolean) -> Unit = { _, _ -> },
-        onHealthRestored: (reason: HealthReason) -> Unit = {},
-        onServerRevokedFallbackRequired: (domain: String) -> Unit = {},
+        onReauthenticationRequired: (domain: String) -> Unit = {},
+        onLoginPageChanged: (url: String) -> Unit = {},
         onDownloadRequested: (url: String, userAgent: String?) -> Unit = { _, _ -> },
         onContextMenu: (PageContextTarget) -> Unit = {},
         onPopupRequest: (PopupPermissionRequest) -> Unit = { it.respond(null) },
         onContentPermissionRequest: (ContentPermissionRequest) -> Unit = {},
         onAndroidPermissionRequest: (AndroidPermissionRequest) -> Unit = {},
         onWindowClose: () -> Unit = {},
+        onProcessEnded: () -> Unit = {},
         openedByGecko: Boolean = false,
     ): GeckoSession {
         activeSessions[tabId]?.let { return it }
@@ -342,13 +347,14 @@ class ContainerSessionManager @Inject constructor(
             onTitleChanged = onTitleChanged,
             onProgressChanged = onProgressChanged,
             onNavStateChanged = onNavStateChanged,
-            onHealthRestored = onHealthRestored,
-            onServerRevokedFallbackRequired = onServerRevokedFallbackRequired,
+            onReauthenticationRequired = onReauthenticationRequired,
+            onLoginPageChanged = onLoginPageChanged,
             onDownloadRequested = onDownloadRequested,
             onContextMenu = onContextMenu,
             tabId = tabId,
             onPopupRequest = onPopupRequest,
             onWindowClose = onWindowClose,
+            onProcessEnded = onProcessEnded,
         )
 
         attachPermissionDelegates(
@@ -366,11 +372,11 @@ class ContainerSessionManager @Inject constructor(
             if (!isPrivate) {
                 val available = installedExtension
                 if (available != null) {
-                    attachSessionExtensionBridge(session, available, container, onHealthRestored, onServerRevokedFallbackRequired)
+                    attachSessionExtensionBridge(session, available, container, onReauthenticationRequired, onLoginPageChanged)
                 } else {
                     extensionReady?.accept({ extension ->
                         if (extension != null && activeSessions[tabId] === session) {
-                            attachSessionExtensionBridge(session, extension, container, onHealthRestored, onServerRevokedFallbackRequired)
+                            attachSessionExtensionBridge(session, extension, container, onReauthenticationRequired, onLoginPageChanged)
                         }
                     }, {})
                 }
@@ -383,7 +389,7 @@ class ContainerSessionManager @Inject constructor(
         } else {
             val available = installedExtension
             if (available != null) {
-                attachSessionExtensionBridge(session, available, container, onHealthRestored, onServerRevokedFallbackRequired)
+                attachSessionExtensionBridge(session, available, container, onReauthenticationRequired, onLoginPageChanged)
                 session.loadUri(initialUrl)
             } else {
                 // Install/attach before the first page loads. Otherwise a fresh install can miss
@@ -392,7 +398,7 @@ class ContainerSessionManager @Inject constructor(
                 extensionReady?.accept({ extension ->
                     if (activeSessions[tabId] === session) {
                         if (extension != null) {
-                            attachSessionExtensionBridge(session, extension, container, onHealthRestored, onServerRevokedFallbackRequired)
+                            attachSessionExtensionBridge(session, extension, container, onReauthenticationRequired, onLoginPageChanged)
                         }
                         pendingInitialLoads.remove(tabId)?.let(session::loadUri)
                     }
@@ -445,7 +451,10 @@ class ContainerSessionManager @Inject constructor(
         if (pendingInitialLoads.containsKey(tabId)) {
             pendingInitialLoads[tabId] = url
         } else {
-            activeSessions[tabId]?.loadUri(url)
+            activeSessions[tabId]?.let { session ->
+                loginNavigationIds[session] = UUID.randomUUID().toString()
+                session.loadUri(url)
+            }
         }
     }
 
@@ -464,7 +473,7 @@ class ContainerSessionManager @Inject constructor(
         } else {
             GeckoSessionSettings.USER_AGENT_MODE_MOBILE
         }
-        session.reload()
+        reload(tabId)
     }
 
     fun goBack(tabId: String) {
@@ -476,7 +485,10 @@ class ContainerSessionManager @Inject constructor(
     }
 
     fun reload(tabId: String) {
-        activeSessions[tabId]?.reload()
+        activeSessions[tabId]?.let { session ->
+            loginNavigationIds[session] = UUID.randomUUID().toString()
+            session.reload()
+        }
     }
 
     fun findInPage(
@@ -541,38 +553,26 @@ class ContainerSessionManager @Inject constructor(
      * اگر پیوندی برقرار نباشد (مثلاً صفحه‌ای که اسکریپتِ ما در آن اجرا نشده) نتیجه `null`
      * است و لایهٔ بالاتر پیامِ «در دسترس نیست» را نشان می‌دهد.
      */
-    internal fun evaluateInPageForLogin(
-        tabId: String,
-        script: String,
-        onResult: (String?) -> Unit,
-    ) = evaluateInPage(tabId, script, SCRIPT_TIMEOUT_MILLIS, onResult)
-
-    /**
-     * نسخهٔ suspend از اجرای اسکریپت در صفحه.
-     *
-     * چرا لازم شد؟ منطقِ ورود (کاوشِ فرم، انتخابِ کادرِ کد، پرکردن) به‌صورتِ زنجیرهٔ مرحله‌به‌مرحله
-     * نوشته شده و با کال‌بک‌های تودرتو هم خواندنش سخت می‌شد و هم ترتیبِ اجرا تضمین نداشت. این
-     * نسخه همان مسیرِ امنِ پورتِ افزونه را استفاده می‌کند و فقط شکلِ فراخوانی عوض شده است.
-     */
-    internal suspend fun evalInPageForLogin(
-        tabId: String,
-        script: String,
-        timeoutMillis: Long = SCRIPT_TIMEOUT_MILLIS,
-    ): String? = kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
-        evaluateInPage(tabId, script, timeoutMillis) { result ->
-            if (continuation.isActive) continuation.resumeWith(Result.success(result))
-        }
+    internal fun currentLoginPage(tabId: String, url: String): LoginPage? {
+        val session = activeSessions[tabId] ?: return null
+        if (session in loadingSessions || lastKnownUrls[session] != url || !url.startsWith("https://", true)) return null
+        val port = capturePorts[session] ?: return null
+        if (!sameOrigin(port.sender.url, url)) return null
+        val containerId = sessionContainers[session] ?: return null
+        val navigationId = loginNavigationIds[session] ?: return null
+        return LoginPage(tabId, containerId, url, navigationId)
     }
 
-    /**
-     * آیا تبِ داده‌شده در همین لحظه نشستِ باز دارد؟ (برای جلوگیری از اجرا روی تبِ بسته)
-     *
-     * `GeckoSession.isOpen` فقط روی تردِ Main معتبر است؛ فراخوانی از هر ترد دیگری با
-     * `IllegalThreadStateException` اپ را می‌بندد (کرش لاگِ «Expected thread 2 (main)»).
-     * به همین دلیل این تابع `suspend` است و خواندن را همیشه روی Main انجام می‌دهد.
-     */
-    suspend fun hasOpenSession(tabId: String): Boolean =
-        withContext(Dispatchers.Main.immediate) { activeSessions[tabId]?.isOpen == true }
+    internal suspend fun evalInPageForLogin(page: LoginPage, script: String): String? =
+        kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+            if (currentLoginPage(page.tabId, page.url) != page) {
+                continuation.resumeWith(Result.success(null))
+            } else {
+                evaluateInPage(page.tabId, script, SCRIPT_TIMEOUT_MILLIS, expectedPage = page) { result ->
+                    if (continuation.isActive) continuation.resumeWith(Result.success(result))
+                }
+            }
+        }
 
     /** آدرسِ آخری که برای این تب دیده شده (بدونِ محتوای صفحه). */
     fun lastKnownUrl(tabId: String): String =
@@ -585,6 +585,7 @@ class ContainerSessionManager @Inject constructor(
         tabId: String,
         script: String,
         timeoutMillis: Long = SCRIPT_TIMEOUT_MILLIS,
+        expectedPage: LoginPage? = null,
         onResult: (String?) -> Unit,
     ) {
         val port = activeSessions[tabId]?.let { capturePorts[it] }
@@ -597,9 +598,14 @@ class ContainerSessionManager @Inject constructor(
         scriptRequests[requestId] = response
         engineScope.launch {
             try {
+                if (expectedPage != null && currentLoginPage(tabId, expectedPage.url) != expectedPage) {
+                    onResult(null)
+                    return@launch
+                }
                 port.postMessage(
                     JSONObject()
                         .put("type", "EVAL_JS")
+                        .put("expectedUrl", expectedPage?.url)
                         .put("requestId", requestId)
                         .put("script", script),
                 )
@@ -802,14 +808,14 @@ class ContainerSessionManager @Inject constructor(
      * ۲. پاک‌سازی کوکی‌ها و DOM Storage آن دامنه.
      * ۳. حذف تمام اسنپ‌شات‌های ذخیره شده آن سایت از Session Vault.
      */
-    suspend fun signOutNow(container: WebAppContainer) {
-        // Close every tab in this context before clearing it, or a live page can write the data back.
-        activeSessions.entries.filter { sessionContainers[it.value] == container.id }
-            .map { it.key }.forEach(::closeTabSession)
-        // clearDataFromBaseDomain would clear OTHER accounts for the same site: never use it here.
-        getOrCreateRuntime().storageController.clearDataForSessionContext(container.contextId)
-        vaultManager.purgeSnapshotsForContainer(container.id)
-        healthGuard.resetCircuitBreaker(container.id)
+    suspend fun signOutNow(container: WebAppContainer) = withContext(Dispatchers.Main.immediate) {
+        sessionDataMutex.withLock {
+            // Close live writers before clearing this account's Gecko context and Vault snapshots.
+            activeSessions.entries.filter { sessionContainers[it.value] == container.id }
+                .map { it.key }.forEach(::closeTabSession)
+            getOrCreateRuntime().storageController.clearDataForSessionContext(container.contextId)
+            vaultManager.purgeSnapshotsForContainer(container.id)
+        }
     }
 
     fun closeTabSession(tabId: String) {
@@ -819,6 +825,8 @@ class ContainerSessionManager @Inject constructor(
         runCatching { loginWatcher.get().forget(tabId) }
         val session = activeSessions.remove(tabId) ?: return
         sessionContainers.remove(session)
+        loginNavigationIds.remove(session)
+        loadingSessions.remove(session)
         lastKnownUrls.remove(session)
         capturePorts.remove(session)?.disconnect()
         snapshotRequests.remove(session)?.response?.complete(false)
@@ -849,18 +857,41 @@ class ContainerSessionManager @Inject constructor(
         return capturePageSnapshot(tabId, match.value.sender.url, manual = true)
     }
 
+    internal suspend fun captureScheduledCheckpoint(container: WebAppContainer) {
+        withContext(Dispatchers.Main.immediate) {
+            val intervalMillis = container.keepAliveIntervalMinutes.coerceAtLeast(15) * 60_000L
+            val lastCapture = vaultManager.latestCaptureTime(container.id)
+            if (lastCapture != null && System.currentTimeMillis() - lastCapture < intervalMillis) return@withContext
+            val match = activeSessions.entries.firstOrNull { (_, session) ->
+                session.isOpen && session !in loadingSessions && sessionContainers[session] == container.id &&
+                    capturePorts[session]?.sender?.url?.let { extractDomain(it) == container.domain } == true
+            } ?: return@withContext
+            val url = lastKnownUrls[match.value] ?: return@withContext
+            capturePageSnapshot(match.key, url)
+        }
+    }
+
     /** Restore only into an open tab of the exact account and origin, never into a global cookie jar. */
-    suspend fun restoreSnapshotOnOpenTab(snapshot: SessionSnapshotMeta): VaultRestoreOutcome {
+    suspend fun restoreSnapshotOnOpenTab(snapshot: SessionSnapshotMeta): VaultRestoreOutcome =
+        withContext(Dispatchers.Main.immediate) {
+            sessionDataMutex.withLock {
+                val outcome = restoreLatestSnapshotOnOpenTab(snapshot)
+                healthGuard.recordRestoreOutcome(snapshot.containerId, snapshot.domain, outcome)
+                outcome
+            }
+        }
+
+    private suspend fun restoreLatestSnapshotOnOpenTab(snapshot: SessionSnapshotMeta): VaultRestoreOutcome {
         val payload = vaultManager.restoreSnapshotById(snapshot.id)
             ?: return VaultRestoreOutcome(payloadUnavailable = true)
-        val session = withContext(Dispatchers.Main.immediate) {
-            capturePorts.entries.firstOrNull { (candidate, port) ->
-                candidate.isOpen && sessionContainers[candidate] == snapshot.containerId && sameOrigin(port.sender.url, payload.origin)
-            }
-        }?.key ?: return VaultRestoreOutcome(openTabMissing = true)
+        if (vaultManager.hasNewerSnapshot(snapshot.id, payload)) return VaultRestoreOutcome(superseded = true)
+        val (session, port) = capturePorts.entries.firstOrNull { (candidate, candidatePort) ->
+            candidate.isOpen && candidate !in loadingSessions && sessionContainers[candidate] == payload.containerId &&
+                sameOrigin(candidatePort.sender.url, payload.origin)
+        } ?: return VaultRestoreOutcome(openTabMissing = true)
         val applied = applyPayloadToSession(session, payload)
-        if (applied.cookiesRestored > 0 || applied.storageKeysRestored > 0) {
-            withContext(Dispatchers.Main.immediate) { session.reload() }
+        if (capturePorts[session] === port && (applied.cookiesRestored > 0 || applied.storageKeysRestored > 0)) {
+            session.reload()
         }
         return applied
     }
@@ -868,11 +899,13 @@ class ContainerSessionManager @Inject constructor(
     private suspend fun applyPayloadToSession(session: GeckoSession?, payload: SessionSnapshotPayload): VaultRestoreOutcome {
         if (session == null || sessionContainers[session] != payload.containerId) return VaultRestoreOutcome(openTabMissing = true)
         val port = capturePorts[session] ?: return VaultRestoreOutcome(openTabMissing = true)
-        if (!sameOrigin(port.sender.url, payload.origin) || restoreRequests.containsKey(session)) {
+        val expectedUrl = lastKnownUrls[session] ?: return VaultRestoreOutcome(openTabMissing = true)
+        if (!sameOrigin(port.sender.url, payload.origin) || !sameOrigin(expectedUrl, payload.origin) || restoreRequests.containsKey(session)) {
             return VaultRestoreOutcome(openTabMissing = true)
         }
         val cookies = JSONArray()
-        payload.cookies.forEach { cookie ->
+        val now = System.currentTimeMillis()
+        payload.cookies.filter { it.expiresEpochMillis?.let { expiry -> expiry > now } != false }.forEach { cookie ->
             cookies.put(JSONObject().apply {
                 put("name", cookie.name)
                 put("value", cookie.value)
@@ -894,7 +927,12 @@ class ContainerSessionManager @Inject constructor(
         val request = RestoreRequest(UUID.randomUUID().toString(), CompletableDeferred())
         restoreRequests[session] = request
         return try {
-            port.postMessage(JSONObject().put("type", "APPLY_VAULT_SNAPSHOT").put("requestId", request.id).put("payload", body))
+            port.postMessage(
+                JSONObject().put("type", "APPLY_VAULT_SNAPSHOT")
+                    .put("expectedUrl", expectedUrl)
+                    .put("requestId", request.id)
+                    .put("payload", body),
+            )
             withTimeoutOrNull(6_000) { request.response.await() } ?: VaultRestoreOutcome()
         } catch (_: Exception) {
             VaultRestoreOutcome()
@@ -913,20 +951,13 @@ class ContainerSessionManager @Inject constructor(
     suspend fun neverSignOutGlobalEnabled(): Boolean =
         preferencesRepository.preferencesFlow.first().globalNeverSignOutEnabled
 
-    /**
-     * بازچینشِ سیاستِ زنده‌سازیِ پس‌زمینه پس از هر تغییر در داشبورد.
-     *
-     * قبلاً `KeepAliveScheduler.schedulePeriodicKeepAlive()` فقط یک‌بار در `Application.onCreate`
-     * با بازهٔ ثابت ۳۰ دقیقه اجرا می‌شد؛ پس تغییر بازه یا خاموش‌کردنِ محافظت در داشبورد هیچ اثری
-     * روی کارِ زمان‌بندی‌شده نداشت (باگ عملکردی). حالا بازه از تنظیماتِ سایت‌ها محاسبه می‌شود.
-     */
     suspend fun capturePageSnapshot(tabId: String, pageUrl: String, manual: Boolean = false): Boolean {
         val maxAttempts = if (manual) 2 else 1
         for (attempt in 1..maxAttempts) {
             val session = activeSessions[tabId] ?: return false
             val port = capturePorts[session] ?: return false
             if (!sameOrigin(port.sender.url, pageUrl) || snapshotRequests.containsKey(session)) return false
-            val request = SnapshotRequest(UUID.randomUUID().toString(), CompletableDeferred())
+            val request = SnapshotRequest(UUID.randomUUID().toString(), manual, CompletableDeferred())
             snapshotRequests[session] = request
             try {
                 port.postMessage(JSONObject().put("type", "CAPTURE_PAGE").put("requestId", request.id))
@@ -950,7 +981,7 @@ class ContainerSessionManager @Inject constructor(
 
     private fun effectivePort(uri: URI): Int = uri.port.takeIf { it >= 0 } ?: if (uri.scheme.equals("https", true)) 443 else 80
 
-    private data class SnapshotRequest(val id: String, val response: CompletableDeferred<Boolean>)
+    private data class SnapshotRequest(val id: String, val manual: Boolean, val response: CompletableDeferred<Boolean>)
     private data class RestoreRequest(val id: String, val response: CompletableDeferred<VaultRestoreOutcome>)
 
     /** Apply changed settings to already-open tabs as well as future ones. */
@@ -984,8 +1015,8 @@ class ContainerSessionManager @Inject constructor(
         session: GeckoSession,
         extension: WebExtension,
         container: WebAppContainer,
-        onHealthRestored: (HealthReason) -> Unit,
-        onServerRevokedFallbackRequired: (String) -> Unit,
+        onReauthenticationRequired: (String) -> Unit,
+        onLoginPageChanged: (String) -> Unit,
     ) {
         session.webExtensionController.setMessageDelegate(
             extension,
@@ -994,6 +1025,7 @@ class ContainerSessionManager @Inject constructor(
                     val senderUrl = port.sender.url.orEmpty()
                     if (!port.sender.isTopLevel || extractDomain(senderUrl) != container.domain) return
                     capturePorts[session] = port
+                    loginNavigationIds[session] = UUID.randomUUID().toString()
                     engineScope.launch {
                         val fresh = containerDao.getById(container.id)?.toDomain() ?: container
                         sendCookiePolicy(port, fresh)
@@ -1024,48 +1056,52 @@ class ContainerSessionManager @Inject constructor(
                                 "STORAGE_SNAPSHOT" -> {
                                     if (!sameOrigin(port.sender.url, json.optString("origin"))) return
                                     val request = snapshotRequests[session]
-                                    val manual = request != null && request.id == json.optString("requestId")
-                                    if (json.has("requestId") && !manual) return
+                                    val matchedRequest = request?.takeIf { it.id == json.optString("requestId") }
+                                    if (json.has("requestId") && matchedRequest == null) return
+                                    val capturedAt = System.currentTimeMillis()
                                     engineScope.launch {
-                                        val fresh = containerDao.getById(container.id)?.toDomain() ?: container
-                                        val enabled = fresh.neverSignOutEnabled
-                                        val saved = if (manual || enabled) {
-                                            runCatching { savePageSnapshot(json, fresh, manual) }.getOrDefault(false)
-                                        } else {
-                                            false
+                                        val saved = sessionDataMutex.withLock {
+                                            if (capturePorts[session] !== port || sessionContainers[session] != container.id) {
+                                                return@withLock false
+                                            }
+                                            val fresh = containerDao.getById(container.id)?.toDomain() ?: return@withLock false
+                                            val manual = matchedRequest?.manual == true
+                                            if (!manual && !fresh.neverSignOutEnabled) return@withLock false
+                                            runCatching { savePageSnapshot(json, fresh, manual, capturedAt) }.getOrDefault(false)
                                         }
-                                        if (manual) request.response.complete(saved)
+                                        matchedRequest?.response?.complete(saved)
                                     }
                                 }
 
                                 "HTTP_UNAUTHORIZED" -> {
-                                    if (!sameOrigin(port.sender.url, json.optString("url"))) return
+                                    val url = json.optString("url")
+                                    if (url != lastKnownUrls[session] || !sameOrigin(port.sender.url, url)) return
                                     engineScope.launch {
-                                        handleExtensionEvent(
-                                            json, "HTTP_UNAUTHORIZED", session, container,
-                                            onHealthRestored, onServerRevokedFallbackRequired,
+                                        val fresh = containerDao.getById(container.id)?.toDomain() ?: return@launch
+                                        if (capturePorts[session] !== port || lastKnownUrls[session] != url) return@launch
+                                        reportSessionChallenge(
+                                            fresh,
+                                            SessionHealthSignal.HttpUnauthorized(fresh.id, fresh.domain, url, json.optInt("statusCode")),
+                                            onReauthenticationRequired,
                                         )
                                     }
                                 }
 
-                                // صفحه آمادهٔ کدِ یکبارمصرف است: پیامک/اعلان را دنبال کن.
-                                OTP_SCREEN_READY_EVENT -> {
-                                    if (!sameOrigin(port.sender.url, json.optString("url"))) return
-                                    val tabId = activeSessions.entries.firstOrNull { it.value === session }?.key ?: return
-                                    val pageUrl = json.optString("url").ifBlank { port.sender.url.orEmpty() }
-                                    engineScope.launch {
-                                        runCatching { loginWatcher.get().watchForOneTimeCode(tabId, pageUrl) }
+                                "LOGIN_FORM_CHANGED" -> {
+                                    val url = json.optString("url")
+                                    if (url == lastKnownUrls[session] && sameOrigin(port.sender.url, url)) {
+                                        onLoginPageChanged(url)
                                     }
                                 }
 
                                 // «ذخیرهٔ هوشمندِ ورود»: لحظهٔ ارسالِ فرم. مقادیر فقط در حافظه
                                 // می‌مانند و تصمیمِ ذخیره پس از تأییدِ موفقیت گرفته می‌شود.
                                 LOGIN_SUBMIT_EVENT -> {
-                                    if (!sameOrigin(port.sender.url, json.optString("url"))) return
+                                    val pageUrl = json.optString("url")
+                                    if (!pageUrl.startsWith("https://", true) || !sameOrigin(port.sender.url, pageUrl)) return
                                     val tabId = activeSessions.entries.firstOrNull {
                                         it.value === session
                                     }?.key ?: return
-                                    val pageUrl = json.optString("url")
                                     engineScope.launch {
                                         runCatching {
                                             // پیامِ خطای دیده‌شده همان لحظه، این ارسال را رد می‌کند.
@@ -1092,89 +1128,44 @@ class ContainerSessionManager @Inject constructor(
                             }
                         }
                     })
+                    if (session !in loadingSessions && senderUrl == lastKnownUrls[session]) onLoginPageChanged(senderUrl)
                 }
             },
             NATIVE_BRIDGE_APP_ID,
         )
     }
 
-    private suspend fun handleExtensionEvent(
-        json: JSONObject,
-        eventType: String,
-        session: GeckoSession,
+    private suspend fun reportSessionChallenge(
         container: WebAppContainer,
-        onHealthRestored: (HealthReason) -> Unit,
-        onServerRevokedFallbackRequired: (String) -> Unit,
+        signal: SessionHealthSignal,
+        onReauthenticationRequired: (String) -> Unit,
     ) {
-        val freshContainer = containerDao.getById(container.id)?.toDomain() ?: container
-        if (!freshContainer.neverSignOutEnabled) return
-
-        when (eventType) {
-            "STORAGE_SNAPSHOT" -> savePageSnapshot(json, freshContainer, manual = false)
-
-            "HTTP_UNAUTHORIZED" -> {
-                val url = json.optString("url")
-                val statusCode = json.optInt("statusCode", 401)
-                val assessment = healthGuard.evaluateSignal(
-                    signal = SessionHealthSignal.HttpUnauthorized(
-                        containerId = freshContainer.id,
-                        domain = freshContainer.domain,
-                        url = url,
-                        statusCode = statusCode,
-                    ),
-                    neverSignOutEnabled = freshContainer.neverSignOutEnabled,
-                )
-                applyHealthGuardDecision(
-                    assessmentAction = assessment.action,
-                    reason = assessment.reason,
-                    session = session,
-                    container = freshContainer,
-                    onHealthRestored = onHealthRestored,
-                    onServerRevokedFallbackRequired = onServerRevokedFallbackRequired,
-                )
-            }
-
-            "COOKIE_REMOVED" -> {
-                val cookieName = json.optString("cookieName")
-                val dummyCookie = CookieRecord(name = cookieName, value = "x", domain = freshContainer.domain)
-                if (dummyCookie.isLikelyAuthCookie()) {
-                    val assessment = healthGuard.evaluateSignal(
-                        signal = SessionHealthSignal.AuthCookieMissing(
-                            containerId = freshContainer.id,
-                            domain = freshContainer.domain,
-                            missingCookieNames = listOf(cookieName),
-                        ),
-                        neverSignOutEnabled = freshContainer.neverSignOutEnabled,
-                    )
-                    applyHealthGuardDecision(
-                        assessmentAction = assessment.action,
-                        reason = assessment.reason,
-                        session = session,
-                        container = freshContainer,
-                        onHealthRestored = onHealthRestored,
-                        onServerRevokedFallbackRequired = onServerRevokedFallbackRequired,
-                    )
-                }
-            }
+        val assessment = healthGuard.evaluateSignal(signal, container.neverSignOutEnabled)
+        if (assessment.action == HealthGuardAction.ESCALATE_TO_CREDENTIAL_FALLBACK) {
+            onReauthenticationRequired(container.domain)
         }
     }
 
-    private suspend fun savePageSnapshot(json: JSONObject, container: WebAppContainer, manual: Boolean): Boolean {
+    private suspend fun savePageSnapshot(
+        json: JSONObject,
+        container: WebAppContainer,
+        manual: Boolean,
+        capturedAt: Long,
+    ): Boolean {
         val origin = json.optString("origin")
         if (extractDomain(origin) != container.domain) return false
         val payload = SessionSnapshotPayload(
             origin = origin,
             containerId = container.id,
-            capturedAtEpochMillis = System.currentTimeMillis(),
+            capturedAtEpochMillis = capturedAt,
             cookies = mergeSnapshotCookies(json, origin),
             localStorage = jsonObjectToMap(json.optJSONObject("localStorage")),
             sessionStorage = jsonObjectToMap(json.optJSONObject("sessionStorage")),
             indexedDbDump = jsonObjectToMap(json.optJSONObject("indexedDbDump")),
             storagePersisted = json.optBoolean("storagePersisted"),
         )
-        if (!vaultManager.evaluatePayloadHealth(payload) &&
-            !(manual && (payload.cookies.isNotEmpty() || payload.localStorage.isNotEmpty() || payload.sessionStorage.isNotEmpty()))
-        ) {
+        val hasData = vaultManager.hasRestorableData(payload, capturedAt)
+        if (!hasData || (!manual && !vaultManager.hasSessionCookieEvidence(payload, capturedAt))) {
             return false
         }
         val strings = localizationManager.current()
@@ -1202,13 +1193,14 @@ class ContainerSessionManager @Inject constructor(
         onTitleChanged: (title: String) -> Unit,
         onProgressChanged: (progress: Int, isLoading: Boolean) -> Unit,
         onNavStateChanged: (canGoBack: Boolean, canGoForward: Boolean) -> Unit,
-        onHealthRestored: (HealthReason) -> Unit,
-        onServerRevokedFallbackRequired: (domain: String) -> Unit,
+        onReauthenticationRequired: (String) -> Unit,
+        onLoginPageChanged: (String) -> Unit,
         onDownloadRequested: (url: String, userAgent: String?) -> Unit,
         onContextMenu: (PageContextTarget) -> Unit,
         tabId: String,
         onPopupRequest: (PopupPermissionRequest) -> Unit,
         onWindowClose: () -> Unit,
+        onProcessEnded: () -> Unit,
     ) {
         var previousUrl = ""
         var canBack = false
@@ -1245,24 +1237,14 @@ class ContainerSessionManager @Inject constructor(
                     extractDomain(request.uri) == container.domain &&
                     healthGuard.isSuspiciousLoginRedirect(previousUrl, request.uri)
                 ) {
+                    val fromUrl = previousUrl
                     engineScope.launch {
-                        val freshContainer = containerDao.getById(container.id)?.toDomain() ?: container
-                        val assessment = healthGuard.evaluateSignal(
-                            signal = SessionHealthSignal.LoginRedirectDetected(
-                                containerId = freshContainer.id,
-                                domain = freshContainer.domain,
-                                fromUrl = previousUrl,
-                                redirectedToUrl = request.uri,
-                            ),
-                            neverSignOutEnabled = freshContainer.neverSignOutEnabled,
-                        )
-                        applyHealthGuardDecision(
-                            assessmentAction = assessment.action,
-                            reason = assessment.reason,
-                            session = session,
-                            container = freshContainer,
-                            onHealthRestored = onHealthRestored,
-                            onServerRevokedFallbackRequired = onServerRevokedFallbackRequired,
+                        val fresh = containerDao.getById(container.id)?.toDomain() ?: return@launch
+                        if (sessionContainers[session] != fresh.id) return@launch
+                        reportSessionChallenge(
+                            fresh,
+                            SessionHealthSignal.LoginRedirectDetected(fresh.id, fresh.domain, fromUrl, request.uri),
+                            onReauthenticationRequired,
                         )
                     }
                 }
@@ -1287,9 +1269,11 @@ class ContainerSessionManager @Inject constructor(
             ) {
                 val safeUrl = url.orEmpty()
                 if (safeUrl.isNotBlank()) {
+                    if (previousUrl != safeUrl) loginNavigationIds[session] = UUID.randomUUID().toString()
                     previousUrl = safeUrl
                     lastKnownUrls[session] = safeUrl
                     onLocationChanged(safeUrl, safeUrl.startsWith("https://"))
+                    if (session !in loadingSessions) onLoginPageChanged(safeUrl)
                 }
             }
 
@@ -1306,6 +1290,9 @@ class ContainerSessionManager @Inject constructor(
 
         session.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onPageStart(session: GeckoSession, url: String) {
+                loadingSessions.add(session)
+                loginNavigationIds[session] = UUID.randomUUID().toString()
+                capturePorts.remove(session)
                 onProgressChanged(0, true)
             }
 
@@ -1314,19 +1301,26 @@ class ContainerSessionManager @Inject constructor(
             }
 
             override fun onPageStop(session: GeckoSession, success: Boolean) {
+                loadingSessions.remove(session)
                 onProgressChanged(100, false)
-                // کاوشِ صفحهٔ ورود و پیشنهادِ ذخیره/پرکردن. تبِ خصوصی در این نگاشت نیست، پس
-                // هیچ‌چیز از حالت خصوصی ذخیره نمی‌شود.
-                val containerId = sessionContainers[session]
-                val activeUrl = lastKnownUrls[session].orEmpty()
-                if (success && containerId != null && activeUrl.startsWith("http")) {
-                    runCatching { loginWatcher.get().observePage(containerId, activeUrl) }
-                }
+                if (success) lastKnownUrls[session]?.let(onLoginPageChanged)
             }
         }
 
         session.contentDelegate = object : GeckoSession.ContentDelegate {
             override fun onCloseRequest(session: GeckoSession) = onWindowClose()
+
+            override fun onCrash(session: GeckoSession) = onProcessExit(session)
+
+            override fun onKill(session: GeckoSession) = onProcessExit(session)
+
+            private fun onProcessExit(session: GeckoSession) {
+                if (activeSessions[tabId] !== session) return
+                val permissions = permissionProfiles[tabId]
+                closeTabSession(tabId)
+                if (permissions != null) permissionProfiles[tabId] = permissions
+                onProcessEnded()
+            }
 
             override fun onContextMenu(
                 session: GeckoSession,
@@ -1354,38 +1348,6 @@ class ContainerSessionManager @Inject constructor(
             override fun onExternalResponse(session: GeckoSession, response: org.mozilla.geckoview.WebResponse) {
                 onDownloadRequested(response.uri, null)
             }
-        }
-    }
-
-    private suspend fun applyHealthGuardDecision(
-        assessmentAction: HealthGuardAction,
-        reason: HealthReason,
-        session: GeckoSession,
-        container: WebAppContainer,
-        onHealthRestored: (HealthReason) -> Unit,
-        onServerRevokedFallbackRequired: (String) -> Unit,
-    ) {
-        when (assessmentAction) {
-            HealthGuardAction.RESTORE_LATEST_SNAPSHOT -> {
-                // باگ ریشه‌ای: نسخهٔ سالم خوانده می‌شد ولی هیچ‌وقت روی مرورگر نوشته نمی‌شد و
-                // فقط صفحه reload می‌شد؛ یعنی بازیابی عملاً هیچ کاری نمی‌کرد. حالا کوکی‌ها و
-                // حافظهٔ محلی پیش از reload واقعاً روی نشست اعمال می‌شوند.
-                val restored = vaultManager.restoreLatestHealthySnapshot(container.id)
-                if (restored != null) {
-                    val applied = applyPayloadToSession(session, restored)
-                    if (applied.cookiesRestored > 0 || applied.storageKeysRestored > 0) {
-                        delay(280)
-                        session.reload()
-                        onHealthRestored(reason)
-                    }
-                }
-            }
-
-            HealthGuardAction.ESCALATE_TO_CREDENTIAL_FALLBACK -> {
-                onServerRevokedFallbackRequired(container.domain)
-            }
-
-            HealthGuardAction.NONE -> Unit
         }
     }
 
@@ -1492,7 +1454,6 @@ class ContainerSessionManager @Inject constructor(
         const val LOGIN_SUBMIT_EVENT = "LOGIN_SUBMIT"
 
         /** صفحه کادرِ رمزِ یکبارمصرف دارد و منتظرِ کد است. */
-        const val OTP_SCREEN_READY_EVENT = "OTP_SCREEN_READY"
 
         /** مهلتِ پاسخِ صفحه به درخواستِ اجرای اسکریپت (حالت مطالعه/بلندخوانی). */
         const val SCRIPT_TIMEOUT_MILLIS = 2_500L
@@ -1518,3 +1479,11 @@ class ContainerSessionManager @Inject constructor(
             }.getOrDefault("marblebr.local")
     }
 }
+
+/** Identity of a non-private, HTTPS browser document in one account container. */
+data class LoginPage internal constructor(
+    val tabId: String,
+    val containerId: String,
+    val url: String,
+    internal val navigationId: String,
+)

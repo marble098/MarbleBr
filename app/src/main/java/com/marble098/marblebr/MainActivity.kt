@@ -39,7 +39,6 @@ import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
 import com.marble098.marblebr.core.designsystem.MarbleBrTheme
 import com.marble098.marblebr.core.preferences.BrowserPreferences
 import com.marble098.marblebr.core.preferences.BrowserPreferencesRepository
-import com.marble098.marblebr.engine.CredentialFallbackAuthenticator
 import com.marble098.marblebr.feature.browser.BrowserScreen
 import com.marble098.marblebr.feature.browser.BrowserViewModel
 import com.marble098.marblebr.feature.browser.PwaShortcutInstaller
@@ -72,9 +71,6 @@ class MainActivity : AppCompatActivity() {
 
     @Inject
     lateinit var biometricVaultLock: BiometricVaultLock
-
-    @Inject
-    lateinit var credentialFallbackAuthenticator: CredentialFallbackAuthenticator
 
     private var incomingNavigation by mutableStateOf<IncomingNavigation?>(null)
 
@@ -147,7 +143,6 @@ class MainActivity : AppCompatActivity() {
                     pinnedContainerId = incomingNavigation?.pinnedContainerId,
                     onUrlConsumed = { incomingNavigation = null },
                     biometricVaultLock = biometricVaultLock,
-                    credentialFallbackAuthenticator = credentialFallbackAuthenticator,
                 )
             }
         }
@@ -180,7 +175,6 @@ fun MarbleBrAppNavHost(
     activity: AppCompatActivity,
     initialUrl: String?,
     biometricVaultLock: BiometricVaultLock,
-    credentialFallbackAuthenticator: CredentialFallbackAuthenticator,
     renderGeckoWebView: Boolean = true,
     onUrlConsumed: () -> Unit = {},
     pinnedContainerId: String? = null,
@@ -256,14 +250,6 @@ fun MarbleBrAppNavHost(
                 viewModel = browserViewModel,
                 onOpenVaultDashboard = { navController.navigate("vault") },
                 onOpenSettings = { navController.navigate("settings") },
-                onTriggerBiometricPasskeyRelogin = { domain ->
-                    coroutineScope.launch {
-                        credentialFallbackAuthenticator.attemptBiometricRelogin(
-                            activity = activity,
-                            rpIdOrDomain = domain,
-                        )
-                    }
-                },
                 renderGeckoWebView = renderGeckoWebView,
                 onRequestBiometricUnlock = { title, onSuccess ->
                     coroutineScope.launch {

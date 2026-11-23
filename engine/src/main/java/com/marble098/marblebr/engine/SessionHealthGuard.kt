@@ -7,31 +7,16 @@ import com.marble098.marblebr.core.model.HealthReason
 import com.marble098.marblebr.core.model.SessionHealthAssessment
 import com.marble098.marblebr.core.model.SessionHealthSignal
 import com.marble098.marblebr.core.model.SessionHealthStatus
-import com.marble098.marblebr.vault.SessionVaultManager
 import java.net.URI
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * ویژگی ۴ Never Sign-out Engine:
- * Session Health Guard — تشخیص نشانه‌های خروج ناخواسته (ریدایرکت به صفحه لاگین، پاسخ 401/419/440،
- * حذف کوکی احراز هویت یا پاک شدن ناگهانی Storage) و ترمیم خودکار از آخرین اسنپ‌شات سالم پیش از اینکه کاربر متوجه شود.
- *
- * دارای مکانیزم Circuit Breaker: اگر سرور نشست را واقعاً در سمت خود باطل کرده باشد (تغییر رمز یا انقضای مطلق سرور)،
- * پس از حداکثر تلاش مجاز، به سد دفاعی هشتم (Credential Manager / Passkey) سوییچ می‌کند.
- */
+/** Records observed authentication challenges without replaying saved credentials or cookies. */
 @Singleton
 class SessionHealthGuard @Inject constructor(
-    private val vaultManager: SessionVaultManager,
     private val healthEventDao: HealthEventDao,
 ) {
-    private val repairAttemptsByContainer = ConcurrentHashMap<String, MutableList<Long>>()
-
-    /**
-     * بررسی اینکه آیا تغییر مسیر از `fromUrl` به `toUrl` نشان‌دهنده ریدایرکت ناخواسته به صفحه ورود است یا خیر.
-     */
     fun isSuspiciousLoginRedirect(fromUrl: String, toUrl: String): Boolean {
         if (fromUrl.isBlank() || toUrl.isBlank() || fromUrl == toUrl) return false
         if (isLoginOrAuthUrl(fromUrl)) return false
@@ -52,9 +37,6 @@ class SessionHealthGuard @Inject constructor(
         return REDIRECT_QUERY_KEYS.any { key -> query.contains("$key=") }
     }
 
-    /**
-     * ارزیابی سیگنال سلامت نشست و اجرای تصمیم ترمیم خودکار یا ارجاع به Credential Fallback.
-     */
     suspend fun evaluateSignal(
         signal: SessionHealthSignal,
         neverSignOutEnabled: Boolean = true,
@@ -70,7 +52,6 @@ class SessionHealthGuard @Inject constructor(
         }
 
         if (signal is SessionHealthSignal.HeartbeatOk) {
-            repairAttemptsByContainer.remove(signal.containerId)
             return SessionHealthAssessment(
                 containerId = signal.containerId,
                 domain = signal.domain,
@@ -80,35 +61,41 @@ class SessionHealthGuard @Inject constructor(
             )
         }
 
-        val now = signal.timestampEpochMillis
-        val attempts = repairAttemptsByContainer.getOrPut(signal.containerId) { mutableListOf() }
-        synchronized(attempts) {
-            attempts.removeAll { timestamp -> now - timestamp > REPAIR_WINDOW_MILLIS }
+        val reason = when (signal) {
+            is SessionHealthSignal.HttpUnauthorized -> HealthReason.UNAUTHORIZED
+            is SessionHealthSignal.LoginRedirectDetected -> HealthReason.LOGIN_REDIRECT
+            is SessionHealthSignal.AuthCookieMissing -> HealthReason.AUTH_COOKIE_MISSING
+            is SessionHealthSignal.StorageClearedUnexpectedly -> HealthReason.STORAGE_CLEARED
+            is SessionHealthSignal.HeartbeatOk -> HealthReason.HEALTHY
         }
+        val requiresSignIn = signal is SessionHealthSignal.HttpUnauthorized || signal is SessionHealthSignal.LoginRedirectDetected
+        val assessment = SessionHealthAssessment(
+            containerId = signal.containerId,
+            domain = signal.domain,
+            status = if (requiresSignIn) SessionHealthStatus.REAUTH_REQUIRED else SessionHealthStatus.PROTECTED_ACTIVE,
+            action = if (requiresSignIn) HealthGuardAction.ESCALATE_TO_CREDENTIAL_FALLBACK else HealthGuardAction.NONE,
+            reason = reason,
+        )
 
-        val latestHealthy = vaultManager.restoreLatestHealthySnapshot(signal.containerId)
+        recordEvent(assessment, signal.timestampEpochMillis)
+        return assessment
+    }
 
-        val assessment = if (latestHealthy != null && attempts.size < MAX_REPAIR_ATTEMPTS_IN_WINDOW) {
-            synchronized(attempts) {
-                attempts.add(now)
-            }
+    internal suspend fun recordRestoreOutcome(containerId: String, domain: String, outcome: VaultRestoreOutcome) {
+        val dataApplied = outcome.cookiesRestored > 0 || outcome.storageKeysRestored > 0
+        recordEvent(
             SessionHealthAssessment(
-                containerId = signal.containerId,
-                domain = signal.domain,
-                status = SessionHealthStatus.RECOVERED_FROM_VAULT,
-                action = HealthGuardAction.RESTORE_LATEST_SNAPSHOT,
-                reason = HealthReason.HEALED,
-            )
-        } else {
-            SessionHealthAssessment(
-                containerId = signal.containerId,
-                domain = signal.domain,
-                status = SessionHealthStatus.SERVER_REVOKED_FALLBACK,
-                action = HealthGuardAction.ESCALATE_TO_CREDENTIAL_FALLBACK,
-                reason = HealthReason.SERVER_REVOKED,
-            )
-        }
+                containerId = containerId,
+                domain = domain,
+                status = if (dataApplied) SessionHealthStatus.RESTORE_UNVERIFIED else SessionHealthStatus.RESTORE_FAILED,
+                action = HealthGuardAction.NONE,
+                reason = if (dataApplied) HealthReason.RESTORE_ATTEMPTED else HealthReason.RESTORE_UNAVAILABLE,
+            ),
+            System.currentTimeMillis(),
+        )
+    }
 
+    private suspend fun recordEvent(assessment: SessionHealthAssessment, timestamp: Long) {
         healthEventDao.insert(
             HealthEventEntity(
                 id = UUID.randomUUID().toString(),
@@ -116,17 +103,10 @@ class SessionHealthGuard @Inject constructor(
                 domain = assessment.domain,
                 statusName = assessment.status.name,
                 actionName = assessment.action.name,
-                // ستون قدیمی `descriptionFa` حالا کدِ پایدارِ دلیل را نگه می‌دارد تا متن‌ها دوزبانه نمایش داده شوند.
                 descriptionFa = assessment.reason.name,
-                timestampEpochMillis = now,
+                timestampEpochMillis = timestamp,
             ),
         )
-
-        return assessment
-    }
-
-    fun resetCircuitBreaker(containerId: String) {
-        repairAttemptsByContainer.remove(containerId)
     }
 
     private fun sameBaseDomain(urlA: String, urlB: String): Boolean {
@@ -137,9 +117,6 @@ class SessionHealthGuard @Inject constructor(
     }
 
     companion object {
-        const val MAX_REPAIR_ATTEMPTS_IN_WINDOW = 2
-        const val REPAIR_WINDOW_MILLIS = 60_000L
-
         private val LOGIN_PATH_SEGMENTS = listOf(
             "/login",
             "/signin",

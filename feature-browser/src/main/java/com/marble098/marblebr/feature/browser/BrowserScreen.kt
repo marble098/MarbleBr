@@ -175,7 +175,6 @@ fun BrowserScreen(
     viewModel: BrowserViewModel,
     onOpenVaultDashboard: (containerId: String?) -> Unit,
     onOpenSettings: () -> Unit,
-    onTriggerBiometricPasskeyRelogin: (domain: String) -> Unit,
     renderGeckoWebView: Boolean = true,
     /**
      * قفلِ بیومتریکِ اپ را می‌طلبد و در صورتِ موفقیت [onSuccess] را صدا می‌زند.
@@ -773,7 +772,7 @@ fun BrowserScreen(
     }
 
     // پرسشِ اثر انگشت برای پرکردنِ ورود.
-    if (uiState.showAutofillUnlockPrompt) {
+    uiState.autofillUnlockRequestId?.let { requestId ->
         AlertDialog(
             onDismissRequest = viewModel::dismissAutofillUnlock,
             icon = { Icon(Icons.Default.Fingerprint, contentDescription = null) },
@@ -783,7 +782,7 @@ fun BrowserScreen(
                 Button(
                     onClick = {
                         onRequestBiometricUnlock(strings.autofillConfirmAction) {
-                            viewModel.onBiometricConfirmedForAutofill()
+                            viewModel.onBiometricConfirmedForAutofill(requestId)
                         }
                     },
                     modifier = Modifier.testTag("autofill_unlock_confirm"),
@@ -848,25 +847,15 @@ fun BrowserScreen(
         )
     }
 
-    uiState.fallbackPromptDomain?.let { revokedDomain ->
+    uiState.fallbackPromptDomain?.let { domain ->
         AlertDialog(
             onDismissRequest = viewModel::dismissFallbackPrompt,
             icon = { Icon(Icons.Default.Fingerprint, contentDescription = null) },
             title = { Text(strings.reloginTitle) },
-            text = { Text(strings.reloginBody(revokedDomain)) },
+            text = { Text(strings.reloginBody(domain)) },
             confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.dismissFallbackPrompt()
-                        onTriggerBiometricPasskeyRelogin(revokedDomain)
-                    },
-                ) {
+                Button(onClick = viewModel::dismissFallbackPrompt) {
                     Text(strings.reloginConfirm)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = viewModel::dismissFallbackPrompt) {
-                    Text(strings.reloginDismiss)
                 }
             },
         )
@@ -1114,7 +1103,9 @@ private fun BrowserTopBar(
                     SessionHealthStatus.RECOVERED_FROM_VAULT,
                     -> colors.primary
 
-                    SessionHealthStatus.SERVER_REVOKED_FALLBACK -> colors.error
+                    SessionHealthStatus.SERVER_REVOKED_FALLBACK,
+                    SessionHealthStatus.REAUTH_REQUIRED,
+                    -> colors.error
 
                     else -> colors.outline
                 },
@@ -1508,7 +1499,7 @@ private fun LauncherContent(
             )
 
             activeTab != null && hasPage && renderGeckoWebView && !isInspection && container != null && container.id == activeTab.containerId -> {
-                key(activeTab.id, activeTab.contextId) {
+                key(activeTab.id, activeTab.contextId, activeTab.sessionRevision) {
                     GeckoSessionWebView(
                         tab = activeTab,
                         container = container,

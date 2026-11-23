@@ -91,11 +91,7 @@ class SettingsViewModel @Inject constructor(
     fun setSmartKeepAliveEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setSmartKeepAliveEnabled(enabled)
-            if (enabled) {
-                keepAliveScheduler.schedulePeriodicKeepAlive()
-            } else {
-                keepAliveScheduler.cancelKeepAlive()
-            }
+            keepAliveScheduler.refreshSchedule()
         }
     }
 

@@ -2,16 +2,10 @@ package com.marble098.marblebr.engine
 
 import com.marble098.marblebr.core.database.HealthEventDao
 import com.marble098.marblebr.core.database.HealthEventEntity
-import com.marble098.marblebr.core.database.SnapshotDao
-import com.marble098.marblebr.core.database.SnapshotEntity
-import com.marble098.marblebr.core.model.CookieRecord
+import com.marble098.marblebr.core.model.HealthReason
 import com.marble098.marblebr.core.model.HealthGuardAction
 import com.marble098.marblebr.core.model.SessionHealthSignal
 import com.marble098.marblebr.core.model.SessionHealthStatus
-import com.marble098.marblebr.core.model.SessionSnapshotPayload
-import com.marble098.marblebr.vault.AesGcmVaultCipher
-import com.marble098.marblebr.vault.CookiePersistenceConverter
-import com.marble098.marblebr.vault.SessionVaultManager
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -21,29 +15,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.mozilla.geckoview.StorageController
-import javax.crypto.KeyGenerator
 
 class SessionHealthGuardTest {
 
-    private lateinit var vaultManager: SessionVaultManager
     private lateinit var healthGuard: SessionHealthGuard
     private lateinit var fakeHealthEventDao: FakeHealthEventDao
 
     @Before
     fun setUp() {
-        val secretKey = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
-        val cipher = AesGcmVaultCipher { secretKey }
-        val converter = CookiePersistenceConverter()
-        vaultManager = SessionVaultManager(
-            snapshotDao = InMemorySnapshotDao(),
-            vaultCipher = cipher,
-            cookieConverter = converter,
-        )
         fakeHealthEventDao = FakeHealthEventDao()
-        healthGuard = SessionHealthGuard(
-            vaultManager = vaultManager,
-            healthEventDao = fakeHealthEventDao,
-        )
+        healthGuard = SessionHealthGuard(fakeHealthEventDao)
     }
 
     @Test
@@ -69,44 +50,31 @@ class SessionHealthGuardTest {
     }
 
     @Test
-    fun `auto-heals from latest healthy snapshot on HTTP 401 and escalates after circuit breaker limit`() = runTest {
-        val containerId = "ctx_github"
-        vaultManager.captureSnapshot(
-            payload = SessionSnapshotPayload(
-                origin = "https://github.com",
-                containerId = containerId,
-                capturedAtEpochMillis = 10_000L,
-                cookies = listOf(
-                    CookieRecord(
-                        name = "user_session",
-                        value = "alive_token",
-                        domain = "github.com",
-                    ),
-                ),
-            ),
-        )
-
+    fun `unauthorized responses require sign in and record the observed reason`() = runTest {
         val signal = SessionHealthSignal.HttpUnauthorized(
-            containerId = containerId,
+            containerId = "ctx_github",
             domain = "github.com",
             url = "https://github.com/notifications",
             statusCode = 401,
             timestampEpochMillis = 20_000L,
         )
+        repeat(3) { attempt ->
+            val assessment = healthGuard.evaluateSignal(signal.copy(timestampEpochMillis = 20_000L + attempt))
+            assertEquals(SessionHealthStatus.REAUTH_REQUIRED, assessment.status)
+            assertEquals(HealthGuardAction.ESCALATE_TO_CREDENTIAL_FALLBACK, assessment.action)
+            assertEquals(HealthReason.UNAUTHORIZED, assessment.reason)
+        }
+        assertTrue(fakeHealthEventDao.events.all { it.descriptionFa == HealthReason.UNAUTHORIZED.name })
+    }
 
-        // Attempt 1 -> Restores from Session Vault
-        val first = healthGuard.evaluateSignal(signal)
-        assertEquals(SessionHealthStatus.RECOVERED_FROM_VAULT, first.status)
-        assertEquals(HealthGuardAction.RESTORE_LATEST_SNAPSHOT, first.action)
-
-        // Attempt 2 -> Restores from Session Vault
-        val second = healthGuard.evaluateSignal(signal.copy(timestampEpochMillis = 25_000L))
-        assertEquals(HealthGuardAction.RESTORE_LATEST_SNAPSHOT, second.action)
-
-        // Attempt 3 within 60s window -> Circuit breaker trips, escalates to Credential Manager / Passkey fallback!
-        val third = healthGuard.evaluateSignal(signal.copy(timestampEpochMillis = 30_000L))
-        assertEquals(SessionHealthStatus.SERVER_REVOKED_FALLBACK, third.status)
-        assertEquals(HealthGuardAction.ESCALATE_TO_CREDENTIAL_FALLBACK, third.action)
+    @Test
+    fun `missing browser data alone does not trigger a sign in prompt`() = runTest {
+        val assessment = healthGuard.evaluateSignal(
+            SessionHealthSignal.StorageClearedUnexpectedly("ctx_example", "example.org"),
+        )
+        assertEquals(SessionHealthStatus.PROTECTED_ACTIVE, assessment.status)
+        assertEquals(HealthGuardAction.NONE, assessment.action)
+        assertEquals(HealthReason.STORAGE_CLEARED, assessment.reason)
     }
 
     @Test
@@ -119,6 +87,17 @@ class SessionHealthGuardTest {
         val assessment = healthGuard.evaluateSignal(signal, neverSignOutEnabled = false)
         assertEquals(SessionHealthStatus.DISABLED, assessment.status)
         assertEquals(HealthGuardAction.NONE, assessment.action)
+    }
+
+    @Test
+    fun `manual restore records local results without verifying sign in`() = runTest {
+        healthGuard.recordRestoreOutcome("ctx_example", "example.org", VaultRestoreOutcome(cookiesRestored = 1))
+        healthGuard.recordRestoreOutcome("ctx_example", "example.org", VaultRestoreOutcome(superseded = true))
+
+        val events = fakeHealthEventDao.events
+        assertEquals(SessionHealthStatus.RESTORE_UNVERIFIED.name, events.first().statusName)
+        assertEquals(HealthReason.RESTORE_ATTEMPTED.name, events.first().descriptionFa)
+        assertEquals(SessionHealthStatus.RESTORE_FAILED.name, events.last().statusName)
     }
 
     @Test
@@ -146,49 +125,6 @@ class SessionHealthGuardTest {
             ),
         )
         assertEquals(1L, blocker.blockedCount.value)
-    }
-
-    private class InMemorySnapshotDao : SnapshotDao {
-        private val items = mutableListOf<SnapshotEntity>()
-
-        override fun observeSnapshotsForContainer(containerId: String): Flow<List<SnapshotEntity>> =
-            MutableStateFlow(items.filter { it.containerId == containerId })
-
-        override fun observeAllSnapshots(): Flow<List<SnapshotEntity>> =
-            MutableStateFlow(items.toList())
-
-        override suspend fun getSnapshotsForContainer(containerId: String): List<SnapshotEntity> =
-            items.filter { it.containerId == containerId }.sortedByDescending { it.capturedAtEpochMillis }
-
-        override suspend fun getLatestHealthySnapshot(containerId: String): SnapshotEntity? =
-            items.filter { it.containerId == containerId && it.isHealthy }.maxByOrNull { it.capturedAtEpochMillis }
-
-        override suspend fun getById(snapshotId: String): SnapshotEntity? =
-            items.firstOrNull { it.id == snapshotId }
-
-        override suspend fun getPinnedForContainer(containerId: String): List<SnapshotEntity> =
-            items.filter { it.containerId == containerId && it.isPinned }
-                .sortedByDescending { it.capturedAtEpochMillis }
-
-        override suspend fun getAllForBackup(): List<SnapshotEntity> = items.toList()
-
-        override suspend fun setPinned(snapshotId: String, pinned: Boolean) {
-            val index = items.indexOfFirst { it.id == snapshotId }
-            if (index >= 0) items[index] = items[index].copy(isPinned = pinned)
-        }
-
-        override suspend fun insert(snapshot: SnapshotEntity) {
-            items.removeAll { it.id == snapshot.id }
-            items.add(snapshot)
-        }
-
-        override suspend fun deleteById(snapshotId: String) {
-            items.removeAll { it.id == snapshotId }
-        }
-
-        override suspend fun deleteAllForContainer(containerId: String) {
-            items.removeAll { it.containerId == containerId }
-        }
     }
 
     private class FakeHealthEventDao : HealthEventDao {

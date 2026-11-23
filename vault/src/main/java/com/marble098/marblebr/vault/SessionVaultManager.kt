@@ -23,7 +23,7 @@ import javax.inject.Singleton
  *   نام و نسخهٔ IndexedDB فقط اطلاعات توصیفی است و داده‌های آن بازیابی نمی‌شوند.
  * - Session Time Machine: نگه‌داشتن تاریخچه چند اسنپ‌شات قبلی و امکان برگشت با یک لمس به هر نسخه دلخواه.
  * - «نسخهٔ طلایی» (نسخهٔ ۱.۳): قفل‌کردنِ یک نسخهٔ سالم تا چرخشِ خودکار هرگز حذفش نکند و همیشه
- *   اولین گزینه برای بازگردانی خودکار باشد.
+ *   در تاریخچه باقی بماند.
  * - «نگهبان انقضا»: سنجش نزدیک‌ترین انقضای کوکی‌های ورود، بدون ساختن انقضای سرور.
  */
 @Singleton
@@ -68,9 +68,7 @@ class SessionVaultManager @Inject constructor(
             }
         }
         val normalizedPayload = payload.copy(cookies = promotedCookies)
-        val isHealthy = evaluatePayloadHealth(normalizedPayload) ||
-            (triggerReason == "MANUAL_USER_CAPTURE" &&
-                (normalizedPayload.cookies.isNotEmpty() || normalizedPayload.localStorage.isNotEmpty() || normalizedPayload.sessionStorage.isNotEmpty()))
+        val isHealthy = hasRestorableData(normalizedPayload, normalizedPayload.capturedAtEpochMillis)
 
         val serializedJson = json.encodeToString(normalizedPayload)
         val encryptedBlob = vaultCipher.encrypt(
@@ -104,8 +102,8 @@ class SessionVaultManager @Inject constructor(
     }
 
     /**
-     * بازیابی خودکار از آخرین اسنپ‌شات سالم کانتینر.
-     * در صورتی که آخرین اسنپ‌شات دچار دست‌کاری یا خرابی شده باشد، به‌صورت خودکار سراغ اسنپ‌شات سالم قبلی در Time Machine می‌رود.
+     * خواندن جدیدترین نسخهٔ دارای دادهٔ محلی در کانتینر.
+     * در صورتی که آخرین اسنپ‌شات دچار دست‌کاری یا خرابی شده باشد، نسخهٔ خواندنیِ بعدی برای بررسی محلی انتخاب می‌شود.
      */
     suspend fun restoreLatestHealthySnapshot(containerId: String): SessionSnapshotPayload? {
         val candidates = snapshotDao.getSnapshotsForContainer(containerId)
@@ -182,23 +180,24 @@ class SessionVaultManager @Inject constructor(
         return SessionExpiryGuard.assess(payload.cookies, nowEpochMillis)
     }
 
-    /**
-     * بررسی اینکه آیا اسنپ‌شات حاوی داده‌های معتبر احراز هویت هست یا خیر.
-     */
-    fun evaluatePayloadHealth(payload: SessionSnapshotPayload): Boolean {
-        val hasAuthCookie = payload.cookies.any { it.isLikelyAuthCookie() && it.value.isNotBlank() }
-        val hasNonEmptyCookies = payload.cookies.any { it.value.isNotBlank() }
-        val hasAuthStorageKey = (payload.localStorage.keys + payload.sessionStorage.keys)
-            .any { key ->
-                val lower = key.lowercase()
-                lower.contains("token") ||
-                    lower.contains("auth") ||
-                    lower.contains("session") ||
-                    lower.contains("user") ||
-                    lower.contains("jwt")
-            }
-        return hasAuthCookie || hasAuthStorageKey || (hasNonEmptyCookies && payload.localStorage.isNotEmpty())
-    }
+    /** Measures backup contents only. Authentication evidence comes from the live site. */
+    fun hasRestorableData(payload: SessionSnapshotPayload, now: Long): Boolean =
+        payload.cookies.any { it.value.isNotBlank() && (it.expiresEpochMillis?.let { expiry -> expiry > now } != false) } ||
+            payload.localStorage.isNotEmpty() || payload.sessionStorage.isNotEmpty()
+
+    fun hasSessionCookieEvidence(payload: SessionSnapshotPayload, now: Long): Boolean =
+        payload.cookies.any {
+            it.isLikelyAuthCookie() && it.value.isNotBlank() && (it.expiresEpochMillis?.let { expiry -> expiry > now } != false)
+        }
+
+    suspend fun latestCaptureTime(containerId: String): Long? =
+        snapshotDao.getSnapshotsForContainer(containerId).maxOfOrNull { it.capturedAtEpochMillis }
+
+    /** Reject ambiguous timestamps too. A corrupt newer record can still represent a token rotation. */
+    suspend fun hasNewerSnapshot(snapshotId: String, payload: SessionSnapshotPayload): Boolean =
+        snapshotDao.getSnapshotsForContainer(payload.containerId).any {
+            it.id != snapshotId && it.capturedAtEpochMillis >= payload.capturedAtEpochMillis
+        }
 
     private fun decryptEntity(entity: SnapshotEntity): SessionSnapshotPayload {
         val plaintext = vaultCipher.decrypt(
