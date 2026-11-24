@@ -59,6 +59,10 @@ data class BrowserTab(
     val canGoBack: Boolean = false,
     val canGoForward: Boolean = false,
     val isSecure: Boolean = true,
+    /** Per-tab page zoom, independent of Android's system font scale. */
+    val pageZoomPercent: Int = 100,
+    val isTranslated: Boolean = false,
+    val detectedTranslationLanguage: String? = null,
     val healthStatus: SessionHealthStatus = SessionHealthStatus.PROTECTED_ACTIVE,
     val activeFindQuery: String = "",
     val findMatchIndex: Int = 0,

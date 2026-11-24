@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.InstallMobile
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
@@ -77,6 +78,7 @@ import com.marble098.marblebr.core.designsystem.MarbleLayout
 import com.marble098.marblebr.core.designsystem.SiteBadgeLogo
 import com.marble098.marblebr.core.designsystem.siteBadgeAccent
 import com.marble098.marblebr.core.i18n.MarbleStrings
+import com.marble098.marblebr.core.model.BrowserPageActions
 import com.marble098.marblebr.core.model.BrowserTab
 import com.marble098.marblebr.core.model.MarbleLinks
 import com.marble098.marblebr.core.model.SessionHealthStatus
@@ -112,6 +114,8 @@ internal fun QuickActionsSheet(
     onCopyLink: (String) -> Unit,
     onShareLink: (String) -> Unit,
     onDismiss: () -> Unit,
+    onTranslatePage: () -> Unit = {},
+    onOpenPageZoom: () -> Unit = {},
 ) {
     val strings = LocalMarbleStrings.current
     val context = LocalContext.current
@@ -235,6 +239,29 @@ internal fun QuickActionsSheet(
             item(key = "find") {
                 QuickTile(strings.quickFindInPage, Icons.Default.Search, colors.secondary) {
                     perform { viewModel.toggleFindInPage(true) }
+                }
+            }
+            item(key = "translate") {
+                QuickTile(
+                    label = if (activeTab?.isTranslated == true) strings.translateRestore else strings.translatePage,
+                    icon = Icons.Default.Language,
+                    accent = colors.primary,
+                ) {
+                    perform(onTranslatePage)
+                }
+            }
+            if (!isPrivate) {
+                item(key = "page_zoom") {
+                    QuickTile(strings.pageZoomTitle, Icons.Default.Tune, colors.tertiary) {
+                        perform(onOpenPageZoom)
+                    }
+                }
+            }
+            if (BrowserPageActions.httpsUpgradeCandidate(pageUrl) != null) {
+                item(key = "upgrade_https") {
+                    QuickTile(strings.menuUpgradeHttps, Icons.Default.Security, colors.primary) {
+                        perform { viewModel.upgradeCurrentPageToHttps() }
+                    }
                 }
             }
             item(key = "shot") {

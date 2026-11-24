@@ -17,7 +17,9 @@ import com.marble098.marblebr.core.i18n.MarbleStrings
 import com.marble098.marblebr.core.model.AddressSuggestion
 import com.marble098.marblebr.core.model.AddressSuggestionEngine
 import com.marble098.marblebr.core.model.AutofillCandidate
+import com.marble098.marblebr.core.model.BookmarkBackupCodec
 import com.marble098.marblebr.core.model.BookmarkItem
+import com.marble098.marblebr.core.model.BrowserPageActions
 import com.marble098.marblebr.core.model.BrowserTab
 import com.marble098.marblebr.core.model.DownloadItem
 import com.marble098.marblebr.core.model.HistoryItem
@@ -33,6 +35,7 @@ import com.marble098.marblebr.core.model.WebAppContainer
 import com.marble098.marblebr.core.preferences.BrowserPreferences
 import com.marble098.marblebr.core.preferences.BrowserPreferencesRepository
 import com.marble098.marblebr.core.preferences.SavedBrowserTabs
+import com.marble098.marblebr.engine.BrowserTranslationLanguages
 import com.marble098.marblebr.engine.ContainerSessionManager
 import com.marble098.marblebr.engine.LightweightAdBlocker
 import com.marble098.marblebr.engine.LoginPage
@@ -51,6 +54,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -63,6 +67,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.util.UUID
 import javax.inject.Inject
 
@@ -326,6 +332,7 @@ class BrowserViewModel @Inject constructor(
                 isDesktopMode = tab.isDesktopMode,
                 isLoading = container != null,
                 isSecure = tab.url.startsWith("https://"),
+                pageZoomPercent = BrowserPageActions.clampZoom(tab.pageZoomPercent),
                 healthStatus = healthStatus(container),
             )
         }
@@ -394,12 +401,79 @@ class BrowserViewModel @Inject constructor(
     }
 
     fun openLinkInNewTab(url: String, sourceTabId: String? = null) {
+        if (!isWebUrl(url)) return
         val source = sourceTabId?.let { id -> _uiState.value.tabs.firstOrNull { it.id == id } }
             ?: _uiState.value.activeWebTab()
             ?: return
         val current = containers[source.id]
             ?.takeIf { !source.isPrivate && it.domain == ContainerSessionManager.extractDomain(url) }
         loadPage(createTab(isPrivate = source.isPrivate, desktop = source.isDesktopMode), url, current)
+    }
+
+    fun openLinkInPrivateTab(url: String) {
+        if (isWebUrl(url)) openNewTab(initialUrl = url, isPrivate = true)
+    }
+
+    /** Search selected text in a fresh tab, retaining private mode when the selection was private. */
+    fun searchSelectedText(selectedText: String) {
+        val query = selectedText.trim().take(2_000)
+        if (query.isBlank()) return
+        openNewTab(initialUrl = query, isPrivate = _uiState.value.activeWebTab()?.isPrivate == true)
+    }
+
+    fun openLinkExternally(url: String) {
+        if (!isWebUrl(url)) return
+        runCatching {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            val chooser = Intent.createChooser(intent, localizationManager.strings().contextOpenExternal)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            appContext.startActivity(chooser)
+        }.onFailure {
+            showLocalizedBanner { it.externalLinkFailed }
+        }
+    }
+
+    fun upgradeCurrentPageToHttps() {
+        val tab = _uiState.value.activeWebTab() ?: return
+        val candidate = BrowserPageActions.httpsUpgradeCandidate(tab.url) ?: return
+        showLocalizedBanner { it.httpsUpgradeStarted }
+        navigateToInput(candidate)
+    }
+
+    fun setPageZoom(zoomPercent: Int) {
+        val tab = _uiState.value.activeWebTab()?.takeUnless { it.isPrivate } ?: return
+        val zoom = BrowserPageActions.clampZoom(zoomPercent)
+        updateTab(tab.id) { it.copy(pageZoomPercent = zoom) }
+        sessionManager.applyPageZoom(tab.id, zoom) { applied ->
+            if (!applied) showLocalizedBanner { it.pageZoomUnavailable }
+        }
+    }
+
+    fun loadTranslationLanguages(onResult: (BrowserTranslationLanguages?) -> Unit) {
+        if (_uiState.value.activeWebTab() == null) {
+            onResult(null)
+            return
+        }
+        sessionManager.listSupportedTranslationLanguages(onResult)
+    }
+
+    fun translateCurrentPage(
+        fromLanguage: String,
+        toLanguage: String,
+        onComplete: (Boolean) -> Unit,
+    ) {
+        val tab = _uiState.value.activeWebTab() ?: run { onComplete(false); return }
+        sessionManager.translatePage(tab.id, fromLanguage, toLanguage, onComplete)
+    }
+
+    fun restoreCurrentPageTranslation(onComplete: (Boolean) -> Unit) {
+        val tab = _uiState.value.activeWebTab() ?: run { onComplete(false); return }
+        sessionManager.restoreOriginalPageTranslation(tab.id, onComplete)
+    }
+
+    private fun isWebUrl(rawUrl: String): Boolean {
+        val uri = runCatching { java.net.URI(rawUrl.trim()) }.getOrNull() ?: return false
+        return uri.scheme?.lowercase() in setOf("http", "https") && !uri.host.isNullOrBlank() && uri.rawUserInfo == null
     }
 
     private fun createTab(isPrivate: Boolean, desktop: Boolean = false): BrowserTab {
@@ -660,10 +734,11 @@ class BrowserViewModel @Inject constructor(
     /** به‌اشتراک‌گذاشتن پیوند همین صفحه با مرورگرهای دیگر (اپ‌های نصب‌شدهٔ Android). */
     fun shareCurrentPage() {
         val tab = _uiState.value.activeTab ?: return
-        val url = tab.url.takeIf { it.isNotBlank() } ?: return
+        val url = tab.url.takeIf { it.isNotBlank() }?.let(BrowserPageActions::cleanShareUrl) ?: return
         val strings = localizationManager.strings()
         val intent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, url)
-        appContext.startActivity(Intent.createChooser(intent, strings.menuSharePage))
+        val chooser = Intent.createChooser(intent, strings.menuSharePage).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        appContext.startActivity(chooser)
     }
 
     fun toggleFindInPage(visible: Boolean = !_uiState.value.isFindInPageVisible) {
@@ -791,6 +866,61 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
+    /** Export bookmark URLs and labels only; credentials, history, and session data are never included. */
+    fun exportBookmarks(destination: Uri) {
+        viewModelScope.launch {
+            val strings = localizationManager.current()
+            try {
+                val bookmarks = bookmarkDao.observeAll().first().map(BookmarkEntity::toDomain)
+                val backup = BookmarkBackupCodec.encode(bookmarks)
+                val exportedCount = BookmarkBackupCodec.exportableCount(bookmarks)
+                withContext(Dispatchers.IO) {
+                    appContext.contentResolver.openOutputStream(destination)?.use { output ->
+                        output.write(backup.toByteArray(Charsets.UTF_8))
+                    } ?: error("Could not open bookmark backup destination")
+                }
+                showBanner(strings.libraryBookmarksExported(exportedCount))
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                showBanner(strings.libraryBackupFailed)
+            }
+        }
+    }
+
+    /** Import validated HTTP(S) bookmarks, merging without replacing entries with the same URL. */
+    fun importBookmarks(source: Uri) {
+        viewModelScope.launch {
+            val strings = localizationManager.current()
+            try {
+                val backup = withContext(Dispatchers.IO) { readBookmarkBackup(source) }
+                val parsed = BookmarkBackupCodec.decode(backup)
+                val rowIds = bookmarkDao.insertIfAbsent(parsed.map(BookmarkEntity::fromDomain))
+                val imported = rowIds.count { it != -1L }
+                showBanner(strings.libraryBookmarksImportResult(imported, parsed.size - imported))
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                showBanner(strings.libraryBackupFailed)
+            }
+        }
+    }
+
+    private fun readBookmarkBackup(source: Uri): String {
+        val input = appContext.contentResolver.openInputStream(source) ?: error("Could not read bookmark backup")
+        val output = ByteArrayOutputStream()
+        input.use { stream ->
+            val buffer = ByteArray(8 * 1024)
+            while (true) {
+                val read = stream.read(buffer)
+                if (read < 0) break
+                require(output.size() + read <= MAX_BOOKMARK_BACKUP_BYTES) { "Bookmark backup is too large" }
+                output.write(buffer, 0, read)
+            }
+        }
+        return output.toString(Charsets.UTF_8.name())
+    }
+
     fun enqueueDownload(url: String) {
         viewModelScope.launch {
             val strings = localizationManager.current()
@@ -834,6 +964,11 @@ class BrowserViewModel @Inject constructor(
         onContentPermissionRequest = ::onContentPermissionRequest,
         onAndroidPermissionRequest = ::onAndroidPermissionRequest,
         onWindowClose = { if (openedByGecko) closeTab(tab.id) },
+        onTranslationStateChanged = { detectedLanguage, isTranslated ->
+            updateTab(tab.id) {
+                it.copy(isTranslated = isTranslated, detectedTranslationLanguage = detectedLanguage)
+            }
+        },
         onProcessEnded = {
             if (_uiState.value.pendingPermission?.tabId == tab.id) dismissPendingPermission()
             updateTab(tab.id) { it.copy(isLoading = false, canGoBack = false, canGoForward = false) }
@@ -1252,6 +1387,10 @@ class BrowserViewModel @Inject constructor(
     }
 
     private fun onPageSettled(tabId: String, url: String) {
+        val settledTab = _uiState.value.tabs.firstOrNull { it.id == tabId }
+        if (settledTab != null && settledTab.url == url && !settledTab.isPrivate && settledTab.pageZoomPercent != 100) {
+            sessionManager.applyPageZoom(tabId, settledTab.pageZoomPercent)
+        }
         if (_uiState.value.activeWebTab()?.id != tabId) return
         val page = loginWatcher.currentPage(tabId, url) ?: return
         loginObservation?.cancel()
@@ -1532,6 +1671,7 @@ class BrowserViewModel @Inject constructor(
 
     private companion object {
         const val GOOGLE_HOME = "https://www.google.com/"
+        const val MAX_BOOKMARK_BACKUP_BYTES = 6_000_000
     }
 
     private fun updateTab(tabId: String, transform: (BrowserTab) -> BrowserTab) {

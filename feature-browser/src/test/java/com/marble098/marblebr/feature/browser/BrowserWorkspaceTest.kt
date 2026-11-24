@@ -38,6 +38,18 @@ class BrowserWorkspaceTest {
     }
 
     @Test
+    fun pageZoomPersistsPerTabAndLegacySnapshotsDefaultToOneHundredPercent() {
+        val zoomed = BrowserTab("zoomed", "site", "site-context", "https://example.org", pageZoomPercent = 130)
+        val compact = BrowserTab("compact", "other", "other-context", "https://other.example", pageZoomPercent = 80)
+        val saved = SavedBrowserTabs.fromTabs(listOf(zoomed, compact), zoomed.id, showHome = false)
+        val restored = Json.decodeFromString<SavedBrowserTabs>(Json.encodeToString(saved))
+        assertEquals(listOf(130, 80), restored.tabs.map { it.pageZoomPercent })
+
+        val legacy = """{"tabs":[{"id":"old","url":"https://example.org","containerId":"site","title":"Example","isDesktopMode":false}],"activeTabId":"old","showHome":false}"""
+        assertEquals(100, Json.decodeFromString<SavedBrowserTabs>(legacy).tabs.single().pageZoomPercent)
+    }
+
+    @Test
     fun newTabsDoNotContactGoogleUnlessEnabled() {
         assertFalse(BrowserPreferences().openGoogleOnNewTab)
     }

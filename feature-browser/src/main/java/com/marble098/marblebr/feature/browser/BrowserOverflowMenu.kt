@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Pin
@@ -109,6 +110,9 @@ internal data class BrowserMenuState(
     val acceptsOneTimeCode: Boolean = false,
     /** آیا «حالت سازگاری ورود» برای همین سایت روشن است؟ */
     val isLoginCompatibilityOn: Boolean = false,
+    val isTranslated: Boolean = false,
+    val canAdjustPageZoom: Boolean = false,
+    val canUpgradeToHttps: Boolean = false,
 )
 
 /** کارهایی که منو انجام می‌دهد؛ یک شیء تا امضای نوار بالا کوتاه بماند. */
@@ -137,6 +141,9 @@ internal data class BrowserMenuActions(
     val onFillOneTimeCode: () -> Unit = {},
     // اگر ورودِ سایتی کار نکرد، محافظتِ همین تب یک پله کنار می‌رود.
     val onToggleLoginCompatibility: () -> Unit = {},
+    val onTranslatePage: () -> Unit = {},
+    val onOpenPageZoom: () -> Unit = {},
+    val onUpgradeToHttps: () -> Unit = {},
 )
 
 /** یک ردیفِ منو؛ داده‌محور تا جستجو و بازچینش ساده باشد. */
@@ -334,6 +341,34 @@ private fun buildMenuSections(
             accent = colors.primary,
             onClick = action(actions.onReaderMode),
         )
+        page += MenuEntry(
+            tag = "menu_translate_page",
+            icon = Icons.Default.Language,
+            title = if (state.isTranslated) strings.translateRestore else strings.translatePage,
+            subtitle = strings.translateDescription,
+            accent = colors.secondary,
+            onClick = action(actions.onTranslatePage),
+        )
+        if (state.canAdjustPageZoom) {
+            page += MenuEntry(
+                tag = "menu_page_zoom",
+                icon = Icons.Default.Tune,
+                title = strings.pageZoomTitle,
+                subtitle = strings.pageZoomDescription,
+                accent = colors.primary,
+                onClick = action(actions.onOpenPageZoom),
+            )
+        }
+        if (state.canUpgradeToHttps) {
+            page += MenuEntry(
+                tag = "menu_upgrade_https",
+                icon = Icons.Default.Security,
+                title = strings.menuUpgradeHttps,
+                subtitle = strings.menuUpgradeHttpsHint,
+                accent = colors.primary,
+                onClick = action(actions.onUpgradeToHttps),
+            )
+        }
         page += MenuEntry(
             tag = "menu_site_permissions",
             icon = Icons.Default.Tune,

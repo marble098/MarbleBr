@@ -25,8 +25,16 @@ data class SavedBrowserTab(
     val containerId: String,
     val title: String,
     val isDesktopMode: Boolean,
+    val pageZoomPercent: Int = 100,
 ) {
     companion object {
-        fun fromTab(tab: BrowserTab) = SavedBrowserTab(tab.id, tab.url, tab.containerId, tab.title, tab.isDesktopMode)
+        fun fromTab(tab: BrowserTab) = SavedBrowserTab(
+            id = tab.id,
+            url = tab.url,
+            containerId = tab.containerId,
+            title = tab.title,
+            isDesktopMode = tab.isDesktopMode,
+            pageZoomPercent = tab.pageZoomPercent,
+        )
     }
 }

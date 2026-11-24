@@ -51,14 +51,34 @@ abstract class MarbleStrings {
     abstract val credentialCopied: String
     abstract val contextTitle: String
     abstract val contextOpenTab: String
+    abstract val contextOpenPrivateTab: String
+    abstract val contextOpenExternal: String
     abstract val contextCopyLink: String
     abstract val contextShareLink: String
+    abstract val contextSearchSelection: String
     abstract val contextSaveImage: String
     abstract val contextCopyImage: String
     abstract val contextShareText: String
     abstract val contextSavePdf: String
     abstract val contextCopyText: String
     abstract val menuSharePage: String
+    abstract val menuUpgradeHttps: String
+    abstract val menuUpgradeHttpsHint: String
+    abstract val pageZoomTitle: String
+    abstract val pageZoomDescription: String
+    abstract val pageZoomReset: String
+    abstract val pageZoomUnavailable: String
+    abstract val translatePage: String
+    abstract val translateDescription: String
+    abstract val translateFrom: String
+    abstract val translateTo: String
+    abstract val translateStart: String
+    abstract val translateRestore: String
+    abstract val translateUnavailable: String
+    abstract val translateFailed: String
+    abstract val translateLoading: String
+    abstract val externalLinkFailed: String
+    abstract val httpsUpgradeStarted: String
     abstract val pdfSaved: String
     abstract val pdfFailed: String
     abstract val credentialUnlock: String
@@ -757,6 +777,11 @@ abstract class MarbleStrings {
     abstract val libraryTitle: String
     abstract val libraryBookmarksTab: String
     abstract val libraryHistoryTab: String
+    abstract val libraryImportBookmarks: String
+    abstract val libraryExportBookmarks: String
+    abstract val libraryBackupFailed: String
+    abstract fun libraryBookmarksExported(count: Int): String
+    abstract fun libraryBookmarksImportResult(imported: Int, skipped: Int): String
     abstract val librarySearchHint: String
     abstract val libraryAllBookmarks: String
     abstract val libraryAddBookmark: String
@@ -858,7 +883,10 @@ private object PersianStrings : MarbleStrings() {
     override val credentialCopied = "کپی شد؛ پس از ۳۰ ثانیه پاک می‌شود."
     override val contextTitle = "گزینه‌های صفحه"
     override val contextOpenTab = "باز کردن پیوند در تب تازه"
+    override val contextOpenPrivateTab = "باز کردن پیوند در تب خصوصی"
+    override val contextOpenExternal = "باز کردن در برنامهٔ دیگر"
     override val contextCopyLink = "کپی پیوند"
+    override val contextSearchSelection = "جستجوی این متن"
     override val contextShareLink = "اشتراک پیوند"
     override val contextSaveImage = "دانلود تصویر"
     override val contextCopyImage = "کپی آدرس تصویر"
@@ -866,6 +894,23 @@ private object PersianStrings : MarbleStrings() {
     override val contextSavePdf = "ذخیره صفحه به صورت PDF"
     override val contextCopyText = "کپی متن"
     override val menuSharePage = "به اشتراک گذاشتن صفحه"
+    override val menuUpgradeHttps = "آزمایش نسخهٔ امن HTTPS"
+    override val menuUpgradeHttpsHint = "نسخهٔ امن را خودت باز کن؛ بازگشت همیشه ممکن است."
+    override val pageZoomTitle = "اندازهٔ صفحه"
+    override val pageZoomDescription = "بزرگ‌نمایی فقط برای همین تب نگه داشته می‌شود."
+    override val pageZoomReset = "بازنشانی ۱۰۰٪"
+    override val pageZoomUnavailable = "اندازهٔ صفحه در این صفحه قابل تغییر نیست."
+    override val translatePage = "ترجمهٔ صفحه"
+    override val translateDescription = "ترجمه روی همین دستگاه انجام می‌شود؛ بار اول ممکن است مدل زبان دانلود شود."
+    override val translateFrom = "زبان صفحه"
+    override val translateTo = "ترجمه به"
+    override val translateStart = "ترجمه کن"
+    override val translateRestore = "نمایش متن اصلی"
+    override val translateUnavailable = "ترجمهٔ آفلاین در این دستگاه یا برای این زبان در دسترس نیست."
+    override val translateFailed = "ترجمه انجام نشد. اتصال و زبان‌های انتخاب‌شده را بررسی کنید."
+    override val translateLoading = "در حال آماده‌سازی ترجمه…"
+    override val externalLinkFailed = "باز کردن پیوند در برنامهٔ دیگر ممکن نشد."
+    override val httpsUpgradeStarted = "نسخهٔ HTTPS در حال باز شدن است؛ اگر کار نکرد، به صفحهٔ قبلی برگردید."
     override val pdfSaved = "صفحه به صورت PDF ذخیره شد."
     override val pdfFailed = "ذخیره صفحه ممکن نشد."
     override val credentialUnlock = "باز کردن مخزن"
@@ -1490,6 +1535,12 @@ private object PersianStrings : MarbleStrings() {
     override val libraryTitle = "کتابخانه"
     override val libraryBookmarksTab = "نشان‌ها"
     override val libraryHistoryTab = "تاریخچه"
+    override val libraryImportBookmarks = "درون‌ریزی نشان‌ها"
+    override val libraryExportBookmarks = "برون‌بری نشان‌ها"
+    override val libraryBackupFailed = "پشتیبان نشان‌ها خوانده یا ذخیره نشد."
+    override fun libraryBookmarksExported(count: Int) = "$count نشان پشتیبان‌گیری شد."
+    override fun libraryBookmarksImportResult(imported: Int, skipped: Int) =
+        "$imported نشان افزوده شد؛ $skipped مورد تکراری یا نامعتبر نادیده گرفته شد."
     override val librarySearchHint = "جستجو در نشان‌ها و تاریخچه…"
     override val libraryAllBookmarks = "همهٔ نشان‌ها"
     override val libraryAddBookmark = "افزودن نشان"
@@ -1576,7 +1627,10 @@ private object EnglishStrings : MarbleStrings() {
     override val credentialCopied = "Copied; cleared after 30 seconds."
     override val contextTitle = "Page options"
     override val contextOpenTab = "Open link in new tab"
+    override val contextOpenPrivateTab = "Open link in private tab"
+    override val contextOpenExternal = "Open in another app"
     override val contextCopyLink = "Copy link"
+    override val contextSearchSelection = "Search this text"
     override val contextShareLink = "Share link"
     override val contextSaveImage = "Download image"
     override val contextCopyImage = "Copy image address"
@@ -1584,6 +1638,23 @@ private object EnglishStrings : MarbleStrings() {
     override val contextSavePdf = "Save page as PDF"
     override val contextCopyText = "Copy text"
     override val menuSharePage = "Share page"
+    override val menuUpgradeHttps = "Try the secure HTTPS version"
+    override val menuUpgradeHttpsHint = "Open the secure version yourself; you can always go back."
+    override val pageZoomTitle = "Page zoom"
+    override val pageZoomDescription = "Zoom is saved for this tab only."
+    override val pageZoomReset = "Reset to 100%"
+    override val pageZoomUnavailable = "Page zoom is unavailable on this page."
+    override val translatePage = "Translate page"
+    override val translateDescription = "Translation runs on this device; first use may download a language model."
+    override val translateFrom = "Page language"
+    override val translateTo = "Translate to"
+    override val translateStart = "Translate"
+    override val translateRestore = "Show original"
+    override val translateUnavailable = "On-device translation or this language is unavailable."
+    override val translateFailed = "Translation failed. Check your connection and selected languages."
+    override val translateLoading = "Preparing translation…"
+    override val externalLinkFailed = "Could not open this link in another app."
+    override val httpsUpgradeStarted = "Opening the HTTPS version. Go back if it does not work."
     override val pdfSaved = "Page saved as PDF."
     override val pdfFailed = "Could not save the page."
     override val credentialUnlock = "Unlock vault"
@@ -2210,6 +2281,12 @@ private object EnglishStrings : MarbleStrings() {
     override val libraryTitle = "Library"
     override val libraryBookmarksTab = "Bookmarks"
     override val libraryHistoryTab = "History"
+    override val libraryImportBookmarks = "Import bookmarks"
+    override val libraryExportBookmarks = "Export bookmarks"
+    override val libraryBackupFailed = "Could not read or save the bookmark backup."
+    override fun libraryBookmarksExported(count: Int) = "$count bookmarks exported."
+    override fun libraryBookmarksImportResult(imported: Int, skipped: Int) =
+        "$imported bookmarks added; $skipped duplicate or invalid entries skipped."
     override val librarySearchHint = "Search bookmarks and history…"
     override val libraryAllBookmarks = "All bookmarks"
     override val libraryAddBookmark = "Add bookmark"

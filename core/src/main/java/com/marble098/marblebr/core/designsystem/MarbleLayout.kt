@@ -20,22 +20,22 @@ object MarbleLayout {
     val Gap = 10.dp
 
     /** فاصلهٔ بین بخش‌های مستقلِ یک صفحهٔ اسکرول‌شدنی. */
-    val SectionGap = 14.dp
+    val SectionGap = 12.dp
 
     /** فاصلهٔ کوچک و درونی (آیکن تا متن، چیپ‌ها). */
     val Inner = 8.dp
 
     /** ارتفاعِ ثابتِ کاشی‌های میان‌برِ صفحهٔ خانه. */
-    val TileHeight = 86.dp
+    val TileHeight = 82.dp
 
     /** ارتفاعِ ثابتِ کاشی‌های شبکهٔ شیتِ «میان‌برهای سریع». */
-    val QuickTileHeight = 84.dp
+    val QuickTileHeight = 80.dp
 
     /** ارتفاعِ ثابتِ کارتِ نشان‌های صفحهٔ خانه (شبکهٔ دو ستونی). */
-    val ShortcutHeight = 100.dp
+    val ShortcutHeight = 92.dp
 
     /** ارتفاعِ ثابتِ ردیفِ بازدیدهای اخیر. */
-    val RecentRowHeight = 54.dp
+    val RecentRowHeight = 52.dp
 
     /** شعاع گوشهٔ کارت‌های اصلی. */
     val CardCorner = 20.dp

@@ -88,11 +88,14 @@ internal fun LibrarySheet(
     onDeleteBookmark: (BookmarkItem) -> Unit,
     onDeleteHistoryItem: (HistoryItem) -> Unit,
     onSearch: suspend (String) -> LibrarySearchResult,
+    onImportBookmarks: () -> Unit,
+    onExportBookmarks: () -> Unit,
 ) {
     val strings = LocalMarbleStrings.current
     var section by rememberSaveable { mutableStateOf(0) }
     var sortOrder by rememberSaveable { mutableStateOf(0) }
     var sortMenuOpen by remember { mutableStateOf(false) }
+    var backupMenuOpen by remember { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var searchResult by remember { mutableStateOf<LibrarySearchResult?>(null) }
     var showClearDialog by remember { mutableStateOf(false) }
@@ -165,10 +168,25 @@ internal fun LibrarySheet(
                 }
             }
             if (section == 0) {
-                TextButton(onClick = { adding = true }) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.size(4.dp))
-                    Text(strings.libraryAddBookmark)
+                Box {
+                    IconButton(onClick = { backupMenuOpen = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = strings.libraryMoreOptions)
+                    }
+                    DropdownMenu(expanded = backupMenuOpen, onDismissRequest = { backupMenuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text(strings.libraryAddBookmark) },
+                            leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
+                            onClick = { backupMenuOpen = false; adding = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(strings.libraryImportBookmarks) },
+                            onClick = { backupMenuOpen = false; onImportBookmarks() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(strings.libraryExportBookmarks) },
+                            onClick = { backupMenuOpen = false; onExportBookmarks() },
+                        )
+                    }
                 }
             } else if (historyItems.isNotEmpty()) {
                 TextButton(onClick = { showClearDialog = true }) { Text(strings.clearHistory) }

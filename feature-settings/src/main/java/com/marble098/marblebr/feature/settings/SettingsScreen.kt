@@ -41,6 +41,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -59,6 +60,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
@@ -624,6 +627,7 @@ private fun LazyListScope.networkTab(
                     label = { Text(strings.dnsCustomHint) },
                     singleLine = true,
                     shape = MaterialTheme.shapes.medium,
+                    colors = settingsTextFieldColors(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .fieldSurface(),
@@ -653,6 +657,7 @@ private fun LazyListScope.networkTab(
                         null
                     },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    colors = settingsTextFieldColors(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .fieldSurface(),
@@ -671,6 +676,7 @@ private fun LazyListScope.networkTab(
                         null
                     },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = settingsTextFieldColors(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .fieldSurface()
@@ -1118,11 +1124,32 @@ private fun ThemePreviewCard(strings: MarbleStrings) {
  * سفیدِ پیش‌فرض شبیهِ یک «جعبهٔ سفید» دیده می‌شد. این لایه یک بدنهٔ کم‌رنگ و هم‌خانواده با کارت
  * می‌سازد تا فیلد بخشی از همان کارت به‌نظر برسد.
  */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun settingsTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+    focusedContainerColor = Color.Transparent,
+    unfocusedContainerColor = Color.Transparent,
+    focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.58f),
+    unfocusedBorderColor = Color.Transparent,
+    disabledBorderColor = Color.Transparent,
+    errorBorderColor = MaterialTheme.colorScheme.error,
+    focusedLabelColor = MaterialTheme.colorScheme.primary,
+    unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+)
+
 @Composable
 private fun Modifier.fieldSurface(): Modifier {
     val colors = MaterialTheme.colorScheme
     val shape = MaterialTheme.shapes.medium
+    val dark = colors.background.luminance() < 0.5f
     return this
         .clip(shape)
-        .background(colors.surfaceContainerHighest.copy(alpha = 0.35f))
+        .background(colors.surfaceContainerHighest.copy(alpha = if (dark) 0.24f else 0.34f))
+        .border(
+            width = 0.8.dp,
+            color = colors.outlineVariant.copy(alpha = if (dark) 0.36f else 0.45f),
+            shape = shape,
+        )
 }

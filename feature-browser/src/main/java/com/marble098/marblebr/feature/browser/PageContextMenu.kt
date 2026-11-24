@@ -11,6 +11,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
 import com.marble098.marblebr.engine.PageContextTarget
+import java.net.URI
+
+private fun isSafeWebLink(url: String): Boolean {
+    val uri = runCatching { URI(url.trim()) }.getOrNull() ?: return false
+    return uri.scheme?.lowercase() in setOf("http", "https") && !uri.host.isNullOrBlank() && uri.rawUserInfo == null
+}
 
 /**
  * پیوند و تصویر روی صفحه را نشان می‌دهد؛ با همان منو، وقتی روی هر بخشی از صفحه
@@ -21,6 +27,8 @@ internal fun PageContextMenu(
     target: PageContextTarget,
     canDownload: Boolean,
     onOpen: (String) -> Unit,
+    onOpenPrivate: (String) -> Unit,
+    onOpenExternal: (String) -> Unit,
     onCopy: (String) -> Unit,
     onShare: (String) -> Unit,
     onDownload: (String) -> Unit,
@@ -28,13 +36,18 @@ internal fun PageContextMenu(
     onSharePage: () -> Unit,
     onBookmarkPage: () -> Unit,
     onCopyText: () -> Unit,
+    onSearchText: () -> Unit,
 ) {
     val strings = LocalMarbleStrings.current
     Column(Modifier.fillMaxWidth().padding(20.dp)) {
         Text(strings.contextTitle, style = MaterialTheme.typography.titleLarge)
         target.linkUrl?.let { link ->
             Text(link, maxLines = 2, style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = { onOpen(link) }) { Text(strings.contextOpenTab) }
+            if (isSafeWebLink(link)) {
+                TextButton(onClick = { onOpen(link) }) { Text(strings.contextOpenTab) }
+                TextButton(onClick = { onOpenPrivate(link) }) { Text(strings.contextOpenPrivateTab) }
+                TextButton(onClick = { onOpenExternal(link) }) { Text(strings.contextOpenExternal) }
+            }
             TextButton(onClick = { onCopy(link) }) { Text(strings.contextCopyLink) }
             TextButton(onClick = { onShare(link) }) { Text(strings.contextShareLink) }
         }
@@ -44,6 +57,7 @@ internal fun PageContextMenu(
         }
         if (!target.text.isNullOrBlank()) {
             TextButton(onClick = onCopyText) { Text(strings.contextCopyText) }
+            TextButton(onClick = onSearchText) { Text(strings.contextSearchSelection) }
         }
         TextButton(onClick = onSharePage) { Text(strings.menuSharePage) }
         TextButton(onClick = onBookmarkPage) { Text(strings.bookmarkToggle) }

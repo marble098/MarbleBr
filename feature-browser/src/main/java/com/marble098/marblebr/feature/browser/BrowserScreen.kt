@@ -119,6 +119,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
+import com.marble098.marblebr.core.i18n.AppLanguage
 import com.marble098.marblebr.core.i18n.MarbleStrings
 import com.marble098.marblebr.core.model.AutofillCandidate
 import com.marble098.marblebr.core.model.LoginMethod
@@ -136,6 +137,7 @@ import com.marble098.marblebr.core.designsystem.liquidGlass
 import com.marble098.marblebr.core.model.BackNavigationResolver
 import com.marble098.marblebr.core.model.BackTarget
 import com.marble098.marblebr.core.model.BookmarkItem
+import com.marble098.marblebr.core.model.BrowserPageActions
 import com.marble098.marblebr.core.model.BrowserTab
 import com.marble098.marblebr.core.model.ChromeBarStyle
 import com.marble098.marblebr.core.model.DownloadItem
@@ -148,6 +150,7 @@ import com.marble098.marblebr.core.model.SessionHealthStatus
 import com.marble098.marblebr.core.model.WebAppContainer
 import com.marble098.marblebr.core.preferences.AddressSelectionMode
 import com.marble098.marblebr.core.preferences.BrowserPreferences
+import com.marble098.marblebr.engine.BrowserTranslationLanguages
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import org.mozilla.geckoview.GeckoView
@@ -238,6 +241,16 @@ fun BrowserScreen(
     var pendingCloseTabId by remember { mutableStateOf<String?>(null) }
 
     val activeTab = uiState.activeTab
+    var showPageZoomSheet by remember { mutableStateOf(false) }
+    var showTranslationSheet by remember { mutableStateOf(false) }
+    var translationLanguages by remember { mutableStateOf<BrowserTranslationLanguages?>(null) }
+    var translationLanguagesLoading by remember { mutableStateOf(false) }
+    val exportBookmarksPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) viewModel.exportBookmarks(uri)
+    }
+    val importBookmarksPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) viewModel.importBookmarks(uri)
+    }
     var pdfTargetTabId by rememberSaveable { mutableStateOf<String?>(null) }
     val pdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         val tabId = pdfTargetTabId
@@ -288,6 +301,20 @@ fun BrowserScreen(
         }
     }
     val isBookmarked = activeTab != null && bookmarks.any { it.url == activeTab.url }
+    val requestTranslation: () -> Unit = {
+        showTranslationSheet = true
+        if (translationLanguages == null && !translationLanguagesLoading) {
+            translationLanguagesLoading = true
+            viewModel.loadTranslationLanguages { supported ->
+                translationLanguages = supported
+                translationLanguagesLoading = false
+            }
+        }
+    }
+    LaunchedEffect(uiState.activeTabId, showHome) {
+        showPageZoomSheet = false
+        showTranslationSheet = false
+    }
 
     // نوارهای بالا و پایین «ثابت» هستند و محتوای سایت دقیقاً بین آن دو جا می‌گیرد.
     //
@@ -308,16 +335,19 @@ fun BrowserScreen(
         hasSavedLogin = uiState.hasStoredLoginForCurrentSite,
         acceptsOneTimeCode = codeFieldAvailable,
         isLoginCompatibilityOn = activeTab?.loginCompatibility == true,
+        isTranslated = activeTab?.isTranslated == true,
+        canAdjustPageZoom = hasPage && !showHome && activeTab?.isPrivate == false,
+        canUpgradeToHttps = activeTab?.url?.let(BrowserPageActions::httpsUpgradeCandidate) != null,
     )
     val menuActions = BrowserMenuActions(
         onCopyLink = {
-            val url = activeTab?.url
+            val url = activeTab?.url?.takeIf(String::isNotBlank)?.let(BrowserPageActions::cleanShareUrl)
             if (!url.isNullOrBlank()) {
                 copyTextToClipboard(context = clipboardContext, label = strings.copyLink, text = url)
             }
         },
         onShareLink = {
-            val url = activeTab?.url
+            val url = activeTab?.url?.takeIf(String::isNotBlank)?.let(BrowserPageActions::cleanShareUrl)
             if (!url.isNullOrBlank()) {
                 val share = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, url)
                 clipboardContext.startActivity(Intent.createChooser(share, strings.shareLink))
@@ -342,6 +372,9 @@ fun BrowserScreen(
         onSharePage = { viewModel.shareCurrentPage() },
         onBookmarkPage = { viewModel.toggleBookmarkCurrentPage() },
         onToggleLoginCompatibility = viewModel::toggleLoginCompatibility,
+        onTranslatePage = requestTranslation,
+        onOpenPageZoom = { showPageZoomSheet = true },
+        onUpgradeToHttps = viewModel::upgradeCurrentPageToHttps,
     )
 
     Column(
@@ -461,6 +494,27 @@ fun BrowserScreen(
         )
     }
 
+    if (showPageZoomSheet && !showHome && hasPage && activeTab != null && !activeTab.isPrivate) {
+        PageZoomSheet(
+            zoomPercent = activeTab.pageZoomPercent,
+            onZoomChange = viewModel::setPageZoom,
+            onDismiss = { showPageZoomSheet = false },
+        )
+    }
+
+    if (showTranslationSheet && activeTab != null && !showHome) {
+        TranslationSheet(
+            languages = translationLanguages,
+            isLoading = translationLanguagesLoading,
+            detectedLanguage = activeTab.detectedTranslationLanguage,
+            preferredLanguage = if (prefs.language.resolve() == AppLanguage.PERSIAN) "fa" else "en",
+            isTranslated = activeTab.isTranslated,
+            onTranslate = viewModel::translateCurrentPage,
+            onRestoreOriginal = viewModel::restoreCurrentPageTranslation,
+            onDismiss = { showTranslationSheet = false },
+        )
+    }
+
     if (uiState.showSitePermissions) {
         SitePermissionsSheet(
             profile = uiState.activePermissionProfile ?: SitePermissionProfile(domain = ""),
@@ -477,12 +531,15 @@ fun BrowserScreen(
                 target = target,
                 canDownload = activeTab?.isPrivate != true,
                 onOpen = { url -> viewModel.dismissPageContextMenu(); viewModel.openLinkInNewTab(url) },
-                onCopy = { url ->
+                onOpenPrivate = { url -> viewModel.dismissPageContextMenu(); viewModel.openLinkInPrivateTab(url) },
+                onOpenExternal = { url -> viewModel.dismissPageContextMenu(); viewModel.openLinkExternally(url) },
+                onCopy = { rawUrl ->
                     viewModel.dismissPageContextMenu()
-                    copyTextToClipboard(clipboardContext, strings.copyLink, url)
+                    copyTextToClipboard(clipboardContext, strings.copyLink, BrowserPageActions.cleanShareUrl(rawUrl))
                 },
-                onShare = { url ->
+                onShare = { rawUrl ->
                     viewModel.dismissPageContextMenu()
+                    val url = BrowserPageActions.cleanShareUrl(rawUrl)
                     val share = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, url)
                     clipboardContext.startActivity(Intent.createChooser(share, strings.shareLink))
                 },
@@ -496,6 +553,11 @@ fun BrowserScreen(
                 onCopyText = {
                     viewModel.dismissPageContextMenu()
                     copyTextToClipboard(clipboardContext, strings.contextCopyText, target.text.orEmpty())
+                },
+                onSearchText = {
+                    val selected = target.text.orEmpty()
+                    viewModel.dismissPageContextMenu()
+                    viewModel.searchSelectedText(selected)
                 },
             )
         }
@@ -528,12 +590,18 @@ fun BrowserScreen(
                 onOpenBookmarks = { showBookmarksHistorySheet = true },
                 onOpenDownloads = { showDownloadsSheet = true },
                 onOpenSettings = onOpenSettings,
-                onCopyLink = { url -> copyTextToClipboard(context = clipboardContext, label = strings.quickCopyLink, text = url) },
-                onShareLink = { url ->
+                onCopyLink = { rawUrl ->
+                    val url = BrowserPageActions.cleanShareUrl(rawUrl)
+                    copyTextToClipboard(context = clipboardContext, label = strings.quickCopyLink, text = url)
+                },
+                onShareLink = { rawUrl ->
+                    val url = BrowserPageActions.cleanShareUrl(rawUrl)
                     val share = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, url)
                     clipboardContext.startActivity(Intent.createChooser(share, strings.quickShare))
                 },
                 onDismiss = { showQuickActions = false },
+                onTranslatePage = requestTranslation,
+                onOpenPageZoom = { showPageZoomSheet = true },
             )
         }
     }
@@ -559,6 +627,8 @@ fun BrowserScreen(
                 onDeleteBookmark = viewModel::deleteBookmark,
                 onDeleteHistoryItem = viewModel::deleteHistoryItem,
                 onSearch = viewModel::searchLibrary,
+                onImportBookmarks = { importBookmarksPicker.launch(arrayOf("*/*")) },
+                onExportBookmarks = { exportBookmarksPicker.launch("marblebr-bookmarks.json") },
             )
         }
     }
@@ -1577,7 +1647,12 @@ private fun GeckoSessionWebView(
                 val geckoSession = viewModel.browserSession(tab, container)
                 ctx.findActivity()?.let { activity ->
                     geckoSession.selectionActionDelegate = PageSelectionDelegate(
-                        activity, strings.contextShareText, strings.contextSavePdf, onSavePdf,
+                        activity,
+                        shareLabel = strings.contextShareText,
+                        pdfLabel = strings.contextSavePdf,
+                        searchLabel = strings.contextSearchSelection,
+                        onSavePdf = onSavePdf,
+                        onSearchSelection = viewModel::searchSelectedText,
                     )
                 }
                 GeckoSurfaceBinding.bind(this, geckoSession)
