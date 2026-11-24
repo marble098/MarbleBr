@@ -1,12 +1,16 @@
 package com.marble098.marblebr.engine
 
+import android.app.Activity
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import com.marble098.marblebr.core.database.ContainerDao
 import com.marble098.marblebr.core.database.ContainerEntity
 import com.marble098.marblebr.core.i18n.LocalizationManager
+import com.marble098.marblebr.core.model.BrowserPageActions
 import com.marble098.marblebr.core.model.CookieRecord
 import com.marble098.marblebr.core.model.HealthGuardAction
 import com.marble098.marblebr.core.model.LoginCompatibilityPlan
@@ -46,6 +50,7 @@ import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSessionSettings
 import org.mozilla.geckoview.StorageController
+import org.mozilla.geckoview.TranslationsController
 import org.mozilla.geckoview.WebExtension
 import java.io.File
 import java.net.URI
@@ -56,6 +61,13 @@ import javax.inject.Provider
 import javax.inject.Singleton
 
 data class PageContextTarget(val linkUrl: String?, val imageUrl: String?, val text: String? = null)
+
+data class BrowserTranslationLanguage(val code: String, val displayName: String)
+
+data class BrowserTranslationLanguages(
+    val fromLanguages: List<BrowserTranslationLanguage>,
+    val toLanguages: List<BrowserTranslationLanguage>,
+)
 
 /** درخواستِ باز کردنِ پنجرهٔ تازه (popup) از سوی صفحه. */
 data class PopupPermissionRequest(
@@ -144,6 +156,9 @@ class ContainerSessionManager @Inject constructor(
 
     /** آخرین آدرسِ دیده‌شدهٔ هر نشست؛ برای کاوشِ صفحهٔ ورود در پایانِ بارگذاری. */
     private val lastKnownUrls = ConcurrentHashMap<GeckoSession, String>()
+
+    /** زبانِ محلیِ تشخیص‌داده‌شده برای همین تب؛ محتوای صفحه یا متنِ ترجمه‌شده نگه‌داری نمی‌شود. */
+    private val detectedTranslationLanguages = ConcurrentHashMap<String, String>()
     private val containerMutex = Mutex()
 
     /** پروفایلِ دسترسی‌های هر تب؛ delegate هر نشست همین را می‌خواند. */
@@ -267,6 +282,13 @@ class ContainerSessionManager @Inject constructor(
     @Volatile
     private var geckoRuntime: GeckoRuntime? = null
 
+    @Volatile
+    private var runtimeActivityLauncher: ((PendingIntent) -> Unit)? = null
+
+    /** Only one Gecko FIDO prompt can be in flight through the single Activity Result launcher. */
+    @Volatile
+    private var pendingRuntimeActivityResult: GeckoResult<Intent>? = null
+
     /**
      * تنظیماتِ شبکه‌ای که در اولین ساختِ [GeckoRuntime] اعمال می‌شود.
      *
@@ -291,6 +313,68 @@ class ContainerSessionManager @Inject constructor(
 
     /** آیا موتور Gecko قبلاً ساخته شده است؟ (برای پیامِ «راه‌اندازی دوباره لازم است») */
     fun isRuntimeCreated(): Boolean = geckoRuntime != null
+
+    /**
+     * Give GeckoView an Activity Result launcher for its Google Play FIDO fallback.
+     * Android 14+ Credential Manager is called by GeckoView itself; this delegate is needed when
+     * GeckoView falls back to a PendingIntent-based authenticator flow on older devices/providers.
+     */
+    fun setRuntimeActivityLauncher(launcher: ((PendingIntent) -> Unit)?) {
+        runtimeActivityLauncher = launcher
+        geckoRuntime?.let(::applyRuntimeActivityDelegate)
+    }
+
+    /** Complete the one outstanding GeckoView PendingIntent request from the Activity Result API. */
+    fun onRuntimeActivityResult(resultCode: Int, data: Intent?) {
+        val result = synchronized(this) {
+            pendingRuntimeActivityResult.also { pendingRuntimeActivityResult = null }
+        } ?: return
+        if (resultCode == Activity.RESULT_OK && data != null) {
+            result.complete(data)
+        } else {
+            result.completeExceptionally(IllegalStateException("The WebAuthn activity was cancelled or returned no result"))
+        }
+    }
+
+    /** Called when the hosting Activity is permanently destroyed, not during configuration change. */
+    fun cancelPendingRuntimeActivityResult() {
+        val result = synchronized(this) {
+            pendingRuntimeActivityResult.also { pendingRuntimeActivityResult = null }
+        } ?: return
+        result.completeExceptionally(IllegalStateException("The hosting Activity was destroyed"))
+    }
+
+    private fun applyRuntimeActivityDelegate(runtime: GeckoRuntime) {
+        val apply = {
+            if (geckoRuntime === runtime) runtime.setActivityDelegate(createRuntimeActivityDelegate())
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) apply() else Handler(Looper.getMainLooper()).post { apply() }
+    }
+
+    private fun createRuntimeActivityDelegate(): GeckoRuntime.ActivityDelegate? {
+        val launcher = runtimeActivityLauncher ?: return null
+        return object : GeckoRuntime.ActivityDelegate {
+            override fun onStartActivityForResult(intent: PendingIntent): GeckoResult<Intent> {
+                val result = GeckoResult<Intent>()
+                synchronized(this@ContainerSessionManager) {
+                    if (pendingRuntimeActivityResult != null) {
+                        result.completeExceptionally(IllegalStateException("A WebAuthn activity is already in progress"))
+                        return result
+                    }
+                    pendingRuntimeActivityResult = result
+                }
+                try {
+                    launcher(intent)
+                } catch (error: Exception) {
+                    synchronized(this@ContainerSessionManager) {
+                        if (pendingRuntimeActivityResult === result) pendingRuntimeActivityResult = null
+                    }
+                    result.completeExceptionally(error)
+                }
+                return result
+            }
+        }
+    }
 
     @Synchronized
     fun getOrCreateRuntime(proxyDnsConfig: ProxyDnsConfig = ProxyDnsConfig()): GeckoRuntime {
@@ -326,6 +410,7 @@ class ContainerSessionManager @Inject constructor(
         val runtime = GeckoRuntime.create(appContext, settingsBuilder.build())
         installNeverSignOutExtension(runtime)
         geckoRuntime = runtime
+        applyRuntimeActivityDelegate(runtime)
         return runtime
     }
 
@@ -410,6 +495,7 @@ class ContainerSessionManager @Inject constructor(
         onAndroidPermissionRequest: (AndroidPermissionRequest) -> Unit = {},
         onWindowClose: () -> Unit = {},
         onProcessEnded: () -> Unit = {},
+        onTranslationStateChanged: (detectedLanguage: String?, isTranslated: Boolean) -> Unit = { _, _ -> },
         openedByGecko: Boolean = false,
     ): GeckoSession {
         activeSessions[tabId]?.let { return it }
@@ -452,6 +538,7 @@ class ContainerSessionManager @Inject constructor(
             onPopupRequest = onPopupRequest,
             onWindowClose = onWindowClose,
             onProcessEnded = onProcessEnded,
+            onTranslationStateChanged = onTranslationStateChanged,
         )
 
         attachPermissionDelegates(
@@ -639,6 +726,103 @@ class ContainerSessionManager @Inject constructor(
         evaluateInPage(tabId, ReaderTextEngine.extractReadableTextScript) { raw ->
             val text = ReaderTextEngine.extractReadableText(raw)
             onText(if (ReaderTextEngine.hasEnoughText(text)) text else "")
+        }
+    }
+
+    /** Apply user-requested page zoom to a normal tab without changing the site's storage. */
+    fun applyPageZoom(tabId: String, zoomPercent: Int, onResult: (Boolean) -> Unit = {}) {
+        val zoom = BrowserPageActions.clampZoom(zoomPercent)
+        val css = if (zoom == 100) "" else "html{zoom:${zoom}% !important;}"
+        val escapedCss = JSONObject.quote(css)
+        val script = """(() => {
+            const id = 'marblebr-page-zoom';
+            let style = document.getElementById(id);
+            if (!$escapedCss) {
+              if (style) style.remove();
+              return 'ok';
+            }
+            if (!style) { style = document.createElement('style'); style.id = id; (document.head || document.documentElement).appendChild(style); }
+            style.textContent = $escapedCss;
+            return 'ok';
+          })()""".trimIndent()
+        evaluateInPage(tabId, script) { result -> onResult(result == "ok") }
+    }
+
+    /** Query GeckoView's on-device translation toolkit; page text is not sent to a translation server. */
+    fun listSupportedTranslationLanguages(onResult: (BrowserTranslationLanguages?) -> Unit) {
+        runCatching { TranslationsController.RuntimeTranslation.listSupportedLanguages() }
+            .onSuccess { result ->
+                result.accept(
+                    { support ->
+                        fun convert(languages: List<TranslationsController.Language>?): List<BrowserTranslationLanguage> =
+                            languages.orEmpty()
+                                .filter { it.code.isNotBlank() }
+                                .distinctBy { it.code }
+                                .sortedBy { it.localizedDisplayName.orEmpty() }
+                                .map {
+                                    BrowserTranslationLanguage(
+                                        code = it.code,
+                                        displayName = it.localizedDisplayName?.takeIf(String::isNotBlank) ?: it.code,
+                                    )
+                                }
+                        val languages = BrowserTranslationLanguages(
+                            fromLanguages = convert(support.fromLanguages),
+                            toLanguages = convert(support.toLanguages),
+                        )
+                        Handler(Looper.getMainLooper()).post { onResult(languages) }
+                    },
+                    { Handler(Looper.getMainLooper()).post { onResult(null) } },
+                )
+            }
+            .onFailure { Handler(Looper.getMainLooper()).post { onResult(null) } }
+    }
+
+    fun detectedTranslationLanguage(tabId: String): String? = detectedTranslationLanguages[tabId]
+
+    /** Translate only after an explicit user action; GeckoView downloads its local model if needed. */
+    fun translatePage(tabId: String, fromLanguage: String, toLanguage: String, onResult: (Boolean) -> Unit) {
+        val session = activeSessions[tabId]
+        if (session == null || fromLanguage.isBlank() || toLanguage.isBlank() || fromLanguage == toLanguage) {
+            Handler(Looper.getMainLooper()).post { onResult(false) }
+            return
+        }
+        Handler(Looper.getMainLooper()).post {
+            if (activeSessions[tabId] !== session) {
+                onResult(false)
+                return@post
+            }
+            val result = runCatching {
+                session.getSessionTranslation()?.translate(
+                    fromLanguage,
+                    toLanguage,
+                    TranslationsController.SessionTranslation.TranslationOptions.Builder()
+                        .downloadModel(true)
+                        .build(),
+                )
+            }.getOrNull()
+            result?.accept(
+                { onResult(true) },
+                { onResult(false) },
+            ) ?: onResult(false)
+        }
+    }
+
+    fun restoreOriginalPageTranslation(tabId: String, onResult: (Boolean) -> Unit) {
+        val session = activeSessions[tabId]
+        if (session == null) {
+            Handler(Looper.getMainLooper()).post { onResult(false) }
+            return
+        }
+        Handler(Looper.getMainLooper()).post {
+            if (activeSessions[tabId] !== session) {
+                onResult(false)
+                return@post
+            }
+            val result = runCatching { session.getSessionTranslation()?.restoreOriginalPage() }.getOrNull()
+            result?.accept(
+                { onResult(true) },
+                { onResult(false) },
+            ) ?: onResult(false)
         }
     }
 
@@ -923,6 +1107,7 @@ class ContainerSessionManager @Inject constructor(
         loginCompatibilityTabs.remove(tabId)
         loginCompatibilityOptOutTabs.remove(tabId)
         adBlockByTab.remove(tabId)
+        detectedTranslationLanguages.remove(tabId)
         runCatching { loginWatcher.get().forget(tabId) }
         val session = activeSessions.remove(tabId) ?: return
         sessionContainers.remove(session)
@@ -1364,10 +1549,26 @@ class ContainerSessionManager @Inject constructor(
         onPopupRequest: (PopupPermissionRequest) -> Unit,
         onWindowClose: () -> Unit,
         onProcessEnded: () -> Unit,
+        onTranslationStateChanged: (detectedLanguage: String?, isTranslated: Boolean) -> Unit,
     ) {
         var previousUrl = ""
         var canBack = false
         var canFwd = false
+
+        // The translation toolkit is local to GeckoView; only language codes and state cross this delegate.
+        session.setTranslationsSessionDelegate(object : TranslationsController.SessionTranslation.Delegate {
+            override fun onTranslationStateChange(
+                session: GeckoSession,
+                translationState: TranslationsController.SessionTranslation.TranslationState?,
+            ) {
+                val detected = translationState?.detectedLanguages?.docLangTag?.trim()?.takeIf(String::isNotBlank)
+                if (detected == null) detectedTranslationLanguages.remove(tabId) else detectedTranslationLanguages[tabId] = detected
+                val translated = translationState?.hasVisibleChange == true
+                Handler(Looper.getMainLooper()).post {
+                    if (activeSessions[tabId] === session) onTranslationStateChanged(detected, translated)
+                }
+            }
+        })
 
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
             override fun onNewSession(session: GeckoSession, uri: String): GeckoResult<GeckoSession>? {
@@ -1438,6 +1639,10 @@ class ContainerSessionManager @Inject constructor(
                 if (safeUrl.isNotBlank()) {
                     if (previousUrl != safeUrl) {
                         loginNavigationIds[session] = UUID.randomUUID().toString()
+                        detectedTranslationLanguages.remove(tabId)
+                        Handler(Looper.getMainLooper()).post {
+                            if (activeSessions[tabId] === session) onTranslationStateChanged(null, false)
+                        }
                         snapshotRequests.remove(session)?.response?.complete(false)
                         cancelPendingRestore(session)
                     }
@@ -1468,6 +1673,8 @@ class ContainerSessionManager @Inject constructor(
         session.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onPageStart(session: GeckoSession, url: String) {
                 loadingSessions.add(session)
+                detectedTranslationLanguages.remove(tabId)
+                onTranslationStateChanged(null, false)
                 loginNavigationIds[session] = UUID.randomUUID().toString()
                 snapshotRequests.remove(session)?.response?.complete(false)
                 cancelPendingRestore(session)
@@ -1510,11 +1717,12 @@ class ContainerSessionManager @Inject constructor(
                 val link = element.linkUri?.takeIf(::isHttpUrl)
                 val image = element.srcUri?.takeIf { element.type == GeckoSession.ContentDelegate.ContextElement.TYPE_IMAGE }
                     ?.takeIf(::isHttpUrl)
-                // Long-pressing anywhere opens the context menu ("keep holding your finger on
-                // the page content"): links and images offer their actions, plain content offers
-                // the page-level ones. (`altText`/`title` are the text-ish properties available
-                // on the session context element across GeckoView builds.)
-                val text = (element.altText ?: element.title)?.trim()?.takeIf { it.isNotEmpty() }
+                // Long-press opens the context menu for links and media. Link text is exposed
+                // separately from descriptive image/element labels; actual text selection uses
+                // Gecko's SelectionActionDelegate below instead of inferring a selection here.
+                val text = (element.linkText ?: element.altText ?: element.title)
+                    ?.trim()
+                    ?.takeIf(String::isNotEmpty)
                 onContextMenu(PageContextTarget(link, image, text))
             }
 

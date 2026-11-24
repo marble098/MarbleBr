@@ -9,6 +9,9 @@ import android.view.WindowManager
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FastOutLinearInEasing
@@ -39,6 +42,7 @@ import com.marble098.marblebr.core.designsystem.LocalMarbleStrings
 import com.marble098.marblebr.core.designsystem.MarbleBrTheme
 import com.marble098.marblebr.core.preferences.BrowserPreferences
 import com.marble098.marblebr.core.preferences.BrowserPreferencesRepository
+import com.marble098.marblebr.engine.ContainerSessionManager
 import com.marble098.marblebr.feature.browser.BrowserScreen
 import com.marble098.marblebr.feature.browser.BrowserViewModel
 import com.marble098.marblebr.feature.browser.PwaShortcutInstaller
@@ -72,10 +76,24 @@ class MainActivity : AppCompatActivity() {
     @Inject
     lateinit var biometricVaultLock: BiometricVaultLock
 
+    @Inject
+    lateinit var sessionManager: ContainerSessionManager
+
+    private lateinit var webAuthnActivityResultLauncher: ActivityResultLauncher<IntentSenderRequest>
     private var incomingNavigation by mutableStateOf<IncomingNavigation?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        webAuthnActivityResultLauncher = registerForActivityResult(
+            ActivityResultContracts.StartIntentSenderForResult(),
+        ) { result ->
+            sessionManager.onRuntimeActivityResult(result.resultCode, result.data)
+        }
+        sessionManager.setRuntimeActivityLauncher { pendingIntent ->
+            webAuthnActivityResultLauncher.launch(
+                IntentSenderRequest.Builder(pendingIntent.intentSender).build(),
+            )
+        }
         // حالت کیبورد از AndroidManifest (adjustResize) می‌آید و `imePadding` فقط در صفحهٔ
         // خانه/شیت‌ها اعمال می‌شود؛ در نتیجه نمای وب هنگام باز شدن کیبورد بازچیدمان نمی‌شود.
         // (این فراخوانی صریح، رفتار را روی دستگاه‌هایی که manifest را بازنویسی می‌کنند تضمین می‌کند.)
@@ -152,6 +170,12 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         incomingNavigation = resolveIncomingNavigation(intent) ?: incomingNavigation
+    }
+
+    override fun onDestroy() {
+        sessionManager.setRuntimeActivityLauncher(null)
+        if (isFinishing && !isChangingConfigurations) sessionManager.cancelPendingRuntimeActivityResult()
+        super.onDestroy()
     }
 
     private fun resolveIncomingNavigation(intent: Intent?): IncomingNavigation? {

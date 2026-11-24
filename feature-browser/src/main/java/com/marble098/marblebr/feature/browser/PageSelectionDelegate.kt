@@ -11,12 +11,14 @@ internal class PageSelectionDelegate(
     activity: Activity,
     private val shareLabel: String,
     private val pdfLabel: String,
+    private val searchLabel: String,
     private val onSavePdf: () -> Unit,
+    private val onSearchSelection: (String) -> Unit,
 ) : BasicSelectionActionDelegate(activity) {
-    override fun getAllActions(): Array<String> = super.getAllActions() + arrayOf(SHARE, SAVE_PDF)
+    override fun getAllActions(): Array<String> = super.getAllActions() + arrayOf(SHARE, SEARCH, SAVE_PDF)
 
     override fun isActionAvailable(id: String): Boolean = when (id) {
-        SHARE -> selection?.let {
+        SHARE, SEARCH -> selection?.let {
             it.text.isNotBlank() && it.flags and GeckoSession.SelectionActionDelegate.FLAG_IS_PASSWORD == 0
         } == true
         SAVE_PDF -> selection != null
@@ -26,6 +28,7 @@ internal class PageSelectionDelegate(
     override fun prepareAction(id: String, item: MenuItem) {
         when (id) {
             SHARE -> item.title = shareLabel
+            SEARCH -> item.title = searchLabel
             SAVE_PDF -> item.title = pdfLabel
             else -> super.prepareAction(id, item)
         }
@@ -43,6 +46,16 @@ internal class PageSelectionDelegate(
                 true
             }
         }
+        SEARCH -> {
+            val text = selection?.text?.trim()?.take(MAX_SEARCH_LENGTH).orEmpty()
+            if (text.isBlank()) {
+                false
+            } else {
+                clearSelection()
+                onSearchSelection(text)
+                true
+            }
+        }
         SAVE_PDF -> {
             clearSelection()
             onSavePdf()
@@ -53,7 +66,9 @@ internal class PageSelectionDelegate(
 
     private companion object {
         const val SHARE = "marblebr.share.selection"
+        const val SEARCH = "marblebr.search.selection"
         const val SAVE_PDF = "marblebr.save.pdf"
         const val MAX_SHARE_LENGTH = 100_000
+        const val MAX_SEARCH_LENGTH = 2_000
     }
 }

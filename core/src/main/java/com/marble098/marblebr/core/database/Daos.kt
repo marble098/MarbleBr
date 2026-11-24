@@ -91,8 +91,14 @@ interface BookmarkDao {
     @Query("SELECT * FROM bookmarks WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): BookmarkEntity?
 
+    @Query("SELECT * FROM bookmarks WHERE url = :url LIMIT 1")
+    suspend fun getByUrl(url: String): BookmarkEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(bookmark: BookmarkEntity)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfAbsent(bookmarks: List<BookmarkEntity>): List<Long>
 
     @Query("UPDATE bookmarks SET title = :title, url = :url, folder = :folder WHERE id = :id")
     suspend fun updateBookmark(id: String, title: String, url: String, folder: String)
